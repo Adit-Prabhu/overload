@@ -7,7 +7,7 @@ This repository currently holds the G1 concept package. It describes proposed wo
 
 ## G1 submission
 - Recording (3–5 min): https://youtu.be/uBufxDVXPek
-- Deck presented: [docs/g1/Overload_G1.pptx](docs/g1/Overload_G1.pptx)
+- Deck presented: [Google Slides](https://docs.google.com/presentation/d/1_75mht-kKFm1omTLg8itxf0CBhAFPch-feteD2jY0VI/edit?usp=sharing) · copy in repo: [docs/g1/Overload_G1.pptx](docs/g1/Overload_G1.pptx)
 - [Initial GDD](docs/INITIAL_GDD.md)
 - [Initial Configuration Document](docs/INITIAL_CONFIGURATION.md) (open questions, planned agent role coverage, extension manifest)
 - [Initial Project Plan](docs/INITIAL_PROJECT_PLAN.md)
