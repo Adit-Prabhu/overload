@@ -370,3 +370,67 @@ def test_going_down_as_the_last_regulator_falls_is_still_down() -> None:
     campaign.world.player.charge = 0
     campaign.step(IDLE)
     assert campaign.world.outcome == "down" and campaign.stage == "encounter"
+
+
+def bot_until_two_powers(campaign: Campaign, recording: Recording) -> None:
+    """Really play (the bot) until Spark and Blink are stolen mid-sector, Surge up."""
+    from floorbot import FloorBot
+
+    bot = FloorBot(campaign)
+    for tick in range(20_000):
+        world = campaign.world
+        if (
+            {"spark", "blink"} <= set(world.unlocked)
+            and campaign.stage == "encounter"
+            and world.outcome == "playing"
+        ):
+            return
+        if campaign.stage == "fuse_box":  # Blink drops in sector 2
+            campaign.begin_next("pressure")
+            recording.begin_next("pressure")
+        frame = InputFrame(restart=True) if world.outcome == "down" else bot.frame(tick)
+        campaign.step(frame)
+        recording.frames.append(frame)
+    raise AssertionError("the bot never stole Spark and Blink")
+
+
+def test_a_mid_sector_fusion_replays_identically() -> None:
+    campaign = Campaign(9)
+    recording = campaign_recording(["lateral"], [], 0)
+    bot_until_two_powers(campaign, recording)
+    assert campaign.fuse("spark", "blink") == "fused"
+    recording.fuse_box("fuse", "spark", "blink")
+    assert campaign.equip(0, "arc_trail")
+    recording.fuse_box("equip", 0, "arc_trail")
+    for _ in range(120):
+        campaign.step(IDLE)
+        recording.frames.append(IDLE)
+    assert "arc_trail" in campaign.world.unlocked
+    assert play(recording).state_hash() == campaign.state_hash()
+
+
+def test_a_retry_undoes_a_mid_sector_fusion() -> None:
+    campaign = Campaign(9)
+    bot_until_two_powers(campaign, campaign_recording(["lateral"], [], 0))
+    entry_kit = campaign.kit
+    assert campaign.fuse("spark", "blink") == "fused"
+    assert campaign.kit == entry_kit, "a mid-sector edit lives in the world only"
+    campaign.world.player.charge = 0
+    campaign.step(IDLE)
+    assert campaign.world.outcome == "down"
+    with pytest.raises(RuntimeError):
+        campaign.fuse("spark", "blink")  # no loadout changes while down
+    campaign.step(InputFrame(restart=True))
+    assert "arc_trail" not in campaign.world.unlocked
+    assert campaign.world.unlocked == entry_kit.unlocked
+
+
+def test_a_replayed_loadout_action_while_down_is_rejected() -> None:
+    campaign = Campaign(9)
+    campaign.world.player.charge = 0
+    campaign.step(IDLE)
+    assert campaign.world.outcome == "down"
+    from overload.session.replay import apply_menu
+
+    with pytest.raises(ValueError):
+        apply_menu(campaign, [1, "fuse", "spark", "blink"])

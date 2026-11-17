@@ -167,10 +167,10 @@ class Session:
 
 
 FUSE_NOTICES = {
-    "fused": "FUSED. EQUIP IT WITH Q OR E",
+    "fused": "FUSED. Q OR E EQUIPS IT",
     "already_fused": "EVERY RECIPE IS FUSED",
-    "missing": "RECIPES: SPARK + BLINK, SPARK + BURST",
-    "unsupported": "RECIPES: SPARK + BLINK, SPARK + BURST",
+    "missing": "STEAL BOTH POWERS FIRST",
+    "unsupported": "STEAL BOTH POWERS FIRST",
 }
 
 
@@ -188,7 +188,7 @@ def next_recipe(kit) -> tuple[str, str]:
 
 class FuseBoxMenu:
     """The loadout and fusion menu. Keys: up and down pick a power, q and e equip it to
-    that slot, fuse tries the one supported recipe. Returns each simulation-affecting action
+    that slot, fuse tries the next open recipe. Returns each simulation-affecting action
     so the caller can record it for the replay."""
 
     def __init__(self) -> None:
@@ -205,6 +205,7 @@ class FuseBoxMenu:
         if key in ("up", "down") and rows:
             step = -1 if key == "up" else 1
             self.selected = (self.selected + step) % len(rows)
+            self.notice = None  # a new selection replaces the last notice
         elif key in ("q", "e") and rows:
             slot = 0 if key == "q" else 1
             ability = rows[min(self.selected, len(rows) - 1)]
@@ -218,6 +219,6 @@ class FuseBoxMenu:
             self.notice = FUSE_NOTICES[result]
             if result == "fused":
                 name = RECIPES[frozenset((a, b))].replace("_", " ").upper()
-                self.notice = f"{name} FUSED. EQUIP IT WITH Q OR E"
+                self.notice = f"{name} FUSED"  # short: it shares the footer line
             return ["fuse", a, b]
         return None

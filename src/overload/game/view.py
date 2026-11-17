@@ -89,7 +89,6 @@ def robot_image(robot, tick: int, left: bool, charging: bool) -> pygame.Surface:
 
 
 FUSION_TICKS = 30
-RECIPE_CENTER = (178, 78)  # the middle of the recipe row in the Fuse Box
 RIVAL_FLASH = -1  # flash key for the Regulator (hostile IDs are positive)
 POSES = {"pressure": "clamp", "spacing": "insulate", "lateral": "oscillate"}
 
@@ -798,13 +797,18 @@ class PixelView:
             else:
                 status, token = "F FUSE", "px.hazard.1"
             hud.text(screen, status, (right, y), token, "topright")
+            if result in kit.unlocked and self.fusion_flash > 0:  # the fusion just made
+                glow = round(255 * self.fusion_flash / FUSION_TICKS)
+                ring = pygame.Rect(rx - 3, y - 2, right - rx + 6, 12)
+                frame = pygame.Surface(ring.size, pygame.SRCALPHA)
+                pygame.draw.rect(frame, rgba("power.spark", glow), frame.get_rect(), 1)
+                screen.blit(frame, ring)
 
-        # Detail line: a notice, then the Fuse Box status, else the selected power.
+        # Detail line: the Fuse Box status (the approved D7 line always shows), else the
+        # selected power.
         detail_y = col_y + 70
         screen.fill(rgb("px.wall.1"), (left, detail_y - 3, right - left, 1))
-        if notice:
-            lines, token = [notice], "power.spark"
-        elif fuse_box and message:
+        if fuse_box and message:
             lines, token = _wrap(message.upper(), 38), "px.lamp"
         elif pick >= 0:
             ability = rows[pick]
@@ -826,7 +830,10 @@ class PixelView:
             )
         else:
             end, end_token = "TAB RESUME", "px.hazard.1"
-        hud.text(screen, "W/S PICK  Q/E EQUIP  F FUSE", (left, footer_y), "ui.dim")
+        if notice:  # the result of the last key, in place of the controls until W or S
+            hud.text(screen, notice, (left, footer_y), "power.spark")
+        else:
+            hud.text(screen, "W/S PICK  Q/E EQUIP  F FUSE", (left, footer_y), "ui.dim")
         hud.text(screen, end, (right, footer_y), end_token, "topright")
 
     def draw_ending(

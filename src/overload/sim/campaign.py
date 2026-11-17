@@ -167,11 +167,15 @@ class Campaign:
         return result
 
     def _editable_kit(self) -> Kit:
-        """The live kit (charges absorbed since the last Fuse Box included)."""
+        """The live kit (charges absorbed since the last Fuse Box included). Only the Fuse
+        Box keeps it as the campaign's kit; a mid-sector edit lives in the world alone, so a
+        retry rolls it back with everything else."""
         if self.stage == "ending" or self.world.outcome != "playing":
             raise RuntimeError(f"the loadout cannot change now (stage {self.stage})")
-        self.kit = Kit.from_world(self.world)
-        return self.kit
+        kit = Kit.from_world(self.world)
+        if self.stage == "fuse_box":
+            self.kit = kit
+        return kit
 
     def begin_next(self, protocol: str) -> None:
         """Leave the Fuse Box: the next sector's protocol is frozen from now on, the exit
