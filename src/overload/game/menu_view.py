@@ -381,6 +381,24 @@ def draw_controls(screen, menu: Menu) -> None:
     _footer(screen, "ESC BACK", left)
 
 
+def draw_dev(screen, menu: Menu) -> None:
+    left, right, top = _frame(screen)
+    _header(screen, "DEV", "NOT FOR PLAYTESTS", left, right, top)
+    for i, (label, value) in enumerate(menu.dev.rows()):
+        y = top + 15 + i * 10
+        chosen = i == menu.dev_row
+        if chosen:
+            screen.fill(rgb("px.wall.1"), (left - 2, y - 1, right - left + 4, 10))
+        hud.text(screen, label, (left, y), "ui.text" if chosen else "ui.dim")
+        if value:
+            cycle = label in ("NEXT ROLL", "GRANT POWER")
+            text = f"< {value} >" if cycle and chosen else value
+            hud.text(screen, text, (right, y), "px.hazard.1", "topright")
+    if menu.dev.notice:
+        hud.text(screen, menu.dev.notice, (left, PANEL.bottom - 21), "px.lamp")
+    _footer(screen, "W/S MOVE  A/D CHANGE  SPACE DO  ESC BACK", left)
+
+
 def draw_menu(screen, menu: Menu, session, tuning, ready: bool, message, sector: int) -> None:
     if menu.screen == "hub":
         draw_hub(screen, menu, session, ready, message, sector)
@@ -388,5 +406,7 @@ def draw_menu(screen, menu: Menu, session, tuning, ready: bool, message, sector:
         draw_loadout(screen, menu, session, tuning)
     elif menu.screen == "fuse":
         draw_fuse(screen, menu, session)
+    elif menu.screen == "dev":
+        draw_dev(screen, menu)
     else:
         draw_controls(screen, menu)

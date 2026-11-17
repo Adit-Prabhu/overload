@@ -23,6 +23,7 @@ import pygame
 from overload.agent.client import TacticClient
 from overload.agent.selector import FixedSchedule, LiveSelector, NeutralSelector, Selector
 from overload.art.pixel import hud, tiles
+from overload.game import dev as devmode
 from overload.game import menu_view
 from overload.game import title as title_screen
 from overload.game.audio import Audio
@@ -56,6 +57,7 @@ class Options:
     trace: Path | None = None
     mute: bool = False
     skip_title: bool = False
+    dev: bool = False  # test tools, gated by a local git-ignored file (game/dev.py)
 
 
 class InputReader:
@@ -213,6 +215,15 @@ def menu_frame(
     return cues
 
 
+def draw_dev_marks(screen: pygame.Surface, tools, run, fps: float) -> None:
+    """DEV on screen whenever dev mode runs, so no dev capture can pass for real play, and
+    the debug overlay when it is on."""
+    hud.text(screen, "DEV", (VIEW[0] // 2, 2), "px.hazard.1", "midtop")
+    if tools.overlay:
+        for i, line in enumerate(devmode.overlay_lines(run, fps)):
+            hud.text(screen, line, (4, VIEW[1] - 60 + i * 9), "ui.dim")
+
+
 def _open_window(headless: bool) -> pygame.Surface:
     if headless:
         return pygame.display.set_mode(VIEW)
@@ -268,6 +279,16 @@ def ticks_due(paused: bool, headless: bool, accumulated: float, elapsed: float):
 
 def play(options: Options) -> int:
     """Run the game. Returns a process exit code."""
+    if options.dev:
+        if not devmode.available():
+            print("Dev mode is not available on this machine.")
+            return 2
+        if options.replay or options.practice:
+            print("Dev mode runs the campaign only, not replays or practice.")
+            return 2
+        # Dev runs are never study data: no model call, no trace, no recording.
+        options.condition, options.trace, options.record = "off", None, None
+        print("Dev mode: the rival is off, and no trace or recording is written.")
     if options.headless:
         os.environ["SDL_VIDEODRIVER"] = "dummy"
         os.environ["SDL_AUDIODRIVER"] = "dummy"
@@ -308,7 +329,7 @@ def play(options: Options) -> int:
         selector, session_id, condition = build_selector(options)
         run = Campaign(seed)
         trace = None
-        if options.trace or not options.headless:
+        if not options.dev and (options.trace or not options.headless):
             stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
             trace = TraceWriter(
                 options.trace or ROOT / "logs" / f"trace-{stamp}.jsonl",
@@ -345,6 +366,8 @@ def play(options: Options) -> int:
         view = PixelView(run)
         reader = InputReader()
         menu = Menu()
+        dev_tools = devmode.DevTools() if options.dev else None
+        menu.dev = dev_tools
         audio = Audio(enabled=not (options.mute or options.headless))
         clock = pygame.time.Clock()
         accumulated = 0.0
@@ -393,10 +416,14 @@ def play(options: Options) -> int:
                     # the frame will be drawn with: the reticle and the aim point agree.
                     view.follow(run, cursor)
                     frame = reader.frame(view.camera_offset()) if not options.headless else IDLE
+                if dev_tools is not None:
+                    dev_tools.before_tick(run)
                 if session is not None:
                     session.tick(frame)
                 else:
                     run.step(frame)
+                if dev_tools is not None:
+                    dev_tools.after_tick(run)
                 recording.frames.append(frame)
                 audio.events(run.world.events, run.world)
                 if scripted is not None:
@@ -415,6 +442,8 @@ def play(options: Options) -> int:
             )
             view.draw(screen, run, cursor)
             stage = getattr(run, "stage", None)
+            if dev_tools is not None:
+                draw_dev_marks(screen, dev_tools, run, clock.get_fps())
             if menu.open and session is not None:
                 in_box = stage == "fuse_box"
                 menu_view.draw_menu(
