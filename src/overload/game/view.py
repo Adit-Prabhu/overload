@@ -24,18 +24,33 @@ from overload.sim import aiming
 from overload.sim import world as rules
 from overload.sim.arena import arena_id
 from overload.sim.campaign import Campaign
-from overload.sim.powers import COOLDOWN_KEYS, Kit
+from overload.sim.powers import COOLDOWN_KEYS, EVOLUTIONS, RECIPE_ORDER, RECIPES, Kit, evolved
 from overload.sim.run import Run
 from overload.sim.state import Event
+from overload.sim.tuning import DEFAULT
 
 VIEW = (256, 144)
 SURGE_FEET = 8  # sprite feet sit this many pixels below the body center
-SOCKET_TOKENS = {"spark": "spark", "blink": "blink", "arc_trail": "spark"}
-NAMES = {"spark": "SPARK", "blink": "BLINK", "arc_trail": "ARC TRAIL"}
+SOCKET_TOKENS = {
+    "spark": "spark",
+    "blink": "blink",
+    "burst": "burst",
+    "arc_trail": "spark",
+    "shock_cone": "burst",
+}
+NAMES = {
+    "spark": "SPARK",
+    "blink": "BLINK",
+    "burst": "BURST",
+    "arc_trail": "ARC TRAIL",
+    "shock_cone": "SHOCK CONE",
+}
 COOLDOWNS = {
     "spark": "spark_cooldown",
     "blink": "blink_cooldown",
+    "burst": "burst_cooldown",
     "arc_trail": "arc_trail_cooldown",
+    "shock_cone": "shock_cone_cooldown",
 }
 RIVAL_FEET = 20
 ROBOT_FEET = {"drone": 9, "relay": 8, "breaker": 9, "sweeper": 5, "sentry": 6}
@@ -143,6 +158,8 @@ class PixelView:
         self.muzzle = 0
         self.ghosts: list[tuple[float, float, int]] = []
         self.blinks: list[tuple[float, float, int]] = []
+        self.bursts: list[tuple] = []
+        self.chains: list[tuple] = []
         self.notice: tuple[str, int] | None = None
         self.unlock_flash = 0
         self.fusion_flash = 0
@@ -202,6 +219,7 @@ class PixelView:
 
     def consume(self, run: Run | Campaign, events: list[Event]) -> None:
         stolen: list[str] = []
+        chain_start = None
         for event in events:
             if event.kind == "shot":
                 self.muzzle = 3
@@ -236,6 +254,24 @@ class PixelView:
                 stolen.append(NAMES.get(event.power, event.power.upper()))
             elif event.kind == "absorb":
                 self._burst(event.x, event.y, 10, f"power.{event.power}", 1.4)
+            elif event.kind == "burst":
+                player = run.world.player
+                angle = math.atan2(player.aim_y, player.aim_x)
+                self.bursts.append(
+                    (event.x, event.y, angle, bool(event.ref), event.power == "shock_cone", 10)
+                )
+            elif event.kind == "chain_from":
+                chain_start = (event.x, event.y)
+            elif event.kind == "chain" and chain_start is not None:
+                self.chains.append((chain_start, (event.x, event.y), 8))
+            elif event.kind == "evolve":
+                self.unlock_flash = 12
+                self._burst(event.x, event.y, 24, f"power.{event.power}", 2.2)
+                name = NAMES.get(event.power, event.power.upper())
+                self.toast(f"{name} EVOLVED: {EVOLUTIONS.get(event.power, '')}", 120)
+            elif event.kind == "fully_evolved":
+                self._burst(event.x, event.y, 10, f"power.{event.power}", 1.4)
+                self.toast("FULLY EVOLVED", 60)
             elif event.kind == "room_lock":
                 self.toast("LOCKDOWN", 60)
             elif event.kind == "room_clear":
@@ -257,8 +293,8 @@ class PixelView:
         moved = math.dist(self.last_player, (player.x, player.y)) > 0.1
         self.walking = self.walking + 1 if moved else 0
         self.last_player = (player.x, player.y)
-        if player.dodging:
-            self.ghosts.append((player.x, player.y, 10))
+        if player.dodging or (player.boost > 0 and run.world.tick % 3 == 0):
+            self.ghosts.append((player.x, player.y, 10))  # dodge and Overdrive trails
 
     def _draw_doors(self, screen: pygame.Surface, run: Run | Campaign, v) -> None:
         """Locked doors: hazard-striped shutters. A locked secret wall looks like cracked wall,
@@ -318,6 +354,8 @@ class PixelView:
         self.flashes = {k: v - 1 for k, v in self.flashes.items() if v > 1}
         self.ghosts = [(x, y, life - 1) for x, y, life in self.ghosts if life > 1]
         self.blinks = [(x, y, life - 1) for x, y, life in self.blinks if life > 1]
+        self.bursts = [(*b[:5], b[5] - 1) for b in self.bursts if b[5] > 1]
+        self.chains = [(a, b, life - 1) for a, b, life in self.chains if life > 1]
         self.unlock_flash = max(0, self.unlock_flash - 1)
         self.fusion_flash = max(0, self.fusion_flash - 1)  # per tick, so any frame rate
         if self.notice:
@@ -533,6 +571,14 @@ class PixelView:
                     screen, self.glow.layer, v(shot.x, shot.y), math.atan2(shot.vy, shot.vx)
                 )
 
+        for x, y, angle, wide, shock, life in self.bursts:
+            reach = tuning.burst_wide_range if wide else tuning.burst_range
+            cone = tuning.burst_wide_cos if wide else tuning.burst_cos
+            effects.burst_cone(
+                screen, self.glow.layer, v(x, y), angle, reach, cone, life / 10, shock
+            )
+        for a, b, _life in self.chains:
+            effects.chain_bolt(screen, self.glow.layer, v(*a), v(*b))
         for spark in self.sparks:
             sx, sy = v(spark.x, spark.y)
             for surface in (screen, self.glow.layer):
@@ -625,7 +671,8 @@ class PixelView:
                 hud.text(screen, ">", (16, y), "px.hazard.1")
             icon = effects.charge_icon(ability)
             screen.blit(icon, icon.get_rect(midleft=(24, y + 3)))
-            hud.text(screen, NAMES[ability], (36, y), "ui.text" if chosen else "ui.dim")
+            name = NAMES[ability] + (" +" if evolved(kit.fragments, ability, DEFAULT) else "")
+            hud.text(screen, name, (36, y), "ui.text" if chosen else "ui.dim")
 
         hud.text(screen, "LOADOUT", (150, 25), "ui.dim")
         for i, ability in enumerate(kit.slots):
@@ -636,19 +683,17 @@ class PixelView:
                 icon = effects.charge_icon(ability)
                 screen.blit(icon, icon.get_rect(center=(x + 10, 45)))
 
-        hud.text(screen, "RECIPE", (150, 65), "ui.dim")
-        for i, ability in enumerate(("spark", "blink", "arc_trail")):
-            icon = effects.charge_icon(ability)
-            screen.blit(icon, icon.get_rect(center=(156 + i * 22, 78)))
-        hud.text(screen, "+", (167, 74), "ui.dim", "midtop")
-        hud.text(screen, "=", (189, 74), "ui.dim", "midtop")
-        if "arc_trail" in kit.unlocked:
-            status, token = "FUSED", "power.blink"
-        elif "spark" in kit.unlocked and "blink" in kit.unlocked:
-            status, token = "F TO FUSE", "px.hazard.1"
-        else:
-            status, token = "STEAL BOTH", "px.floor.3"
-        hud.text(screen, status, (178, 85), token, "midtop")
+        for row, (a, b) in enumerate(RECIPE_ORDER):  # the two recipes, results dim until fused
+            y = 74 + row * 11
+            result = RECIPES[frozenset((a, b))]
+            for i, ability in enumerate((a, b, result)):
+                icon = effects.charge_icon(ability)
+                have = ability in kit.unlocked
+                screen.blit(icon, icon.get_rect(center=(156 + i * 22, y)))
+                if not have:  # not stolen or not fused yet: shown dim
+                    screen.blit(_dim(icon.get_size(), 170), icon.get_rect(center=(156 + i * 22, y)))
+            hud.text(screen, "+", (167, y - 4), "ui.dim", "midtop")
+            hud.text(screen, "=", (189, y - 4), "ui.dim", "midtop")
 
         lines = [(line, "px.lamp") for line in _wrap(message.upper(), 40)] if message else []
         if notice:

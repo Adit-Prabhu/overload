@@ -209,7 +209,7 @@ def test_menu_fusion_shows_the_supported_recipe_when_it_fails() -> None:
     session.campaign.kit.unlocked.append("blink")
     menu.press(session, "fuse")
     assert session.campaign.kit.unlocked == ["spark", "blink", "arc_trail"]
-    assert menu.notice == FUSE_NOTICES["fused"]
+    assert menu.notice == "ARC TRAIL FUSED. EQUIP IT WITH Q OR E"
 
 
 def test_menu_with_nothing_stolen_ignores_equip_keys() -> None:

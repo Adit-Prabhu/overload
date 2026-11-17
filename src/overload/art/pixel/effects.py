@@ -68,6 +68,15 @@ _CHARGE = {
         ".....YkK",
         "......Kk",
     ],
+    "shock_cone": [
+        "UU.....",
+        "U.UU...",
+        "U..YUU.",
+        "U.YyY.U",
+        "U..YUU.",
+        "U.UU...",
+        "UU.....",
+    ],
     "burst": [
         "..UUU..",
         ".U...U.",
@@ -186,6 +195,58 @@ def slam_tell(
         x, y = round(cx + math.cos(a) * reach), round(cy + math.sin(a) * reach)
         for surface in (target, light):
             surface.set_at((x, y), rgb("hostile.danger"))
+
+
+def burst_cone(
+    target: pygame.Surface,
+    light: pygame.Surface,
+    origin: Point,
+    angle: float,
+    reach: float,
+    cos_half: float,
+    life: float,
+    shock: bool,
+) -> None:
+    """A Burst discharge: magenta rays fanning across the cone and an arc at its reach,
+    fading over a few frames. A Shock Cone adds yellow sparks along the rays."""
+    if life <= 0:
+        return
+    half = math.acos(max(-1.0, min(1.0, cos_half)))
+    ox, oy = origin
+    rays = 7
+    for i in range(rays):
+        a = angle - half + 2 * half * i / (rays - 1)
+        end = (ox + math.cos(a) * reach * life, oy + math.sin(a) * reach * life)
+        start = (ox + math.cos(a) * 6, oy + math.sin(a) * 6)
+        token = "power.spark" if shock and i % 2 else "power.burst"
+        for surface in (target, light):
+            pygame.draw.line(surface, rgb(token), start, end, 1)
+    points = [
+        (
+            ox + math.cos(angle - half + 2 * half * i / 10) * reach,
+            oy + math.sin(angle - half + 2 * half * i / 10) * reach,
+        )
+        for i in range(11)
+    ]
+    for surface in (target, light):
+        pygame.draw.lines(surface, rgb("px.burst.light"), False, points, 1)
+
+
+def chain_bolt(target: pygame.Surface, light: pygame.Surface, a: Point, b: Point) -> None:
+    """An evolved Spark arcing from one robot to the next: a jagged yellow line."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    distance = math.hypot(dx, dy) or 1.0
+    nx, ny = -dy / distance, dx / distance
+    points = [
+        (
+            a[0] + dx * i / 6 + nx * (0 if i in (0, 6) else (3 if i % 2 else -3)),
+            a[1] + dy * i / 6 + ny * (0 if i in (0, 6) else (3 if i % 2 else -3)),
+        )
+        for i in range(7)
+    ]
+    for surface in (target, light):
+        pygame.draw.lines(surface, rgb("power.spark"), False, points, 2)
+        pygame.draw.lines(surface, rgb("px.spark.light"), False, points, 1)
 
 
 def warp_marker(target: pygame.Surface, light: pygame.Surface, pos: Point, progress: float):

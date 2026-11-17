@@ -32,6 +32,7 @@ from overload.sim.powers import (
     DROPS,
     absorb_charges,
     drop_charge,
+    spark_chain,
     tick_cooldowns,
     tick_trails,
     use_powers,
@@ -113,7 +114,8 @@ def _move_player(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) ->
         vx, vy = player.dodge_dx * tuning.dodge_speed, player.dodge_dy * tuning.dodge_speed
     else:
         nx, ny = normalize(inp.move_x, inp.move_y)
-        vx, vy = nx * tuning.player_speed, ny * tuning.player_speed
+        speed = tuning.player_speed * (tuning.boost_factor if player.boost > 0 else 1.0)
+        vx, vy = nx * speed, ny * speed
     player.x, player.y = move_body(player.x, player.y, vx, vy, tuning.player_radius, arena, world)
 
 
@@ -191,6 +193,8 @@ def _hits(world: World, tuning: Tuning) -> None:
             if target is not None:
                 target.health -= shot.damage
                 world.events.append(Event("hostile_hit", target.x, target.y, target.id))
+                if shot.kind == "spark":
+                    spark_chain(world, tuning, target)
                 continue
         survivors.append(shot)
     world.projectiles = survivors
@@ -214,6 +218,7 @@ def _timers(player: Player) -> None:
     player.dodge_ticks = max(0, player.dodge_ticks - 1)
     player.dodge_cooldown = max(0, player.dodge_cooldown - 1)
     player.invulnerable = max(0, player.invulnerable - 1)
+    player.boost = max(0, player.boost - 1)
 
 
 def _outcome(world: World, tuning: Tuning) -> None:
