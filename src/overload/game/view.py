@@ -75,12 +75,14 @@ SHOT_ART = {
 }
 
 
-def robot_image(robot, tick: int, left: bool, charging: bool) -> pygame.Surface:
+def robot_image(
+    robot, tick: int, left: bool, charging: bool, recover: int = DEFAULT.breaker_recover
+) -> pygame.Surface:
     """The approved roster art (art/pixel/robots.py) for a robot in its current state."""
     if robot.kind == "relay":
         return robots_art.relay_bot(left, arming=robot.phase == "blink")
     if robot.kind == "breaker":
-        slamming = robot.phase == "recover" and robot.fire_timer > DEFAULT.breaker_recover - 14
+        slamming = robot.phase == "recover" and robot.fire_timer > recover - 14
         return robots_art.breaker(left, raising=robot.phase == "raise", slamming=slamming)
     if robot.kind == "sweeper":
         return robots_art.sweeper(tick, left, revving=robot.phase in ("rev", "rush"))
@@ -200,15 +202,19 @@ class PixelView:
                 self.camera[axis] = min(max(self.camera[axis], 0.0), float(spare))
 
     def camera_offset(self) -> tuple[int, int]:
-        """The camera, plus a slam's screen shake (2 px at most, art direction)."""
-        jolt = (0, 0)
-        if self.shake > 0:
-            amount = 2 if self.shake > 5 else 1
-            jolt = (
-                amount * (1 if self.shake % 2 else -1),
-                amount * (1 if self.shake % 4 < 2 else -1),
-            )
-        return (round(self.camera[0]) + jolt[0], round(self.camera[1]) + jolt[1])
+        """The camera. Aiming converts the cursor with this, so it never shakes."""
+        return (round(self.camera[0]), round(self.camera[1]))
+
+    def jolt(self) -> tuple[int, int]:
+        """A slam's screen shake (2 px at most, art direction), applied only when drawing
+        the scene, so shots still go exactly where the reticle is."""
+        if self.shake <= 0:
+            return (0, 0)
+        amount = 2 if self.shake > 5 else 1
+        return (
+            amount * (1 if self.shake % 2 else -1),
+            amount * (1 if self.shake % 4 < 2 else -1),
+        )
 
     def update(self, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         """Advance cosmetic state by one simulation tick. Called once per tick, never per
@@ -342,7 +348,7 @@ class PixelView:
             self.ghosts.append((player.x, player.y, 10))  # dodge and Overdrive trails
 
     def _ripple(self, screen: pygame.Surface, world, cam: tuple[int, int]) -> None:
-        """A shockwave lifts the floor tiles it passes over by up to 2 px, with a dark gap
+        """A shockwave lifts the floor tiles it passes over by up to 3 px, with a dark gap
         under each lifted tile, so the ground visibly rolls as the ring runs out."""
         room = self.room.background
         for wave in world.shockwaves:
@@ -485,7 +491,8 @@ class PixelView:
     def draw(self, screen: pygame.Surface, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         world, tuning = run.world, run.tuning
         player = world.player
-        cam = self.camera_offset()
+        base, jolt = self.camera_offset(), self.jolt()
+        cam = (base[0] + jolt[0], base[1] + jolt[1])
         tick = world.tick
         t = tick / 60
 
@@ -548,7 +555,7 @@ class PixelView:
 
             def draw_robot(hostile=hostile, feet=feet, charging=charging, left=left) -> None:
                 shadow(*v(*feet), round(hostile.radius) + 1)
-                image = robot_image(hostile, tick, left, charging)
+                image = robot_image(hostile, tick, left, charging, run.tuning.breaker_recover)
                 if hostile.id in self.flashes:
                     image = effects.tinted(image, "fx.flash")
                 draw_at_feet(image, feet)

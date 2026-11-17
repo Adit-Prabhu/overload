@@ -276,3 +276,14 @@ def test_robots_never_use_power_colors_except_their_core(headless_pygame) -> Non
     ):
         used = {c for row in rows for c in row} & set("YyKkUu")
         assert used <= allowed, name
+
+
+def test_the_slam_shake_never_moves_the_aim(headless_pygame) -> None:
+    from overload.game.view import PixelView
+    from overload.sim.campaign import Campaign
+
+    view = PixelView(Campaign(1))
+    still = view.camera_offset()
+    view.shake = 10
+    assert view.camera_offset() == still, "aiming converts the cursor with this"
+    assert view.jolt() != (0, 0) and max(map(abs, view.jolt())) <= 2
