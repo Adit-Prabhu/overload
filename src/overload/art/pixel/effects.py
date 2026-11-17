@@ -197,6 +197,46 @@ def slam_tell(
             surface.set_at((x, y), rgb("hostile.danger"))
 
 
+def signature_tell(
+    target: pygame.Surface,
+    light: pygame.Surface,
+    center: Point,
+    name: str,
+    progress: float,
+    reach: float,
+    aim: float,
+    points: list[Point],
+) -> None:
+    """A Regulator chassis winding up its signature: a ring of dots fills around it, plus a
+    shape that says what is coming. Ring: eight dotted spokes grow outward. Quake: a dotted
+    ring at the shockwave's full reach fills in. Summon: warp markers close in where the
+    drones will appear. Spiral: two opposite dotted arms show where it starts."""
+    progress = max(0.0, min(1.0, progress))
+    for surface in (target, light):
+        _ring_dots(surface, "hostile.danger", center, 20, progress)
+    cx, cy = center
+    if name == "ring":
+        for i in range(8):
+            a = math.tau * i / 8
+            for d in range(22, 22 + int(28 * progress), 4):
+                target.fill(
+                    rgb("hostile.danger"),
+                    (round(cx + math.cos(a) * d), round(cy + math.sin(a) * d), 2, 2),
+                )
+    elif name == "quake":
+        slam_tell(target, light, center, reach, progress)
+    elif name == "summon":
+        for point in points:
+            warp_marker(target, light, point, progress)
+    elif name == "spiral":
+        for a in (aim, aim + math.pi):
+            for d in range(22, 70, 4):
+                target.fill(
+                    rgb("power.burst"),
+                    (round(cx + math.cos(a) * d), round(cy + math.sin(a) * d), 2, 1),
+                )
+
+
 def burst_cone(
     target: pygame.Surface,
     light: pygame.Surface,

@@ -3,6 +3,7 @@ and the floor's rooms (overload.sim.floorplay)."""
 
 from __future__ import annotations
 
+from overload.sim.bosses import BOSSES, REGULATOR
 from overload.sim.state import Event, Hostile, Rival, World
 from overload.sim.tuning import DEFAULT, Tuning
 
@@ -69,19 +70,33 @@ def spawn_robot(world: World, kind: str, x: float, y: float, tuning: Tuning = DE
     return robot
 
 
-def spawn_rival(world: World, x: float, y: float, protocol: str, tuning: Tuning = DEFAULT):
+def spawn_rival(
+    world: World,
+    x: float,
+    y: float,
+    protocol: str,
+    tuning: Tuning = DEFAULT,
+    sector: int | None = None,
+):
+    """The Regulator in its frozen protocol. On the floor, `sector` picks the chassis
+    (sim/bosses.py). Without it, the legacy plain Regulator."""
     if protocol not in PROTOCOLS:
         raise ValueError(f"unknown protocol {protocol!r}")
+    boss = BOSSES[sector] if sector is not None else REGULATOR
+    health = boss.health or tuning.rival_health
+    first = {"ring": tuning.ring_every, "quake": tuning.quake_every, "summon": tuning.summon_every}
     world.rival = Rival(
         x=x,
         y=y,
         radius=tuning.rival_radius,
-        health=tuning.rival_health,
-        max_health=tuning.rival_health,
+        health=health,
+        max_health=health,
         protocol=protocol,
         boot=tuning.rival_boot,
         cooldown=tuning.clamp_rest,
         timer=tuning.oscillate_interval if protocol == "lateral" else tuning.insulate_orb_interval,
+        kind=boss.kind,
+        sig_timer=first.get(boss.signature, 0) // 2,  # the first one comes sooner
     )
     world.events.append(Event("protocol_boot", x, y))
     return world.rival

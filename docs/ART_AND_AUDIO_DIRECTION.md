@@ -114,6 +114,7 @@ Timing standards apply to both comparison conditions identically:
 | --- | --- | --- |
 | Enemy attack | ≥ 0.40 s | ≥ 0.25 s |
 | Regulator attack | ≥ 0.50 s | ≥ 0.60 s after lunges |
+| Chassis signature (ring, quake, summon, spiral) | ≥ 0.50 s, the protocol waits while it runs | the signature's own rest (4 to 7 s) |
 | Relay blink destination | 0.50 s marker before arrival | |
 | Protocol boot at encounter start | 1.5 s pose, sound and icon | |
 
@@ -135,6 +136,7 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | --- | --- | --- | --- | --- | --- |
 | CH-01 | Surge | Lineworker: white hard hat with a headlamp and reflective band, goggles, teal jacket with a reflective strip, utility belt, battery pack with two power sockets, siphon glove, spark caster | 2-frame idle, 4-frame walk, dodge ghosts, hit flicker, headlamp light follows the aim | P0 | Done |
 | CH-02 | Regulator | Orange machine with a big gauge face, ceramic insulator shoulders, vents, status lights, hazard-striped hip, treads. The needle tracks the Surge | Pose per protocol, protocol boot cue | P0 | Done (poses and boot cue: shield ring, protocol icon and sting) |
+| CH-02b | Regulator chassis (Nov 17) | One mech per sector chamber, same silhouette and protocol arms so it stays the same rival. Linesman: orange shell, one amber beacon. Transformer: brass shell (`px.coil`), coil bands, two ceramic bushings on its head. Grid Core: violet shell (`px.core`), magenta gauge rim and a crown of three magenta pylons. Overloaded, its shell cracks with red light and its eyes go pink | Signature tells: a filling dot ring plus eight growing spokes (ring), a dotted ring at full reach (quake), warp markers (summon), two magenta arms (spiral) | P0 | Done |
 | CH-02a | Clamp protocol | Pincers forward | Lunge with a filling tell, then recovery | P0 | Done |
 | CH-02b | Insulate protocol | Hatched shield plates on both sides | Backs off, lays hatched hazard tiles, slow orbs | P0 | Done |
 | CH-02c | Oscillate protocol | Side thruster fins | Strafes, fins flash before a volley | P0 | Done (fins flash during the volley tell, with the aim line and ring) |
@@ -236,6 +238,7 @@ All sound effects come from the same small synth as the music (saw, square, sine
 | Powers | Spark, Blink depart and arrive, Blink deny, Arc Trail buzz | P0 |
 | Enemies | Arc Mite tell and zap, Relay click and blink, enemy death short-circuit | P0 |
 | Regulator | Tread rumble, three protocol stings (MU-03), lunge thunk, hazard fill, orb fire, hit, defeated | P0 |
+| Regulator chassis | Signature wind-up (`boss_charge`, ducks the music like other tells), ring burst (also the spiral), quake, summon, overload alarm | P0 |
 | Progression | Charge pickup, unlock, fusion | P0 |
 | UI | Hover, confirm, deny, link status blip | P1 |
 | Ambient | Substation hum bed, emergency lamp buzz, Fuse Box room tone | P1 |

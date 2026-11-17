@@ -23,6 +23,7 @@ from overload.floor import CELL, GRID, TILE
 from overload.sim import aiming, floorplay
 from overload.sim import world as rules
 from overload.sim.arena import arena_id
+from overload.sim.bosses import BY_KIND
 from overload.sim.campaign import Campaign
 from overload.sim.powers import COOLDOWN_KEYS, EVOLUTIONS, RECIPE_ORDER, RECIPES, Kit, evolved
 from overload.sim.run import Run
@@ -319,6 +320,19 @@ class PixelView:
             elif event.kind == "fully_evolved":
                 self._burst(event.x, event.y, 10, f"power.{event.power}", 1.4)
                 self.toast("FULLY EVOLVED", 60)
+            elif event.kind == "quake":
+                self.shake = 14
+                self._burst(event.x, event.y + 10, 30, "px.wall.3", 2.0)
+                self._burst(event.x, event.y + 10, 12, "px.coil.3", 1.6)
+            elif event.kind == "overload":
+                self.shake = 12
+                self.unlock_flash = 10
+                self._burst(event.x, event.y, 30, "power.burst", 2.2)
+                self.toast("GRID CORE OVERLOAD", 120)
+            elif event.kind == "boss_ring":
+                self._burst(event.x, event.y, 10, "hostile.danger", 1.2)
+            elif event.kind == "summon":
+                self._burst(event.x, event.y, 14, "power.burst", 1.4)
             elif event.kind == "slam":
                 self.shake = 10
                 self._burst(event.x, event.y + 6, 18, "px.wall.3", 1.6)
@@ -578,7 +592,12 @@ class PixelView:
                     rival.protocol == "lateral" and rival.action == "tell" and (tick // 4) % 2 == 0
                 )
                 image = robots_art.regulator_mech(
-                    POSES[rival.protocol], rival_left, needle, fins_lit
+                    POSES[rival.protocol],
+                    rival_left,
+                    needle,
+                    fins_lit,
+                    kind=rival.kind,
+                    overload=rival.phase == 2,
                 )
                 if RIVAL_FLASH in self.flashes:
                     image = effects.tinted(image, "fx.flash")
@@ -665,6 +684,20 @@ class PixelView:
             if token:
                 core = v(hostile.x, hostile.y)
                 self.glow.layer.fill(rgb(token), (round(core[0]) - 1, round(core[1]), 2, 2))
+        if rival is not None and rival.health > 0 and rival.sig_action == "tell":
+            boss = BY_KIND[rival.kind]
+            name = boss.overload if rival.phase == 2 else boss.signature
+            _, tell = rules.signature_timing(name, tuning)
+            effects.signature_tell(
+                screen,
+                self.glow.layer,
+                v(rival.x, rival.y),
+                name,
+                1.0 - rival.sig_timer / tell,
+                reach=tuning.quake_reach,
+                aim=math.atan2(rival.aim_y, rival.aim_x),
+                points=[v(x, y) for x, y in rules.summon_points(run.arena)],
+            )
         if rival is not None and rival.health > 0 and rules.rival_telegraphing(rival):
             effects.aim_tell(
                 screen,
@@ -752,6 +785,7 @@ class PixelView:
                 ),
                 rival_health=(max(0, rival.health) / rival.max_health) if rival else None,
                 rival_protocol=POSES[rival.protocol] if rival else None,
+                rival_name=BY_KIND[rival.kind].name if rival else "REGULATOR",
                 tick=tick,
             ),
         )

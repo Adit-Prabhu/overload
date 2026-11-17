@@ -72,7 +72,7 @@ def _activate(world: World, tuning: Tuning, floor: Floor, room: FloorRoom) -> No
         _queue_wave(world, tuning, room)
     else:
         x, y = tile_center(room.center)
-        spawn_rival(world, x, y, world.protocol, tuning)
+        spawn_rival(world, x, y, world.protocol, tuning, sector=room.sector)
 
 
 def _queue_wave(world: World, tuning: Tuning, room: FloorRoom) -> None:
@@ -107,6 +107,12 @@ def _hold(world: World, tuning: Tuning, floor: Floor) -> None:
         return
     else:
         world.rival = None
+        # Anything the chassis warped in shorts out with it.
+        for hostile in world.hostiles:
+            if hostile.health > 0:
+                world.events.append(Event("hostile_destroyed", hostile.x, hostile.y, hostile.id))
+        world.hostiles = []
+        world.warps = []
     absorb_charges(world, tuning, everything=True)  # nothing stolen is ever left behind
     # The fight is over: hostile shots and hazard tiles still in the air go with it.
     world.projectiles = [shot for shot in world.projectiles if not shot.hostile]
