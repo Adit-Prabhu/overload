@@ -225,6 +225,21 @@ def play(options: Options) -> int:
         os.environ["SDL_VIDEODRIVER"] = "dummy"
         os.environ["SDL_AUDIODRIVER"] = "dummy"
 
+    if not (options.headless or options.replay or options.skip_title):
+        # The title comes first: no rival session or trace exists until the player starts.
+        pygame.init()
+        started = False
+        try:
+            started = run_title(_open_window(False), pygame.time.Clock())
+        finally:
+            if not started:
+                pygame.quit()
+                hud.forget()
+                tiles.forget_fonts()
+                title_screen.forget()
+        if not started:
+            return 0
+
     replay: Recording | None = Recording.load(options.replay) if options.replay else None
     practice = replay.mode == "practice" if replay else options.practice
     seed = replay.seed if replay else options.seed
@@ -280,10 +295,6 @@ def play(options: Options) -> int:
     try:
         screen = _open_window(options.headless)
         pygame.display.set_caption("Overload")
-        if not (options.headless or replay is not None or options.skip_title):
-            if not run_title(screen, pygame.time.Clock()):
-                return 0
-            pygame.mouse.set_visible(False)
         view = PixelView(run)
         reader = InputReader()
         menu = FuseBoxMenu()
