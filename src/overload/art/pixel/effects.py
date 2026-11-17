@@ -160,13 +160,25 @@ def player_shot(target: pygame.Surface, light: pygame.Surface, pos: Point, angle
 
 
 def spark_shot(target: pygame.Surface, light: pygame.Surface, pos: Point, angle: float):
-    """Spark: a short yellow bolt with a hot white core, brighter than a gun shot."""
+    """Spark: a small zigzag bolt, the Spark symbol in flight, so it never reads as the
+    gun's straight streak even without color."""
     dx, dy = math.cos(angle), math.sin(angle)
-    head = (round(pos[0]), round(pos[1]))
-    tail = (round(pos[0] - dx * 6), round(pos[1] - dy * 6))
+    nx, ny = -dy, dx
+    points = [
+        (round(pos[0] - dx * along + nx * side), round(pos[1] - dy * along + ny * side))
+        for along, side in ((0, 0), (3, 3), (5, -2), (8, 2), (10, -1))
+    ]
     for surface in (target, light):
-        pygame.draw.line(surface, rgb("power.spark"), tail, head, 3)
-        pygame.draw.line(surface, rgb("px.spark.light"), tail, head, 1)
+        pygame.draw.lines(surface, rgb("power.spark"), False, points, 2)
+        pygame.draw.lines(surface, rgb("px.spark.light"), False, points, 1)
+
+
+def fusion_rings(target: pygame.Surface, center: Point, progress: float) -> None:
+    """PK-03: a Spark ring and a Blink ring expand from the recipe as Arc Trail is fused."""
+    cx, cy = round(center[0]), round(center[1])
+    for i, token in enumerate(("power.spark", "power.blink")):
+        radius = 6 + round(7 * progress) + i * 3
+        pygame.draw.circle(target, rgb(token), (cx, cy), radius, 1)
 
 
 def bolt(target: pygame.Surface, light: pygame.Surface, pos: Point) -> None:

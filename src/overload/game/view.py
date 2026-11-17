@@ -37,6 +37,8 @@ COOLDOWNS = {
     "arc_trail": "arc_trail_cooldown",
 }
 RIVAL_FEET = 19
+FUSION_TICKS = 30
+RECIPE_CENTER = (178, 78)  # the middle of the recipe row in the Fuse Box
 RIVAL_FLASH = -1  # flash key for the Regulator (hostile IDs are positive)
 POSES = {"pressure": "clamp", "spacing": "insulate", "lateral": "oscillate"}
 
@@ -124,6 +126,7 @@ class PixelView:
         self.blinks: list[tuple[float, float, int]] = []
         self.notice: tuple[str, int] | None = None
         self.unlock_flash = 0
+        self.fusion_flash = 0
         self.walking = 0
         self.last_player = (run.world.player.x, run.world.player.y)
         player = run.world.player
@@ -222,6 +225,9 @@ class PixelView:
         if player.dodging:
             self.ghosts.append((player.x, player.y, 10))
 
+    def flash_fusion(self) -> None:
+        self.fusion_flash = FUSION_TICKS
+
     def toast(self, message: str, ticks: int) -> None:
         self.notice = (message, ticks)
 
@@ -252,6 +258,7 @@ class PixelView:
         self.ghosts = [(x, y, life - 1) for x, y, life in self.ghosts if life > 1]
         self.blinks = [(x, y, life - 1) for x, y, life in self.blinks if life > 1]
         self.unlock_flash = max(0, self.unlock_flash - 1)
+        self.fusion_flash = max(0, self.fusion_flash - 1)  # per tick, so any frame rate
         if self.notice:
             message, ticks = self.notice
             self.notice = (message, ticks - 1) if ticks > 1 else None
@@ -318,7 +325,10 @@ class PixelView:
                 hostile=hostile, feet=feet, charging=charging, left=left, relay=relay
             ) -> None:
                 shadow(*v(*feet), 7 if relay else 6)
-                image = actors.relay(tick, left) if relay else actors.arc_mite(tick, left, charging)
+                if relay:
+                    image = actors.relay(left, arming=hostile.phase == "blink")
+                else:
+                    image = actors.arc_mite(tick, left, charging)
                 if hostile.id in self.flashes:
                     image = effects.tinted(image, "fx.flash")
                 draw_at_feet(image, feet)
@@ -337,7 +347,10 @@ class PixelView:
 
             def draw_rival() -> None:
                 shadow(*v(*rival_feet), 18)
-                image = actors.regulator(POSES[rival.protocol], rival_left, needle)
+                fins_lit = (
+                    rival.protocol == "lateral" and rival.action == "tell" and (tick // 4) % 2 == 0
+                )
+                image = actors.regulator(POSES[rival.protocol], rival_left, needle, fins_lit)
                 if RIVAL_FLASH in self.flashes:
                     image = effects.tinted(image, "fx.flash")
                 draw_at_feet(image, rival_feet)
@@ -513,6 +526,9 @@ class PixelView:
         kit = kit or Kit()
         w, h = screen.get_size()
         screen.blit(_dim(screen.get_size(), 235), (0, 0))
+        if self.fusion_flash:
+            screen.blit(_flash(VIEW, self.fusion_flash * 6), (0, 0))
+            effects.fusion_rings(screen, RECIPE_CENTER, 1 - self.fusion_flash / FUSION_TICKS)
         hud.text(screen, "FUSE BOX", (w // 2, 3), "ui.text", "midtop")
         hud.text(screen, f"ENCOUNTER {encounter} OF 3 NEXT", (w // 2, 12), "ui.dim", "midtop")
 

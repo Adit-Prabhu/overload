@@ -325,6 +325,8 @@ def play(options: Options) -> int:
             if session is not None:
                 for sound in fuse_box_frame(session, menu, reader, recording, in_fuse_box):
                     audio.play(sound)
+                    if sound == "fusion":
+                        view.flash_fusion()
             audio.update(
                 getattr(run, "stage", None), getattr(run, "encounter", 1), run.world.outcome
             )

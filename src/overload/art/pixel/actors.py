@@ -233,9 +233,10 @@ def relay_frames() -> tuple[pygame.Surface, ...]:
     return (up, down)
 
 
-def relay(tick: int, facing_left: bool) -> pygame.Surface:
-    frames = relay_frames()
-    image = frames[(tick // 12) % len(frames)]
+def relay(facing_left: bool, arming: bool = False) -> pygame.Surface:
+    """The lever is up while the Relay idles or aims and flips down while its landing
+    diamond is showing, so the switch itself announces the coming blink."""
+    image = relay_frames()[1 if arming else 0]
     return flipped(image) if facing_left else image
 
 
@@ -353,13 +354,14 @@ def insulate_plate() -> pygame.Surface:
 
 
 @cache
-def fin() -> pygame.Surface:
-    """A side thruster fin with a nozzle, used by the Oscillate protocol."""
+def fin(lit: bool = False) -> pygame.Surface:
+    """A side thruster fin with a nozzle, used by the Oscillate protocol. Lit fins glow
+    before a volley."""
     w, h = 10, 18
     s = pygame.Surface((w, h), pygame.SRCALPHA)
     for i in range(h):
         span = max(1, w - abs(i - h // 2) - 2)
-        _fill(s, "px.hostile.2", 0, i, span, 1)
+        _fill(s, "px.lamp.light" if lit else "px.hostile.2", 0, i, span, 1)
         _fill(s, "px.hostile.3", 0, i, 1, 1)
     _fill(s, "px.bot.2", 0, h // 2 - 2, 4, 5)
     _fill(s, "px.lamp.light", 0, h // 2 - 1, 1, 3)
@@ -367,7 +369,9 @@ def fin() -> pygame.Surface:
     return s
 
 
-def regulator(protocol: str, facing_left: bool, needle: float | None = None) -> pygame.Surface:
+def regulator(
+    protocol: str, facing_left: bool, needle: float | None = None, lit: bool = False
+) -> pygame.Surface:
     """Body plus protocol pose on one canvas. Pose silhouettes differ: Clamp has pincers
     forward, Insulate has hatched plates on both sides, Oscillate has side thruster fins.
     `needle` (radians, screen space) points the gauge needle, usually at the Surge."""
@@ -386,7 +390,7 @@ def regulator(protocol: str, facing_left: bool, needle: float | None = None) -> 
         canvas.blit(plate, (bw + pw - 3, 8))
         offset = pw - 1
     elif protocol == "oscillate":
-        right = fin()
+        right = fin(lit)
         left = flipped(right)
         fw = right.get_width()
         canvas = pygame.Surface((bw + 2 * fw - 4, bh), pygame.SRCALPHA)
