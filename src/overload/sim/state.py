@@ -129,6 +129,7 @@ class Event:
     x: float = 0.0
     y: float = 0.0
     ref: int = 0
+    power: str = ""  # for absorb and unlock: which power the charge carried
 
 
 @dataclass

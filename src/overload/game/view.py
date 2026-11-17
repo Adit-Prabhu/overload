@@ -122,7 +122,6 @@ class PixelView:
         self.muzzle = 0
         self.ghosts: list[tuple[float, float, int]] = []
         self.blinks: list[tuple[float, float, int]] = []
-        self.charge_kinds: dict[int, str] = {}
         self.notice: tuple[str, int] | None = None
         self.unlock_flash = 0
         self.walking = 0
@@ -175,6 +174,7 @@ class PixelView:
     # Events ---------------------------------------------------------------------------
 
     def consume(self, run: Run | Campaign, events: list[Event]) -> None:
+        stolen: list[str] = []
         for event in events:
             if event.kind == "shot":
                 self.muzzle = 3
@@ -204,29 +204,23 @@ class PixelView:
                 self._burst(event.x, event.y, 4, "ui.dim", 0.6)
                 self.toast("NO ROOM TO BLINK", 40)
             elif event.kind == "unlock":
-                power = self._charge_kind(run, event)
-                self._burst(event.x, event.y, 24, f"power.{power}", 2.2)
+                self._burst(event.x, event.y, 24, f"power.{event.power}", 2.2)
                 self.unlock_flash = 12
-                self.toast(f"{NAMES.get(power, power.upper())} STOLEN", 120)
+                stolen.append(NAMES.get(event.power, event.power.upper()))
             elif event.kind == "absorb":
-                power = self._charge_kind(run, event)
-                self._burst(event.x, event.y, 10, f"power.{power}", 1.4)
+                self._burst(event.x, event.y, 10, f"power.{event.power}", 1.4)
             elif event.kind == "relay_from":
                 self.blinks.append((event.x, event.y, 12))
             elif event.kind == "fizzle":
                 self._burst(event.x, event.y, 2, "px.bot.3", 0.6)
-        for charge in run.world.charges:
-            self.charge_kinds[charge.id] = charge.kind
+        if stolen:
+            self.toast(" AND ".join(stolen) + " STOLEN", 120)
         player = run.world.player
         moved = math.dist(self.last_player, (player.x, player.y)) > 0.1
         self.walking = self.walking + 1 if moved else 0
         self.last_player = (player.x, player.y)
         if player.dodging:
             self.ghosts.append((player.x, player.y, 10))
-
-    def _charge_kind(self, run: Run | Campaign, event: Event) -> str:
-        """The power of an absorbed charge (it has already left the world this tick)."""
-        return self.charge_kinds.pop(event.ref, "spark")
 
     def toast(self, message: str, ticks: int) -> None:
         self.notice = (message, ticks)
@@ -543,26 +537,26 @@ class PixelView:
                 icon = effects.charge_icon(ability)
                 screen.blit(icon, icon.get_rect(center=(x + 10, 45)))
 
-        hud.text(screen, "RECIPE", (150, 59), "ui.dim")
+        hud.text(screen, "RECIPE", (150, 65), "ui.dim")
         for i, ability in enumerate(("spark", "blink", "arc_trail")):
             icon = effects.charge_icon(ability)
-            screen.blit(icon, icon.get_rect(center=(156 + i * 22, 73)))
-        hud.text(screen, "+", (167, 69), "ui.dim", "midtop")
-        hud.text(screen, "=", (189, 69), "ui.dim", "midtop")
+            screen.blit(icon, icon.get_rect(center=(156 + i * 22, 78)))
+        hud.text(screen, "+", (167, 74), "ui.dim", "midtop")
+        hud.text(screen, "=", (189, 74), "ui.dim", "midtop")
         if "arc_trail" in kit.unlocked:
             status, token = "FUSED", "power.blink"
         elif "spark" in kit.unlocked and "blink" in kit.unlocked:
             status, token = "F TO FUSE", "px.hazard.1"
         else:
             status, token = "STEAL BOTH", "px.floor.3"
-        hud.text(screen, status, (178, 81), token, "midtop")
+        hud.text(screen, status, (178, 85), token, "midtop")
 
         lines = [(line, "px.lamp") for line in _wrap(message.upper(), 40)] if message else []
         if notice:
             lines.append((notice, "power.spark"))
         for i, (line, token) in enumerate(lines[:3]):
-            hud.text(screen, line, (w // 2, 94 + i * 9), token, "midtop")
-        hud.text(screen, "W S PICK   Q E EQUIP   F FUSE", (w // 2, 122), "ui.dim", "midtop")
+            hud.text(screen, line, (w // 2, 96 + i * 9), token, "midtop")
+        hud.text(screen, "W S PICK   Q E EQUIP   F FUSE", (w // 2, 123), "ui.dim", "midtop")
         prompt = "ENTER TO CONTINUE" if ready else "ROUTING POWER..."
         hud.text(screen, prompt, (w // 2, 131), "px.hazard.1" if ready else "ui.dim", "midtop")
 

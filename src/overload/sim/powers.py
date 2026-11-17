@@ -238,10 +238,10 @@ def absorb_charges(world: World, tuning: Tuning, everything: bool = False) -> No
 def _absorb(world: World, charge: Charge) -> None:
     world.fragments[charge.kind] = world.fragments.get(charge.kind, 0) + 1
     if charge.kind in world.unlocked:
-        world.events.append(Event("absorb", charge.x, charge.y, charge.id))
+        world.events.append(Event("absorb", charge.x, charge.y, charge.id, charge.kind))
         return
     world.unlocked.append(charge.kind)
-    world.events.append(Event("unlock", charge.x, charge.y, charge.id))
+    world.events.append(Event("unlock", charge.x, charge.y, charge.id, charge.kind))
     slots = world.player.slots
     if "" in slots:
         slots[slots.index("")] = charge.kind

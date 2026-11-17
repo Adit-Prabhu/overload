@@ -92,6 +92,9 @@ class InputReader:
         pressed, self._confirm = self._confirm, False
         return pressed
 
+    def drop_power_latches(self) -> None:
+        self._power_q = self._power_e = False
+
     def take_menu(self) -> list[str]:
         """Fuse Box keys pressed since the last call. Read every frame, used in the Fuse Box."""
         keys, self._menu = self._menu, []
@@ -130,6 +133,33 @@ MENU_KEYS = {
     pygame.K_e: "e",
     pygame.K_f: "fuse",
 }
+
+
+def fuse_box_frame(
+    session: Session,
+    menu: FuseBoxMenu,
+    reader: InputReader,
+    recording: Recording,
+    was_in_fuse_box: bool,
+) -> None:
+    """Menu keys and Enter, once per rendered frame after the tick batch. Keys only count if
+    the Fuse Box was already open when the frame began, so a press made while the last
+    encounter was ending never becomes a menu choice. Leaving the Fuse Box drops any Q or E
+    press still latched, so it cannot fire a power on the next encounter's first tick."""
+    keys = reader.take_menu()
+    confirmed = reader.take_confirm()
+    if not (was_in_fuse_box and session.campaign.stage == "fuse_box"):
+        return
+    for key in keys:
+        action = menu.press(session, key)
+        if action is not None:
+            recording.fuse_box(*action)
+    if confirmed:
+        decision = session.confirm()
+        if decision is not None:
+            recording.begin_next(decision.tactic)
+            menu.reset()
+            reader.drop_power_latches()
 
 
 def _open_window(headless: bool) -> pygame.Surface:
@@ -244,6 +274,7 @@ def play(options: Options) -> int:
                 accumulated = min(accumulated + elapsed, MAX_TICKS_PER_FRAME * TICK_SECONDS)
                 due = int(accumulated / TICK_SECONDS)
                 accumulated -= due * TICK_SECONDS
+            in_fuse_box = getattr(run, "stage", None) == "fuse_box"
             for _ in range(due):
                 if scripted is not None:
                     for action in replay_menu.get(len(recording.frames), []):
@@ -284,17 +315,8 @@ def play(options: Options) -> int:
                     cam = view.camera_offset()
                     cursor = (frame.aim_x - cam[0], frame.aim_y - cam[1])
                 view.update(run, cursor)
-            menu_keys = reader.take_menu()
-            if session is not None and run.stage == "fuse_box":
-                for key in menu_keys:
-                    action = menu.press(session, key)
-                    if action is not None:
-                        recording.fuse_box(*action)
-            if session is not None and reader.take_confirm():
-                decision = session.confirm()
-                if decision is not None:
-                    recording.begin_next(decision.tactic)
-                    menu.reset()
+            if session is not None:
+                fuse_box_frame(session, menu, reader, recording, in_fuse_box)
             view.draw(screen, run, cursor)
             stage = getattr(run, "stage", None)
             if stage == "fuse_box":

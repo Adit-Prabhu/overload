@@ -223,3 +223,90 @@ def test_menu_actions_are_traced(tmp_path) -> None:
     rows = [json.loads(line) for line in (tmp_path / "t.jsonl").read_text().splitlines()]
     assert [r["event"] for r in rows][-2:] == ["equip", "fuse"]
     assert rows[-1]["result"] == "missing" and rows[-2]["ok"] is True
+
+
+# The live Fuse Box path through the game's input reader -----------------------------------------
+
+
+def press_keys(reader, *keys) -> None:
+    import pygame
+
+    for key in keys:
+        reader.handle(pygame.event.Event(pygame.KEYDOWN, key=key))
+
+
+def live_menu_setup():
+    from overload.game.app import InputReader
+    from overload.session.replay import Recording
+    from overload.sim.arena import SUBSTATION, arena_id
+    from overload.sim.tuning import DEFAULT
+
+    session = Session(Campaign(1), NeutralSelector())
+    recording = Recording(
+        seed=1,
+        tuning_id=DEFAULT.tuning_id(),
+        arena_id=arena_id(SUBSTATION),
+        mode="campaign",
+        protocols=["lateral"],
+    )
+    return session, FuseBoxMenu(), InputReader(), recording
+
+
+def test_keys_pressed_as_the_encounter_ends_are_not_menu_choices() -> None:
+    import pygame
+
+    from overload.game.app import fuse_box_frame
+
+    session, menu, reader, recording = live_menu_setup()
+    session.campaign.world.unlocked = ["spark", "blink"]
+    session.campaign.world.player.slots = ["spark", "blink"]
+    press_keys(reader, pygame.K_e)
+    clear_encounter(session)  # the encounter ends inside this frame's tick batch
+    fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=False)
+    assert session.campaign.kit.slots == ["spark", "blink"]
+    assert recording.menu == []
+
+
+def test_leaving_the_fuse_box_drops_latched_power_presses() -> None:
+    import pygame
+
+    from overload.game.app import fuse_box_frame
+
+    session, menu, reader, recording = live_menu_setup()
+    clear_encounter(session)
+    wait_in_fuse_box(session, MIN_FUSE_TICKS)
+    press_keys(reader, pygame.K_q, pygame.K_RETURN)
+    fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=True)
+    assert session.campaign.stage == "encounter" and session.campaign.encounter == 2
+    assert not reader._power_q, "Q from the menu must not fire a power in encounter 2"
+
+
+def test_a_live_fuse_box_session_replays_exactly() -> None:
+    import pygame
+
+    from overload.game.app import fuse_box_frame
+    from overload.session.replay import play
+
+    session, menu, reader, recording = live_menu_setup()
+    campaign = session.campaign
+    from test_campaign import scripted_player
+
+    for tick in range(4000):  # win encounter 1 with real inputs, as a player would
+        frame = scripted_player(campaign.world, tick)
+        session.tick(frame)
+        recording.frames.append(frame)
+        if campaign.stage == "fuse_box":
+            break
+    assert campaign.stage == "fuse_box"
+    for _ in range(MIN_FUSE_TICKS):
+        session.tick(IDLE)
+        recording.frames.append(IDLE)
+    press_keys(reader, pygame.K_s, pygame.K_e, pygame.K_f, pygame.K_RETURN)
+    fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=True)
+    assert recording.menu and recording.menu[-1][1] == "fuse"
+    assert recording.starts == [len(recording.frames)] and campaign.encounter == 2
+    for _ in range(30):
+        frame = InputFrame(fire=True, aim_x=300, aim_y=150, power_e=True)
+        session.tick(frame)
+        recording.frames.append(frame)
+    assert play(recording).state_hash() == campaign.state_hash()

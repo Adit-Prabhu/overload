@@ -189,3 +189,16 @@ def test_style_frame_and_room_overview_compose() -> None:
         SUBSTATION_HALL.size[0] * 3,
         SUBSTATION_HALL.size[1] * 3,
     )
+
+
+def test_the_unlock_notice_names_the_power_from_the_event(headless_pygame) -> None:
+    from overload.game.view import PixelView
+    from overload.sim.run import Run
+    from overload.sim.state import Event
+
+    run = Run(1)
+    view = PixelView(run)
+    view.consume(run, [Event("unlock", 10, 10, 99, "blink")])
+    assert view.notice[0] == "BLINK STOLEN"
+    view.consume(run, [Event("unlock", 10, 10, 5, "spark"), Event("unlock", 9, 9, 6, "blink")])
+    assert view.notice[0] == "SPARK AND BLINK STOLEN"
