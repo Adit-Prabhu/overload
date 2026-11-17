@@ -196,7 +196,7 @@ The view is only 256 x 144, so every HUD pixel competes with the fight. Rules, a
 | UI-04 | Pixel reticle | P0 | Done |
 | UI-05 | Banners ("SHORT CIRCUIT", "SECTOR CLEAR") with the build stamp | P0 | Done, labels approved |
 | UI-06 | Fuse Box link status message | P0 | Done (decision D7, live condition only) |
-| UI-07 | Title screen and wordmark | P1 | Not started |
+| UI-07 | Title screen and wordmark | P1 | Done (Start, Controls, Quit over the drifting substation) |
 | UI-08 | Settings (volume, screen shake, flash reduction) | P1 | Not started |
 | UI-10 | Font: Silkscreen (SIL OFL 1.1), native 8 px | P0 | Done |
 
