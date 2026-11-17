@@ -19,7 +19,6 @@ GDF v2.1 Sections 5.1/5.2 and Gate 1 read. Required live deployed model behavior
 | OQ4 | Is 30 hours available through Nov 28, and which dependency versions will be pinned? | G1 review/setup |
 | OQ5 | Do players recognize adaptation and regard it as fair? | Initial external playtest |
 | OQ6 | Does the LLM improve anything over a simple adaptive rule? | Optional third condition. Otherwise leave claim untested |
-| OQ7 | Which license covers the project's own code, art and audio? The repository has none yet, and `assets/audio/LICENSE.txt` reserves all rights until one is chosen | Before the public release (G4) |
 
 ## Decisions after G1
 | Date | Decision | Source |
@@ -33,6 +32,7 @@ GDF v2.1 Sections 5.1/5.2 and Gate 1 read. Required live deployed model behavior
 | Nov 16, 2026 | D6: the rival service calls Gemini on Vertex AI with the course credits, through a service account key held as a Cloudflare Worker secret. Resolves OQ2 pending deployment | Adit |
 | Nov 16, 2026 | D4 code-composed synth soundtrack. D5 protocol shown by pose, sound sting and icon at encounter start, no text. D7 fallback line "Grid link unstable. Regulator running default protocol." Banner labels "SHORT CIRCUIT" and "SECTOR CLEAR" kept | Adit |
 | Nov 17, 2026 | After playing the first playable build: build a larger hand-built floor of rooms and corridors now (three sectors, combat rooms with locking doors, a Fuse Box room, a hidden branch), past the G1 ceiling of three combat rooms. Logged for the G3 scope-lock proposal. Dying restarts the current sector with its entry loadout and tactic. Enemies become chibi maintenance robots, each with its own attack and projectile shape. Plan in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) section 2b | Adit |
+| Nov 17, 2026 | OQ7 resolved: the code is MIT (`LICENSE`), the original art and audio are CC BY 4.0 (`LICENSE-ASSETS.md`, `assets/audio/LICENSE.txt` and the asset manifest). The Silkscreen font keeps OFL 1.1 and dependencies keep their own licenses | Adit |
 
 ## Differences from the Initial documents
 | Initial document says | Implementation uses | Reason |

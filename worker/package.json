@@ -2,6 +2,7 @@
   "name": "overload-rival",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Cloudflare Worker that proposes the Regulator's next protocol. Scaffold: health route only.",
   "type": "module",
   "scripts": {

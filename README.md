@@ -60,5 +60,11 @@ Files named "Initial" are the G1 gate proposal. They are preserved as submitted.
 - Next checkpoint: Nov 23, deployed model call, isolated session state and forced-timeout fallback.
 - Videos are never committed. Recordings are linked above.
 
+## License
+- **Code:** MIT, see [`LICENSE`](LICENSE).
+- **Original art and audio:** CC BY 4.0, see [`LICENSE-ASSETS.md`](LICENSE-ASSETS.md). Credit line: "Overload by Adit Prabhu, CC BY 4.0".
+- **The Silkscreen font:** keeps its SIL Open Font License 1.1, in `assets/fonts/silkscreen/OFL.txt`.
+- **Dependencies:** keep their own licenses. pygame-ce is LGPL 2.1.
+
 ## Revision
 The in-game rival now uses two bounded model requests between encounters, validated by game code, with deterministic fallback. The configuration plans all GDF production roles and an executable extension manifest. Dates are filled through G5.
