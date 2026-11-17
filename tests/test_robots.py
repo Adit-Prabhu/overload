@@ -112,3 +112,28 @@ def test_every_wave_uses_the_roster() -> None:
     assert kinds == {"drone", "relay", "breaker", "sweeper", "sentry"}
     with pytest.raises(KeyError):
         spawn_robot(encounter_world(1, 1, "lateral"), "toaster", 0, 0)
+
+
+def test_the_slam_reaches_exactly_as_far_as_its_tell_ring() -> None:
+    """The ring hits within `wave_reach` and no farther, the radius the tell ring shows."""
+    from overload.sim.robots import _shockwaves
+
+    for distance, hurt in ((DEFAULT.wave_reach - 2, True), (DEFAULT.wave_reach + 3, False)):
+        world, idle = lone_robot("sentry", distance=230.0)
+        idle.fire_timer = 1_000_000
+        player = world.player
+        for dy in (0.0, distance):  # straight right and straight below: a true circle
+            world.player.charge = DEFAULT.player_max_charge
+            world.player.invulnerable = 0
+            dx = distance if dy == 0.0 else 0.0
+            world.shockwaves = [Shockwave(1, player.x - dx, player.y - dy, 9.0, False)]
+            for _ in range(80):
+                _shockwaves(world, DEFAULT)
+            assert (player.charge < DEFAULT.player_max_charge) == hurt, (distance, dy)
+
+
+def test_a_sentry_never_starts_inside_its_tell() -> None:
+    import dataclasses
+
+    with pytest.raises(ValueError):
+        dataclasses.replace(DEFAULT, sentry_interval=90, sentry_tell=48)

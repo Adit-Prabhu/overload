@@ -32,7 +32,7 @@ from overload.sim.tuning import Tuning
 BASE_POWERS = ("spark", "blink")
 RECIPES = {frozenset(("spark", "blink")): "arc_trail"}
 ABILITIES = ("spark", "blink", "arc_trail")
-DROPS = {"drone": "spark", "relay": "blink"}
+DROPS = {"drone": "spark", "relay": "blink"}  # the Breaker's Burst arrives with step 4
 SLOTS = 2
 # Blink and Arc Trail are both teleports and share one cooldown, so two slots can never
 # chain them into a double-range jump or double the teleport rate.

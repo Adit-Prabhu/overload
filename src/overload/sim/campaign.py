@@ -31,7 +31,7 @@ NEUTRAL = "lateral"
 Stage = Literal["encounter", "fuse_box", "ending"]
 
 
-# Which machines each encounter brings. Arc Mites carry Spark, Relays carry Blink, so the
+# Which machines each encounter brings. Arc Drones carry Spark, Relays carry Blink, so the
 # Surge can unlock both by encounter 2 and fuse Arc Trail before encounter 3.
 ROSTER = {1: ("drone", "drone"), 2: ("drone", "relay"), 3: ("relay", "drone")}
 

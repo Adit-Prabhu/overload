@@ -143,13 +143,13 @@ class Tuning:
     def __post_init__(self) -> None:
         """Reject values that would break readability rules or the tell logic."""
         if self.drone_tell < 0.40 * TICK_RATE:
-            raise ValueError("Arc Mite tell must last at least 0.40 s")
+            raise ValueError("Arc Drone tell must last at least 0.40 s")
         if self.drone_recovery < 0.25 * TICK_RATE:
-            raise ValueError("Arc Mite recovery must last at least 0.25 s")
+            raise ValueError("Arc Drone recovery must last at least 0.25 s")
         if self.drone_fire_interval - self.drone_tell < self.drone_recovery:
-            raise ValueError("Arc Mite fire interval leaves no room for recovery")
+            raise ValueError("Arc Drone fire interval leaves no room for recovery")
         if self.drone_fire_interval // 2 <= self.drone_tell:
-            raise ValueError("Arc Mite first shot could start inside its tell window")
+            raise ValueError("Arc Drone first shot could start inside its tell window")
         for name in ("clamp_tell", "insulate_hazard_tell", "insulate_orb_tell", "oscillate_tell"):
             if getattr(self, name) < 0.50 * TICK_RATE:
                 raise ValueError(f"{name}: Regulator tells must last at least 0.50 s")
@@ -169,6 +169,8 @@ class Tuning:
         for name in ("breaker_tell", "sweeper_tell", "sentry_tell"):
             if getattr(self, name) < 0.50 * TICK_RATE:
                 raise ValueError(f"{name}: robot tells must last at least 0.50 s")
+        if self.sentry_interval // 2 <= self.sentry_tell:
+            raise ValueError("A Sentry's first shot could start inside its tell window")
         if self.sweeper_rush_speed >= THINNEST_OBSTACLE:
             raise ValueError("A Sweeper's rush could tunnel through the thinnest obstacle")
         if self.blink_min_distance > self.blink_distance:

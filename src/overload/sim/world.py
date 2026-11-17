@@ -47,7 +47,7 @@ from overload.sim.tuning import DEFAULT, Tuning
 
 
 def new_world(seed: int, tuning: Tuning = DEFAULT, arena: Arena = SUBSTATION) -> World:
-    """Fresh practice world: the Surge at its spawn and Arc Mites at the practice spawns."""
+    """Fresh practice world: the Surge at its spawn and Arc Drones at the practice spawns."""
     sx, sy = arena.player_spawn
     world = World(
         seed=seed,

@@ -105,11 +105,9 @@ VISUAL_TWINS = {
     "low_health": "two or fewer battery cells left in the HUD",
 }
 STINGS = {"pressure": "sting_clamp", "spacing": "sting_insulate", "lateral": "sting_oscillate"}
-TELLS = {
-    "mite_tell",
-    "hazard_fill",
-    "relay_click",
-}  # also a Breaker raising its fists  # a warp marker uses relay_click too
+# Hostile tells duck the music: aim tells, hazard arming and a Breaker raising its fists
+# (hazard_fill), and warp markers (relay_click).
+TELLS = {"mite_tell", "hazard_fill", "relay_click"}
 STEMS = ("hum", "pulse", "arc", "lead", "fuse_box")
 # Stem levels leave headroom so a full battle mix plus an effect stays out of clipping.
 LEVELS = {"hum": 0.42, "pulse": 0.38, "arc": 0.22, "lead": 0.3, "fuse_box": 0.5}

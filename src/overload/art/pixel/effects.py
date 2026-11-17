@@ -176,13 +176,14 @@ def spark_shot(target: pygame.Surface, light: pygame.Surface, pos: Point, angle:
 def slam_tell(
     target: pygame.Surface, light: pygame.Surface, center: Point, reach: float, progress: float
 ) -> None:
-    """A Breaker about to slam: a dotted ring at the shockwave's full reach fills in."""
+    """A Breaker about to slam: a dotted ring at the shockwave's full reach fills in (the
+    same circle the wave can hit within)."""
     cx, cy = center
-    count = 28
+    count = 36
     lit = int(count * max(0.0, min(1.0, progress)))
     for i in range(lit):
         a = math.tau * i / count
-        x, y = round(cx + math.cos(a) * reach), round(cy + math.sin(a) * reach * 0.6)
+        x, y = round(cx + math.cos(a) * reach), round(cy + math.sin(a) * reach)
         for surface in (target, light):
             surface.set_at((x, y), rgb("hostile.danger"))
 

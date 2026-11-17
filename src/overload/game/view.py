@@ -38,7 +38,7 @@ COOLDOWNS = {
     "arc_trail": "arc_trail_cooldown",
 }
 RIVAL_FEET = 20
-ROBOT_FEET = {"drone": 9, "relay": 8, "breaker": 9, "sweeper": 5, "sentry": 8}
+ROBOT_FEET = {"drone": 9, "relay": 8, "breaker": 9, "sweeper": 5, "sentry": 6}
 CORE_GLOW = {"drone": "power.spark", "relay": "power.blink", "breaker": "power.burst"}
 SHOT_ART = {
     "shard": robots_art.shard,
@@ -484,7 +484,7 @@ class PixelView:
                     effects.slam_tell(
                         screen,
                         self.glow.layer,
-                        v(hostile.x, hostile.y + 4),
+                        v(hostile.x, hostile.y),
                         tuning.wave_reach,
                         progress,
                     )

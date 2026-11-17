@@ -268,7 +268,8 @@ def _shockwaves(world: World, tuning: Tuning) -> None:
                 if not player.protected:
                     hurt_player(world, tuning.bolt_damage, tuning)
                 wave.hit = True
-        if wave.radius < tuning.wave_reach:
+        # The ring stops once its hit band reaches `wave_reach`, the radius its tell shows.
+        if wave.radius + tuning.wave_width + tuning.player_radius < tuning.wave_reach:
             left.append(wave)
     world.shockwaves = left
 

@@ -63,7 +63,7 @@ class Hostile:
     fire_timer: int
     tell_dx: float = 0.0
     tell_dy: float = 0.0
-    phase: str = ""  # Relay: "", "blink" (landing marker showing) or "aim"
+    phase: str = ""  # Relay Bot: blink or aim. Breaker: raise or recover. Sweeper: rev, rush, rest
     dest_x: float = 0.0
     dest_y: float = 0.0
 

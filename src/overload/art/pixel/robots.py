@@ -372,12 +372,13 @@ def orb() -> pygame.Surface:
 
 
 def shockwave(target: pygame.Surface, center: tuple[float, float], radius: float) -> None:
-    """The Breaker's slam: a ring of dashes that runs along the floor."""
+    """The Breaker's slam: a ring of dashes that runs along the floor. Drawn as the true
+    circle the simulation hits with."""
     cx, cy = center
     count = max(8, int(radius * 1.2))
     for i in range(count):
         if i % 3 == 2:
             continue
         a = 2 * math.pi * i / count
-        x, y = round(cx + math.cos(a) * radius), round(cy + math.sin(a) * radius * 0.6)
+        x, y = round(cx + math.cos(a) * radius), round(cy + math.sin(a) * radius)
         target.fill(rgb("hostile.danger"), (x, y, 2, 1))
