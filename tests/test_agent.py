@@ -397,22 +397,24 @@ def test_powers_that_do_not_happen_are_never_observed() -> None:
     from overload.sim.powers import Kit
     from overload.sim.world import step
 
-    cases = {
-        "empty slot": Kit(["spark"], {"spark": 1}, ["", ""]),
-        "locked power": Kit([], {}, ["spark", "blink"]),
-        "dodging": Kit(["spark", "blink"], {"spark": 1, "blink": 1}, ["spark", "blink"]),
-    }
+    pairs = (("spark", "blink"), ("burst", "shock_cone"))
+    cases = {}
+    for a, b in pairs:
+        cases[f"empty slot ({a})"] = Kit([a, b], {a: 1, b: 1}, ["", ""])
+        cases[f"locked power ({a})"] = Kit([], {}, [a, b])
+        cases[f"dodging ({a})"] = Kit([a, b], {a: 1, b: 1}, [a, b])
     for case, kit in cases.items():
         world = encounter_world(1, 2, "lateral", kit=kit)
         log = ObservationLog(2)
         aim = (int(world.player.x) + 40, int(world.player.y))
-        if case == "dodging":
+        if case.startswith("dodging"):
             step(world, InputFrame(aim_x=aim[0], aim_y=aim[1], dodge=True))
         step(world, InputFrame(aim_x=aim[0], aim_y=aim[1], power_q=True, power_e=True))
         observe_world(log, world)
+        assert log.ticks == 1, "the fight was observed, so a zero below means nothing was seen"
         values = {item["id"]: item["value"] for item in log.summary("lateral")["items"]}
-        uses = [values[f"e2.{kind}_uses"] for kind in ("spark", "blink", "arc_trail")]
-        assert uses == [0, 0, 0], case
+        kinds = ("spark", "blink", "arc_trail", "burst", "shock_cone")
+        assert [values[f"e2.{kind}_uses"] for kind in kinds] == [0] * len(kinds), case
 
 
 def test_a_rejected_blink_is_not_observed() -> None:
