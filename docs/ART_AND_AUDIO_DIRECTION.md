@@ -43,9 +43,11 @@ Use these names everywhere: UI text, logs shown to players, recordings and docs.
 | Clamp protocol | Rival tactic that closes distance | `pressure` |
 | Insulate protocol | Rival tactic that holds you at range | `spacing` |
 | Oscillate protocol | Rival tactic that strafes. The neutral default | `lateral` |
-| Arc Mite | Enemy that carries Spark | `enemy_spark` |
-| Relay | Enemy that carries Blink | `enemy_blink` |
-| Coil | Enemy that carries Burst (ceiling content) | `enemy_burst` |
+| Arc Drone | Robot that carries Spark (was the Arc Mite before the Nov 17 overhaul) | `drone` |
+| Relay Bot | Robot that carries Blink | `relay` |
+| Breaker | Robot that carries Burst (was the Coil) | `breaker` |
+| Sweeper | Robot that rushes and carries nothing | `sweeper` |
+| Sentry | Turret robot that carries nothing | `sentry` |
 | Charge | A power fragment dropped by an enemy | `fragment` |
 | Fuse Box | The safe room for loadout and fusion | `safe_room` |
 | Substation hall | The arena | `arena` |

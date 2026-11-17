@@ -15,7 +15,7 @@ from overload.sim.inputs import IDLE, InputFrame
 from overload.sim.powers import Kit, blink_destination, equip, fuse
 from overload.sim.state import Charge, Trail, state_hash
 from overload.sim.tuning import DEFAULT, TICK_RATE
-from overload.sim.world import spawn_arc_mite, spawn_relay, step
+from overload.sim.world import spawn_drone, spawn_relay, step
 
 # A plain 160 x 120 room with one wall across the middle (x 96 to 112, y 0 to 80).
 WALL = (96.0, 0.0, 16.0, 80.0)
@@ -37,7 +37,7 @@ def bare_world(kit: Kit | None = None, arena: Arena = ROOM):
     world.hostiles.clear()
     world.rival = None
     world.player.x, world.player.y = arena.player_spawn
-    spawn_arc_mite(world, 150, 110).fire_timer = 1_000_000
+    spawn_drone(world, 150, 110).fire_timer = 1_000_000
     return world
 
 
@@ -56,7 +56,7 @@ def press(world, arena=ROOM, **fields) -> None:
 
 def test_machines_drop_the_power_they_carry() -> None:
     world = bare_world()
-    mite = spawn_arc_mite(world, 60, 40)
+    mite = spawn_drone(world, 60, 40)
     relay = spawn_relay(world, 60, 90)
     mite.health = relay.health = 0
     step(world, IDLE, arena=ROOM)
@@ -83,7 +83,7 @@ def test_clearing_a_room_absorbs_every_charge_left() -> None:
         for hostile in world.hostiles:
             hostile.health = 0
         campaign.step(IDLE)
-    assert world.unlocked == ["spark"] and world.fragments == {"spark": 5}
+    assert world.unlocked == ["spark"] and world.fragments == {"spark": 3}  # 3 Drones, 2 Sweepers
     assert world.charges == []
 
 
@@ -148,14 +148,14 @@ def test_blink_stays_inside_the_room() -> None:
 def test_arc_trail_blinks_and_leaves_a_damaging_line() -> None:
     world = bare_world(kit_with("spark", "blink", "arc_trail", slots=("arc_trail", "")))
     world.player.x, world.player.y = 30.0, 100.0
-    mite = spawn_arc_mite(world, 55, 100)
+    mite = spawn_drone(world, 55, 100)
     mite.fire_timer = 10_000
     press(world, power_q=True, aim_x=80, aim_y=100)
     assert len(world.trails) == 1
     assert world.player.cooldowns["teleport"] == DEFAULT.arc_trail_cooldown - 1
     for _ in range(DEFAULT.trail_interval * 3):
         step(world, IDLE, arena=ROOM)
-    assert mite.health == DEFAULT.arc_mite_health - 3 * DEFAULT.trail_damage
+    assert mite.health == DEFAULT.drone_health - 3 * DEFAULT.trail_damage
     for _ in range(DEFAULT.trail_ttl):
         step(world, IDLE, arena=ROOM)
     assert world.trails == []
@@ -246,7 +246,7 @@ def test_relay_marks_its_landing_before_blinking_and_aims_before_firing() -> Non
             assert world.tick - marked >= 0.50 * TICK_RATE
             assert (relay.x, relay.y) == target
             blinked = aimed = world.tick
-        if "bolt" in kinds:
+        if "shards" in kinds:
             assert aimed is not None and world.tick - aimed >= 0.40 * TICK_RATE
             return
     pytest.fail(f"no full Relay cycle (marked {marked}, blinked {blinked})")
@@ -322,7 +322,7 @@ def test_full_loop_collect_equip_fuse_use(tmp_path) -> None:
     path = tmp_path / "loop.json"
     recording.save(path)
     assert play(Recording.load(path)).state_hash() == recording.final_hash
-    assert recording.final_hash == "d2f597e9cc73e80f", "pinned on Python 3.11 and 3.12"
+    assert recording.final_hash == "PIN", "pinned on Python 3.11 and 3.12"
 
 
 @pytest.mark.parametrize(

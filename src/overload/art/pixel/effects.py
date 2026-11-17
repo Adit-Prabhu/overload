@@ -173,6 +173,20 @@ def spark_shot(target: pygame.Surface, light: pygame.Surface, pos: Point, angle:
         pygame.draw.lines(surface, rgb("px.spark.light"), False, points, 1)
 
 
+def slam_tell(
+    target: pygame.Surface, light: pygame.Surface, center: Point, reach: float, progress: float
+) -> None:
+    """A Breaker about to slam: a dotted ring at the shockwave's full reach fills in."""
+    cx, cy = center
+    count = 28
+    lit = int(count * max(0.0, min(1.0, progress)))
+    for i in range(lit):
+        a = math.tau * i / count
+        x, y = round(cx + math.cos(a) * reach), round(cy + math.sin(a) * reach * 0.6)
+        for surface in (target, light):
+            surface.set_at((x, y), rgb("hostile.danger"))
+
+
 def warp_marker(target: pygame.Surface, light: pygame.Surface, pos: Point, progress: float):
     """A robot is about to warp in here: a ring of dots closes in while a beam brightens
     (shape and motion, not color alone)."""

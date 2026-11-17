@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from overload.sim.geometry import Point, Rect, circle_hits_rect
+from overload.sim.geometry import Point, Rect, circle_hits_rect, clamp_inside, push_out_of_rect
 
 BUCKET = 64  # px
 
@@ -56,3 +56,15 @@ def blocked(world, arena, center: Point, radius: float) -> bool:
     return any(
         circle_hits_rect(center, radius, rect) for rect in solids(world, arena, center, radius)
     )
+
+
+def move_body(x: float, y: float, vx: float, vy: float, radius: float, arena, world):
+    """Move a circle and push it out of walls, props and locked doors. Speeds stay below the
+    thinnest obstacle, so nothing tunnels."""
+    pos = (x + vx, y + vy)
+    nearby = solids(world, arena, pos, radius + abs(vx) + abs(vy) + 2.0)
+    for _ in range(2):
+        for rect in nearby:
+            pos = push_out_of_rect(pos, radius, rect)
+        pos = clamp_inside(pos, radius, arena.bounds)
+    return pos

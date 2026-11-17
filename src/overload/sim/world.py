@@ -15,19 +15,17 @@ from __future__ import annotations
 
 import random
 
-from overload.sim import floorplay
+from overload.sim import floorplay, robots
 from overload.sim.aiming import aim, launch_point
 from overload.sim.arena import SUBSTATION, Arena
-from overload.sim.collision import blocked, line_clear, solids
-from overload.sim.damage import damage_rival
+from overload.sim.collision import blocked, move_body  # noqa: F401 (move_body re-exported)
+from overload.sim.damage import damage_rival, hurt_player
 from overload.sim.geometry import (
     circle_hits_rect,
     circles_overlap,
-    clamp_inside,
     length,
     normalize,
     outside_bounds,
-    push_out_of_rect,
 )
 from overload.sim.inputs import InputFrame
 from overload.sim.powers import (
@@ -40,7 +38,7 @@ from overload.sim.powers import (
 )
 from overload.sim.spawns import (  # noqa: F401 (re-exported for callers of the rules)
     PROTOCOLS,
-    spawn_arc_mite,
+    spawn_drone,
     spawn_relay,
     spawn_rival,
 )
@@ -57,7 +55,7 @@ def new_world(seed: int, tuning: Tuning = DEFAULT, arena: Arena = SUBSTATION) ->
         player=Player(x=sx, y=sy, charge=tuning.player_max_charge),
     )
     for x, y in arena.practice_spawns:
-        spawn_arc_mite(world, x, y, tuning)
+        spawn_drone(world, x, y, tuning)
     return world
 
 
@@ -71,7 +69,7 @@ def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena =
     _move_player(world, inp, tuning, arena)
     _fire(world, inp, tuning, arena)
     use_powers(world, inp, tuning, arena)
-    _hostiles(world, tuning, arena)
+    robots.tick(world, tuning, arena)
     _rival(world, tuning, arena)
     _hazards(world, tuning)
     _separate(world, tuning, arena)
@@ -87,21 +85,13 @@ def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena =
 
 
 def telegraphing(hostile: Hostile, tuning: Tuning = DEFAULT) -> bool:
-    """True while a shot is being aimed (the dotted line and filling ring)."""
-    if hostile.kind == "relay":
-        return hostile.phase == "aim"
-    return 0 < hostile.fire_timer <= tuning.arc_mite_tell
+    """True while a robot lines up an attack (see overload.sim.robots)."""
+    return robots.telegraphing(hostile, tuning)
 
 
 def tell_progress(hostile: Hostile, tuning: Tuning = DEFAULT) -> float:
-    """0 when a tell starts, 1 at the moment of firing (or, for a Relay's landing marker,
-    of arriving)."""
-    if hostile.kind == "relay":
-        total = {"aim": tuning.relay_aim_tell, "blink": tuning.relay_blink_tell}.get(hostile.phase)
-        return 1.0 - hostile.fire_timer / total if total else 0.0
-    if not telegraphing(hostile, tuning):
-        return 0.0
-    return 1.0 - hostile.fire_timer / tuning.arc_mite_tell
+    """0 when a tell starts, 1 when the attack (or a Relay Bot's landing) happens."""
+    return robots.tell_progress(hostile, tuning)
 
 
 def _dodge(world: World, inp: InputFrame, tuning: Tuning) -> None:
@@ -149,111 +139,6 @@ def _fire(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> None:
             ttl=tuning.shot_ttl,
         )
     )
-
-
-def _hostiles(world: World, tuning: Tuning, arena: Arena) -> None:
-    player = world.player
-    for hostile in world.hostiles:
-        if hostile.kind == "relay":
-            _relay(world, hostile, tuning, arena)
-            continue
-        hostile.fire_timer -= 1
-        if hostile.fire_timer == tuning.arc_mite_tell:
-            dx, dy = normalize(player.x - hostile.x, player.y - hostile.y)
-            hostile.tell_dx, hostile.tell_dy = (dx, dy) if (dx or dy) else (1.0, 0.0)
-            world.events.append(Event("tell", hostile.x, hostile.y, hostile.id))
-        if hostile.fire_timer <= 0:
-            offset = hostile.radius + tuning.bolt_radius + 1.0
-            world.projectiles.append(
-                Projectile(
-                    id=world.new_id(),
-                    x=hostile.x + hostile.tell_dx * offset,
-                    y=hostile.y + hostile.tell_dy * offset,
-                    vx=hostile.tell_dx * tuning.bolt_speed,
-                    vy=hostile.tell_dy * tuning.bolt_speed,
-                    radius=tuning.bolt_radius,
-                    damage=tuning.bolt_damage,
-                    hostile=True,
-                    ttl=tuning.bolt_ttl,
-                    kind="bolt",
-                )
-            )
-            hostile.fire_timer = tuning.arc_mite_fire_interval
-            world.events.append(Event("bolt", hostile.x, hostile.y, hostile.id))
-
-
-# Eight hop directions for the Relay (unit vectors, exact constants, no runtime trig).
-_DIAG = 0.7071067811865476
-_HOPS = (
-    (1.0, 0.0),
-    (_DIAG, _DIAG),
-    (0.0, 1.0),
-    (-_DIAG, _DIAG),
-    (-1.0, 0.0),
-    (-_DIAG, -_DIAG),
-    (0.0, -1.0),
-    (_DIAG, -_DIAG),
-)
-
-
-def _relay(world: World, relay: Hostile, tuning: Tuning, arena: Arena) -> None:
-    """Idle, then mark a landing spot (0.5 s), blink there, aim (0.5 s) and fire one bolt."""
-    player = world.player
-    relay.fire_timer -= 1
-    if relay.fire_timer > 0:
-        return
-    if relay.phase == "":
-        start = world.rng.randrange(len(_HOPS))
-        distance = tuning.relay_hop_min + world.rng.random() * (
-            tuning.relay_hop_max - tuning.relay_hop_min
-        )
-        relay.dest_x, relay.dest_y = relay.x, relay.y
-        for i in range(len(_HOPS)):
-            hx, hy = _HOPS[(start + i) % len(_HOPS)]
-            spot = (relay.x + hx * distance, relay.y + hy * distance)
-            on_player = circles_overlap(
-                spot,
-                relay.radius + tuning.relay_landing_gap,
-                (player.x, player.y),
-                tuning.player_radius,
-            )
-            if (
-                not on_player
-                and not outside_bounds(spot, relay.radius, arena.bounds)
-                and not blocked(world, arena, spot, relay.radius)
-                and line_clear(world, arena, (relay.x, relay.y), spot)
-                and floorplay.same_room(arena, (relay.x, relay.y), spot)
-            ):
-                relay.dest_x, relay.dest_y = spot
-                break
-        relay.phase, relay.fire_timer = "blink", tuning.relay_blink_tell
-        world.events.append(Event("relay_mark", relay.dest_x, relay.dest_y, relay.id))
-    elif relay.phase == "blink":
-        world.events.append(Event("relay_from", relay.x, relay.y, relay.id))
-        relay.x, relay.y = relay.dest_x, relay.dest_y
-        dx, dy = normalize(player.x - relay.x, player.y - relay.y)
-        relay.tell_dx, relay.tell_dy = (dx, dy) if (dx or dy) else (1.0, 0.0)
-        relay.phase, relay.fire_timer = "aim", tuning.relay_aim_tell
-        world.events.append(Event("relay_blink", relay.x, relay.y, relay.id))
-        world.events.append(Event("tell", relay.x, relay.y, relay.id))
-    else:
-        offset = relay.radius + tuning.bolt_radius + 1.0
-        world.projectiles.append(
-            Projectile(
-                id=world.new_id(),
-                x=relay.x + relay.tell_dx * offset,
-                y=relay.y + relay.tell_dy * offset,
-                vx=relay.tell_dx * tuning.bolt_speed,
-                vy=relay.tell_dy * tuning.bolt_speed,
-                radius=tuning.bolt_radius,
-                damage=tuning.bolt_damage,
-                hostile=True,
-                ttl=tuning.bolt_ttl,
-                kind="bolt",
-            )
-        )
-        relay.phase, relay.fire_timer = "", tuning.relay_idle
-        world.events.append(Event("bolt", relay.x, relay.y, relay.id))
 
 
 def _move_projectiles(world: World, tuning: Tuning, arena: Arena) -> None:
@@ -377,30 +262,6 @@ def _separate(world: World, tuning: Tuning, arena: Arena) -> None:
             break
 
 
-def hurt_player(world: World, damage: int, tuning: Tuning) -> None:
-    """Apply damage unless the Surge is dodging or recently hit."""
-    player = world.player
-    if player.protected:
-        return
-    player.charge = max(0, player.charge - damage)
-    player.invulnerable = tuning.hit_invulnerability
-    world.events.append(Event("player_hit", player.x, player.y))
-
-
-def move_body(
-    x: float, y: float, vx: float, vy: float, radius: float, arena: Arena, world: World | None
-):
-    """Move a circle and push it out of walls, props and locked doors. Speeds stay below the
-    thinnest obstacle, so nothing tunnels."""
-    pos = (x + vx, y + vy)
-    nearby = solids(world, arena, pos, radius + abs(vx) + abs(vy) + 2.0)
-    for _ in range(2):
-        for rect in nearby:
-            pos = push_out_of_rect(pos, radius, rect)
-        pos = clamp_inside(pos, radius, arena.bounds)
-    return pos
-
-
 # The Regulator ----------------------------------------------------------------------------
 
 # Volley fan for Oscillate: rotation by 15 degrees as exact constants (no runtime trig).
@@ -451,7 +312,7 @@ def _rival_shoot(
             damage=tuning.bolt_damage,
             hostile=True,
             ttl=ttl,
-            kind="orb" if radius > tuning.bolt_radius else "bolt",
+            kind="orb" if radius > tuning.bolt_radius else "needle",
         )
     )
 

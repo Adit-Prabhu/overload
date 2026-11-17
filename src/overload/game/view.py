@@ -16,6 +16,7 @@ import pygame
 from overload import __version__
 from overload.art.palette import rgb, rgba
 from overload.art.pixel import actors, effects, hud, tiles
+from overload.art.pixel import robots as robots_art
 from overload.art.pixel.light import Glow
 from overload.art.pixel.lighting import Lighting, pool, quantize
 from overload.floor import TILE
@@ -29,8 +30,6 @@ from overload.sim.state import Event
 
 VIEW = (256, 144)
 SURGE_FEET = 8  # sprite feet sit this many pixels below the body center
-MITE_FEET = 5
-RELAY_FEET = 7
 SOCKET_TOKENS = {"spark": "spark", "blink": "blink", "arc_trail": "spark"}
 NAMES = {"spark": "SPARK", "blink": "BLINK", "arc_trail": "ARC TRAIL"}
 COOLDOWNS = {
@@ -38,7 +37,30 @@ COOLDOWNS = {
     "blink": "blink_cooldown",
     "arc_trail": "arc_trail_cooldown",
 }
-RIVAL_FEET = 19
+RIVAL_FEET = 20
+ROBOT_FEET = {"drone": 9, "relay": 8, "breaker": 9, "sweeper": 5, "sentry": 8}
+CORE_GLOW = {"drone": "power.spark", "relay": "power.blink", "breaker": "power.burst"}
+SHOT_ART = {
+    "shard": robots_art.shard,
+    "shell": robots_art.shell,
+    "needle": robots_art.needle_dart,
+    "orb": robots_art.orb,
+}
+
+
+def robot_image(robot, tick: int, left: bool, charging: bool) -> pygame.Surface:
+    """The approved roster art (art/pixel/robots.py) for a robot in its current state."""
+    if robot.kind == "relay":
+        return robots_art.relay_bot(left, arming=robot.phase == "blink")
+    if robot.kind == "breaker":
+        return robots_art.breaker(left, raising=robot.phase == "raise")
+    if robot.kind == "sweeper":
+        return robots_art.sweeper(tick, left, revving=robot.phase in ("rev", "rush"))
+    if robot.kind == "sentry":
+        return robots_art.sentry(left)
+    return robots_art.drone(tick, left)
+
+
 FUSION_TICKS = 30
 RECIPE_CENTER = (178, 78)  # the middle of the recipe row in the Fuse Box
 RIVAL_FLASH = -1  # flash key for the Regulator (hostile IDs are positive)
@@ -50,11 +72,6 @@ def _shadow(half: int) -> pygame.Surface:
     shade = pygame.Surface((half * 2, 5), pygame.SRCALPHA)
     pygame.draw.ellipse(shade, rgba("px.outline", 120), (0, 0, half * 2, 5))
     return shade
-
-
-@cache
-def _orb() -> pygame.Surface:
-    return pygame.transform.scale_by(effects.hostile_bolt(), 2)
 
 
 @cache
@@ -364,25 +381,23 @@ class PixelView:
         for gx, gy, _life in self.blinks:
             effects.blink_ghost(screen, self.glow.layer, v(gx, gy))
 
+        for wave in world.shockwaves:
+            robots_art.shockwave(screen, v(wave.x, wave.y), wave.radius)
+            robots_art.shockwave(self.glow.layer, v(wave.x, wave.y), wave.radius)
+
         for hostile in world.hostiles:
-            relay = hostile.kind == "relay"
-            feet = (hostile.x, hostile.y + (RELAY_FEET if relay else MITE_FEET))
+            feet = (hostile.x, hostile.y + ROBOT_FEET.get(hostile.kind, 6))
             charging = rules.telegraphing(hostile, tuning)
             left = hostile.tell_dx < 0 if charging else player.x < hostile.x
 
-            def draw_machine(
-                hostile=hostile, feet=feet, charging=charging, left=left, relay=relay
-            ) -> None:
-                shadow(*v(*feet), 7 if relay else 6)
-                if relay:
-                    image = actors.relay(left, arming=hostile.phase == "blink")
-                else:
-                    image = actors.arc_mite(tick, left, charging)
+            def draw_robot(hostile=hostile, feet=feet, charging=charging, left=left) -> None:
+                shadow(*v(*feet), round(hostile.radius) + 1)
+                image = robot_image(hostile, tick, left, charging)
                 if hostile.id in self.flashes:
                     image = effects.tinted(image, "fx.flash")
                 draw_at_feet(image, feet)
 
-            drawables.append((feet[1], draw_machine))
+            drawables.append((feet[1], draw_robot))
 
         for charge in world.charges:
             effects.charge(screen, self.glow.layer, v(charge.x, charge.y), charge.kind, t)
@@ -399,7 +414,9 @@ class PixelView:
                 fins_lit = (
                     rival.protocol == "lateral" and rival.action == "tell" and (tick // 4) % 2 == 0
                 )
-                image = actors.regulator(POSES[rival.protocol], rival_left, needle, fins_lit)
+                image = robots_art.regulator_mech(
+                    POSES[rival.protocol], rival_left, needle, fins_lit
+                )
                 if RIVAL_FLASH in self.flashes:
                     image = effects.tinted(image, "fx.flash")
                 draw_at_feet(image, rival_feet)
@@ -462,17 +479,29 @@ class PixelView:
 
         for hostile in world.hostiles:
             if rules.telegraphing(hostile, tuning):
-                effects.aim_tell(
-                    screen,
-                    self.glow.layer,
-                    v(hostile.x, hostile.y),
-                    math.atan2(hostile.tell_dy, hostile.tell_dx),
-                    rules.tell_progress(hostile, tuning),
-                    reach=64,
-                )
-            core = v(hostile.x, hostile.y - 2)
-            token = "power.blink" if hostile.kind == "relay" else "power.spark"
-            self.glow.layer.fill(rgb(token), (round(core[0]) - 1, round(core[1]), 2, 2))
+                progress = rules.tell_progress(hostile, tuning)
+                if hostile.kind == "breaker":  # the slam: a ring shows where it will reach
+                    effects.slam_tell(
+                        screen,
+                        self.glow.layer,
+                        v(hostile.x, hostile.y + 4),
+                        tuning.wave_reach,
+                        progress,
+                    )
+                else:
+                    reach = {"sentry": 120, "sweeper": 80}.get(hostile.kind, 64)
+                    effects.aim_tell(
+                        screen,
+                        self.glow.layer,
+                        v(hostile.x, hostile.y),
+                        math.atan2(hostile.tell_dy, hostile.tell_dx),
+                        progress,
+                        reach=reach,
+                    )
+            token = CORE_GLOW.get(hostile.kind)
+            if token:
+                core = v(hostile.x, hostile.y)
+                self.glow.layer.fill(rgb(token), (round(core[0]) - 1, round(core[1]), 2, 2))
         if rival is not None and rival.health > 0 and rules.rival_telegraphing(rival):
             effects.aim_tell(
                 screen,
@@ -484,10 +513,15 @@ class PixelView:
             )
 
         for shot in world.projectiles:
-            if shot.hostile and shot.radius > tuning.bolt_radius:
-                orb = _orb()
+            if shot.hostile and shot.kind in SHOT_ART:
+                image = SHOT_ART[shot.kind]()
+                if shot.kind == "needle":
+                    image = pygame.transform.rotate(
+                        image, -math.degrees(math.atan2(shot.vy, shot.vx))
+                    )
+                center = tuple(map(round, v(shot.x, shot.y)))
                 for surface in (screen, self.glow.layer):
-                    surface.blit(orb, orb.get_rect(center=tuple(map(round, v(shot.x, shot.y)))))
+                    surface.blit(image, image.get_rect(center=center))
             elif shot.hostile:
                 effects.bolt(screen, self.glow.layer, v(shot.x, shot.y))
             elif shot.kind == "spark":

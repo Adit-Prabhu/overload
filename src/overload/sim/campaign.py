@@ -24,7 +24,7 @@ from overload.sim.inputs import InputFrame
 from overload.sim.powers import Kit, equip, fuse
 from overload.sim.state import Player, World, state_hash
 from overload.sim.tuning import DEFAULT, Tuning
-from overload.sim.world import PROTOCOLS, spawn_arc_mite, spawn_relay, spawn_rival, step
+from overload.sim.world import PROTOCOLS, spawn_drone, spawn_relay, spawn_rival, step
 
 ENCOUNTERS = 3
 NEUTRAL = "lateral"
@@ -33,7 +33,7 @@ Stage = Literal["encounter", "fuse_box", "ending"]
 
 # Which machines each encounter brings. Arc Mites carry Spark, Relays carry Blink, so the
 # Surge can unlock both by encounter 2 and fuse Arc Trail before encounter 3.
-ROSTER = {1: ("arc_mite", "arc_mite"), 2: ("arc_mite", "relay"), 3: ("relay", "arc_mite")}
+ROSTER = {1: ("drone", "drone"), 2: ("drone", "relay"), 3: ("relay", "drone")}
 
 
 def encounter_world(
@@ -61,7 +61,7 @@ def encounter_world(
         if kind == "relay":
             spawn_relay(world, x, y, tuning)
         else:
-            spawn_arc_mite(world, x, y, tuning)
+            spawn_drone(world, x, y, tuning)
     return world
 
 
