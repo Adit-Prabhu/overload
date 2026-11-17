@@ -76,6 +76,32 @@ class Tuning:
     oscillate_tell: int = 30
     hazard_damage: int = 1
 
+    # Powers. A power on cooldown, or a rejected Blink, costs nothing.
+    charge_radius: float = 6.0
+    spark_speed: float = 3.2
+    spark_radius: float = 3.0
+    spark_damage: int = 3
+    spark_ttl: int = 45
+    spark_cooldown: int = 40
+    blink_distance: float = 56.0
+    blink_min_distance: float = 24.0
+    blink_cooldown: int = 75
+    trail_ttl: int = 120
+    trail_width: float = 4.0
+    trail_damage: int = 1
+    trail_interval: int = 12  # ticks between trail damage pulses
+    arc_trail_cooldown: int = 150
+
+    # The Relay: blinks to a marked spot, then aims and fires. It carries Blink.
+    relay_radius: float = 7.0
+    relay_health: int = 8
+    relay_idle: int = 60
+    relay_blink_tell: int = 30
+    relay_aim_tell: int = 30
+    relay_hop_min: float = 40.0
+    relay_hop_max: float = 80.0
+    relay_landing_gap: float = 12.0  # never lands this close to the Surge
+
     def __post_init__(self) -> None:
         """Reject values that would break readability rules or the tell logic."""
         if self.arc_mite_tell < 0.40 * TICK_RATE:
@@ -96,6 +122,12 @@ class Tuning:
             raise ValueError("Clamp would start lunges it cannot finish")
         if self.clamp_dash_speed >= THINNEST_OBSTACLE:
             raise ValueError("Clamp dashes could tunnel through the thinnest obstacle")
+        if self.spark_speed + 2 * self.spark_radius >= THINNEST_OBSTACLE:
+            raise ValueError("Sparks could tunnel through the thinnest obstacle")
+        if self.relay_blink_tell < 0.50 * TICK_RATE or self.relay_aim_tell < 0.40 * TICK_RATE:
+            raise ValueError("Relay tells are below the readability minimums")
+        if self.blink_min_distance > self.blink_distance:
+            raise ValueError("Blink minimum distance exceeds its range")
         if self.shot_speed + 2 * self.shot_radius >= THINNEST_OBSTACLE:
             raise ValueError("Shots could tunnel through the thinnest obstacle")
         if self.dodge_speed >= self.player_radius:
