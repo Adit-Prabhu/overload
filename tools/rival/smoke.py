@@ -1,11 +1,12 @@
 """Smoke-test a running rival service from the game's real client and selector.
 
-Usage: uv run python tools/rival/smoke.py http://127.0.0.1:8787 [--expect-timeout]
+Usage: uv run python tools/rival/smoke.py URL [--expect-timeout] [--deadline SECONDS]
 
 Starts two sessions, sends one long-range and one close-range summary, checks that each
 session gets its own answer, that a third request is refused, and prints every decision as
 JSON lines. With --expect-timeout (run against a service started with a provider delay
-above 5 s) it checks that the game falls back to the neutral tactic at the deadline.
+above 5 s, or with a --deadline shorter than the service's reply time) it checks that the
+game falls back to the neutral tactic at the deadline.
 Results are only as live as the service: against the fixture provider they are fixture
 evidence, never model evidence.
 """
@@ -38,7 +39,8 @@ def wait(selector: LiveSelector, encounter: int):
 def main(argv: list[str]) -> int:
     base = argv[1]
     expect_timeout = "--expect-timeout" in argv
-    client = TacticClient(base)
+    deadline = float(argv[argv.index("--deadline") + 1]) if "--deadline" in argv else 5.0
+    client = TacticClient(base, deadline=deadline)
     far_player = LiveSelector(client, client.start_session())
     near_player = LiveSelector(client, client.start_session())
     assert far_player.session_id and near_player.session_id, "could not start sessions"
@@ -55,11 +57,18 @@ def main(argv: list[str]) -> int:
     if expect_timeout:
         # The service gives up at 4.5 s and reports a timeout, or the game's own 5 s deadline
         # fires first. Either way the fight starts on the neutral tactic.
-        assert results["far"].reason in ("timeout", "service_timeout"), results["far"]
+        assert results["far"].reason in ("timeout", "late", "service_timeout"), results["far"]
         assert results["far"].tactic == "lateral"
     else:
-        assert results["far"].tactic == "pressure", results["far"]
-        assert results["near"].tactic == "spacing", results["near"]
+        for name in ("far", "near", "far_3"):
+            assert results[name].reason is None, results[name]
+        if results["far"].source == "fixture":
+            # The fixture is a fixed rule, so its answers are known exactly.
+            assert results["far"].tactic == "pressure", results["far"]
+            assert results["near"].tactic == "spacing", results["near"]
+        else:
+            # A live model may choose differently. It must give valid, cited answers.
+            assert results["far"].source == "live" and results["far"].evidence_ids is not None
     assert results["far_4"].reason == "request_cap", results["far_4"]
     client.close()
     print("smoke passed")

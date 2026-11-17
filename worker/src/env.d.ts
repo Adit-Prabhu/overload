@@ -1,5 +1,5 @@
-// Bindings and configuration available to the Worker. Secrets (a provider API key, once
-// decision D6 picks a provider) are set with `wrangler secret put` and never committed.
+// Bindings and configuration available to the Worker. The one secret,
+// GCP_SERVICE_ACCOUNT_JSON, is set with `wrangler secret put` and never committed.
 declare namespace Cloudflare {
   interface Env {
     RIVAL_SESSION: DurableObjectNamespace<import("./session").RivalSession>;
@@ -10,6 +10,10 @@ declare namespace Cloudflare {
     DAILY_BUDGET_USD?: string;
     INPUT_USD_PER_M?: string;
     OUTPUT_USD_PER_M?: string;
+    GOOGLE_CLOUD_PROJECT?: string;
+    GOOGLE_CLOUD_LOCATION?: string;
+    THINKING_BUDGET?: string;
+    GCP_SERVICE_ACCOUNT_JSON?: string;
   }
 
   interface GlobalProps {

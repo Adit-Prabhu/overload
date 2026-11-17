@@ -10,6 +10,7 @@ import {
   MAX_ATTEMPTS_PER_SESSION,
   PROVIDER_DEADLINE_MS,
   SESSION_TTL_SECONDS,
+  TACTIC_IDS,
   type Status,
   type Summary,
   type TacticRequest,
@@ -68,7 +69,7 @@ export class RivalSession extends Agent<Env, SessionState> {
     let provider: ReturnType<typeof makeProvider> | null = null;
     let configError = false;
     try {
-      provider = makeProvider(this.env);
+      provider = makeProvider(this.env, TACTIC_IDS);
     } catch (error) {
       if (!(error instanceof ProviderNotConfigured)) throw error;
       configError = true;
