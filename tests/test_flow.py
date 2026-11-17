@@ -185,7 +185,7 @@ def test_baseline_traces_never_claim_a_summary_was_sent(tmp_path) -> None:
 def fuse_box_with(*abilities: str) -> Session:
     session = Session(Campaign(1), NeutralSelector())
     clear_encounter(session)
-    session.campaign.kit.unlocked = list(abilities)
+    session.campaign.world.unlocked = list(abilities)
     return session
 
 
@@ -206,9 +206,9 @@ def test_menu_fusion_shows_the_supported_recipe_when_it_fails() -> None:
     assert menu.press(session, "fuse") == ["fuse", "spark", "blink"]
     assert menu.notice == FUSE_NOTICES["missing"] and "SPARK + BLINK" in menu.notice
     assert session.campaign.kit.unlocked == ["spark"]
-    session.campaign.kit.unlocked.append("blink")
+    session.campaign.world.unlocked.append("blink")
     menu.press(session, "fuse")
-    assert session.campaign.kit.unlocked == ["spark", "blink", "arc_trail"]
+    assert session.campaign.world.unlocked == ["spark", "blink", "arc_trail"]
     assert menu.notice == "ARC TRAIL FUSED. EQUIP IT WITH Q OR E"
 
 
@@ -223,7 +223,7 @@ def test_menu_actions_are_traced(tmp_path) -> None:
     trace = TraceWriter(tmp_path / "t.jsonl", condition="off", tuning_id="t", arena_id="a")
     session = Session(Campaign(1), NeutralSelector(), trace, "anon")
     clear_encounter(session)
-    session.campaign.kit.unlocked = ["spark"]
+    session.campaign.world.unlocked = ["spark"]
     session.equip(0, "spark")
     session.fuse("spark", "blink")
     rows = [json.loads(line) for line in (tmp_path / "t.jsonl").read_text().splitlines()]
@@ -329,3 +329,27 @@ def test_the_fuse_box_holds_the_surge_still_and_ignores_restart() -> None:
         session.tick(InputFrame(move_x=1, fire=True, restart=True, power_q=True, dodge=True))
     assert (player.x, player.y) == where and not campaign.world.projectiles
     assert campaign.stage == "fuse_box" and campaign.retries == {1: 0}
+
+
+def test_the_paused_loadout_menu_works_mid_sector() -> None:
+    import pygame
+
+    from overload.game.app import fuse_box_frame
+
+    session, menu, reader, recording = live_menu_setup()
+    session.campaign.world.unlocked = ["spark", "blink"]
+    press_keys(reader, pygame.K_f, pygame.K_RETURN)
+    sounds = fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=False, paused=True)
+    assert "arc_trail" in session.campaign.world.unlocked and "fusion" in sounds
+    assert recording.menu[-1][1:] == ["fuse", "spark", "blink"]
+    assert session.campaign.stage == "encounter", "Enter does nothing outside the Fuse Box"
+
+
+def test_tab_toggles_the_menu() -> None:
+    import pygame
+
+    from overload.game.app import InputReader
+
+    reader = InputReader()
+    press_keys(reader, pygame.K_TAB)
+    assert reader.take_toggle() and not reader.take_toggle()

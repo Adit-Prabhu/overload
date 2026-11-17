@@ -152,22 +152,26 @@ class Campaign:
                 powers[name] = powers.get(name, 0) + 1
 
     def equip(self, slot: int, ability: str) -> bool:
-        """Fuse Box: put an unlocked ability in slot 0 (Q) or 1 (E)."""
-        self._require_fuse_box()
-        ok = equip(self.kit, slot, ability)
-        self.kit.apply(self.world)
+        """Loadout menu: put an unlocked ability in slot 0 (Q) or 1 (E). Allowed any time the
+        Surge is up (Adit, Nov 17), not only in the Fuse Box."""
+        kit = self._editable_kit()
+        ok = equip(kit, slot, ability)
+        kit.apply(self.world)
         return ok
 
     def fuse(self, a: str, b: str) -> str:
-        """Fuse Box: fuse two base powers. See powers.fuse for the result codes."""
-        self._require_fuse_box()
-        result = fuse(self.kit, a, b)
-        self.kit.apply(self.world)
+        """Loadout menu: fuse two base powers, any time the Surge is up. See powers.fuse."""
+        kit = self._editable_kit()
+        result = fuse(kit, a, b)
+        kit.apply(self.world)
         return result
 
-    def _require_fuse_box(self) -> None:
-        if self.stage != "fuse_box":
-            raise RuntimeError(f"the Fuse Box is not open (stage {self.stage})")
+    def _editable_kit(self) -> Kit:
+        """The live kit (charges absorbed since the last Fuse Box included)."""
+        if self.stage == "ending" or self.world.outcome != "playing":
+            raise RuntimeError(f"the loadout cannot change now (stage {self.stage})")
+        self.kit = Kit.from_world(self.world)
+        return self.kit
 
     def begin_next(self, protocol: str) -> None:
         """Leave the Fuse Box: the next sector's protocol is frozen from now on, the exit

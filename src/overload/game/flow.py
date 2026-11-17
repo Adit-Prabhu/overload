@@ -21,7 +21,7 @@ from overload.agent.tactics import Decision
 from overload.session.trace import TraceWriter
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import InputFrame
-from overload.sim.powers import RECIPE_ORDER, RECIPES
+from overload.sim.powers import RECIPE_ORDER, RECIPES, Kit
 from overload.sim.tuning import TICK_RATE
 
 MIN_FUSE_TICKS = round(DEADLINE_SECONDS * TICK_RATE)
@@ -129,16 +129,19 @@ class Session:
         )
         return decision
 
+    def _menu_encounter(self) -> int:
+        """The encounter a loadout change applies to: the next one from the Fuse Box."""
+        campaign = self.campaign
+        return campaign.encounter + (1 if campaign.stage == "fuse_box" else 0)
+
     def equip(self, slot: int, ability: str) -> bool:
         ok = self.campaign.equip(slot, ability)
-        self._trace(
-            "equip", encounter=self.campaign.encounter + 1, slot=slot, ability=ability, ok=ok
-        )
+        self._trace("equip", encounter=self._menu_encounter(), slot=slot, ability=ability, ok=ok)
         return ok
 
     def fuse(self, a: str, b: str) -> str:
         result = self.campaign.fuse(a, b)
-        self._trace("fuse", encounter=self.campaign.encounter + 1, recipe=[a, b], result=result)
+        self._trace("fuse", encounter=self._menu_encounter(), recipe=[a, b], result=result)
         return result
 
     # Traces ------------------------------------------------------------------------------
@@ -191,13 +194,14 @@ class FuseBoxMenu:
     def __init__(self) -> None:
         self.selected = 0
         self.notice: str | None = None
+        self.last_result = ""
 
     def reset(self) -> None:
         self.selected = 0
         self.notice = None
 
     def press(self, session: Session, key: str) -> list | None:
-        rows = session.campaign.kit.unlocked
+        rows = session.campaign.world.unlocked
         if key in ("up", "down") and rows:
             step = -1 if key == "up" else 1
             self.selected = (self.selected + step) % len(rows)
@@ -208,8 +212,9 @@ class FuseBoxMenu:
             self.notice = None
             return ["equip", slot, ability]
         elif key == "fuse":
-            a, b = next_recipe(session.campaign.kit)
+            a, b = next_recipe(Kit.from_world(session.campaign.world))
             result = session.fuse(a, b)
+            self.last_result = result
             self.notice = FUSE_NOTICES[result]
             if result == "fused":
                 name = RECIPES[frozenset((a, b))].replace("_", " ").upper()

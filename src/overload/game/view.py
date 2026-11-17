@@ -20,7 +20,7 @@ from overload.art.pixel import robots as robots_art
 from overload.art.pixel.light import Glow
 from overload.art.pixel.lighting import Lighting, pool, quantize
 from overload.floor import TILE
-from overload.sim import aiming
+from overload.sim import aiming, floorplay
 from overload.sim import world as rules
 from overload.sim.arena import arena_id
 from overload.sim.campaign import Campaign
@@ -159,6 +159,7 @@ class PixelView:
         self.ghosts: list[tuple[float, float, int]] = []
         self.blinks: list[tuple[float, float, int]] = []
         self.bursts: list[tuple] = []
+        self.seen: set[str] = set()  # rooms the minimap has revealed (cosmetic only)
         self.chains: list[tuple] = []
         self.notice: tuple[str, int] | None = None
         self.unlock_flash = 0
@@ -198,6 +199,11 @@ class PixelView:
         before the next input is read)."""
         self.consume(run, run.world.events)
         self._tick_cosmetics()
+        floor = run.arena.floor
+        if floor is not None:
+            room = floorplay.room_of(floor, run.world.player.x, run.world.player.y)
+            if room is not None:
+                self.seen.add(room.id)
 
     def follow(self, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         """Ease toward the player, nudged a little toward where they are aiming. In a fight
@@ -321,6 +327,50 @@ class PixelView:
                 effects.cracked_wall(screen, rect, world.secret_hits.get(door.id, 0))
             else:
                 effects.shutter(screen, self.glow.layer, rect, (world.tick // 8) % 2 == 0)
+
+    def _minimap(self, screen: pygame.Surface, run: Run | Campaign) -> None:
+        """Top right: every room seen so far (and the doors out of them), cleared rooms dim,
+        the locked room red, Fuse Boxes and chambers tinted, the Surge as a white dot."""
+        floor = run.arena.floor
+        if floor is None:
+            return
+        world = run.world
+        w, _ = screen.get_size()
+        scale = 0.5
+        ox, oy = w - 4 - round(floor.room.size[0] / TILE * scale), 4
+        width, height = (
+            round(floor.room.size[0] / TILE * scale),
+            round(floor.room.size[1] / TILE * scale),
+        )
+        panel = pygame.Rect(ox - 2, oy - 2, width + 4, height + 4)
+        screen.blit(_dim(panel.size, 200), panel)
+        pygame.draw.rect(screen, rgb("px.wall.2"), panel, 1)
+        seen = self.seen
+        near = {d.other for d in floor.doors if d.room in seen and not d.secret}
+        for room in floor.rooms:
+            if room.id not in seen and room.id not in near:
+                continue
+            x, y, rw, rh = room.interior
+            rect = pygame.Rect(
+                ox + round(x * scale),
+                oy + round(y * scale),
+                max(2, round(rw * scale)),
+                max(2, round(rh * scale)),
+            )
+            if room.id not in seen:
+                pygame.draw.rect(screen, rgb("px.floor.3"), rect, 1)
+                continue
+            token = {"fuse": "power.blink", "chamber": "px.hostile.2"}.get(room.kind, "px.wall.3")
+            if room.id in world.cleared:
+                token = "px.floor.3"
+            screen.fill(rgb(token), rect)
+            if room.id == world.active_room and (world.tick // 10) % 2 == 0:
+                pygame.draw.rect(screen, rgb("hostile.danger"), rect.inflate(2, 2), 1)
+        px = ox + round(world.player.x / TILE * scale)
+        py = oy + round(world.player.y / TILE * scale)
+        screen.fill(rgb("player.core"), (px - 1, py - 1, 2, 2))
+        sector = getattr(run, "encounter", 1)
+        hud.text(screen, f"SECTOR {sector}", (ox + width, oy + height + 4), "ui.dim", "topright")
 
     def flash_fusion(self) -> None:
         self.fusion_flash = FUSION_TICKS
@@ -625,10 +675,17 @@ class PixelView:
                     else 0.0
                     for slot in player.slots
                 ),
+                cooldown_seconds=tuple(
+                    player.cooldowns.get(COOLDOWN_KEYS[slot], 0) / 60 if slot else 0.0
+                    for slot in player.slots
+                ),
                 rival_health=(max(0, rival.health) / rival.max_health) if rival else None,
                 rival_protocol=POSES[rival.protocol] if rival else None,
+                tick=tick,
+                hint="TAB LOADOUT" if getattr(run, "stage", None) == "encounter" else "",
             ),
         )
+        self._minimap(screen, run)
         if self.unlock_flash:
             screen.blit(_flash(VIEW, self.unlock_flash * 8), (0, 0))
         if self.notice:
@@ -651,6 +708,7 @@ class PixelView:
         selected: int = 0,
         notice: str | None = None,
         tuning: Tuning = DEFAULT,
+        title: str = "FUSE BOX",
     ) -> None:
         """Between encounters: the stolen powers (evolved ones marked), the two slots and the
         two recipes."""
@@ -660,8 +718,13 @@ class PixelView:
         if self.fusion_flash:
             screen.blit(_flash(VIEW, self.fusion_flash * 6), (0, 0))
             effects.fusion_rings(screen, RECIPE_CENTER, 1 - self.fusion_flash / FUSION_TICKS)
-        hud.text(screen, "FUSE BOX", (w // 2, 3), "ui.text", "midtop")
-        hud.text(screen, f"ENCOUNTER {encounter} OF 3 NEXT", (w // 2, 12), "ui.dim", "midtop")
+        hud.text(screen, title, (w // 2, 3), "ui.text", "midtop")
+        subtitle = (
+            f"ENCOUNTER {encounter} OF 3 NEXT"
+            if title == "FUSE BOX"
+            else f"SECTOR {encounter} PAUSED"
+        )
+        hud.text(screen, subtitle, (w // 2, 12), "ui.dim", "midtop")
 
         hud.text(screen, "POWERS", (24, 25), "ui.dim")
         if not kit.unlocked:
@@ -703,7 +766,10 @@ class PixelView:
         for i, (line, token) in enumerate(lines[:3]):
             hud.text(screen, line, (w // 2, 96 + i * 9), token, "midtop")
         hud.text(screen, "W S PICK   Q E EQUIP   F FUSE", (w // 2, 123), "ui.dim", "midtop")
-        prompt = "ENTER TO CONTINUE" if ready else "ROUTING POWER..."
+        if title != "FUSE BOX":
+            prompt = "TAB TO RESUME"
+        else:
+            prompt = "ENTER TO CONTINUE" if ready else "ROUTING POWER..."
         hud.text(screen, prompt, (w // 2, 131), "px.hazard.1" if ready else "ui.dim", "midtop")
 
     def draw_ending(

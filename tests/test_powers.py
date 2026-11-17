@@ -218,12 +218,17 @@ def test_equip_swaps_and_rejects_what_is_not_unlocked() -> None:
     assert equip(kit, 0, "") and kit.slots == ["", "spark"]
 
 
-def test_fuse_box_actions_only_in_the_fuse_box() -> None:
+def test_the_loadout_changes_any_time_the_surge_is_up() -> None:
+    """Adit, Nov 17: equip and fuse whenever you want, not only in the Fuse Box."""
     campaign = Campaign(1)
-    with pytest.raises(RuntimeError):
-        campaign.fuse("spark", "blink")
-    with pytest.raises(RuntimeError):
-        campaign.equip(0, "spark")
+    world = campaign.world
+    world.unlocked = ["spark", "blink"]
+    assert campaign.fuse("spark", "blink") == "fused"
+    assert campaign.equip(0, "arc_trail") and world.player.slots[0] == "arc_trail"
+    world.player.charge = 0
+    campaign.step(IDLE)
+    with pytest.raises(RuntimeError):  # not while down
+        campaign.equip(1, "spark")
 
 
 # The Relay -----------------------------------------------------------------------------------
@@ -328,7 +333,6 @@ def test_full_loop_collect_equip_fuse_use(tmp_path) -> None:
 @pytest.mark.parametrize(
     "menu",
     [
-        [[5, "equip", 0, "spark"]],  # outside the Fuse Box
         [[0, "teleport", 0, "spark"]],  # unknown action
         [[3, "fuse", "a", "b"], [2, "fuse", "a", "b"]],  # out of order
         [[99, "fuse", "spark", "blink"]],  # beyond the frames
