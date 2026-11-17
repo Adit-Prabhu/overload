@@ -19,6 +19,7 @@ import pygame
 
 from overload.paths import ASSETS
 from overload.sim.state import Event
+from overload.sim.tuning import DEFAULT
 
 AUDIO = ASSETS / "audio"
 BPM = 124
@@ -86,6 +87,16 @@ STEMS = ("hum", "pulse", "arc", "lead", "fuse_box")
 LEVELS = {"hum": 0.55, "pulse": 0.5, "arc": 0.3, "lead": 0.4, "fuse_box": 0.6}
 
 
+def boot_sting(world) -> str | None:
+    """The protocol sting, on the first tick of the Regulator's boot. The spawn event itself
+    is cleared before any tick is shown, so the visible boot timer is the cue. A retry
+    restores the boot, so the sting plays again as the fight restarts."""
+    rival = world.rival if world is not None else None
+    if rival is None or rival.boot != DEFAULT.rival_boot - 1:
+        return None
+    return STINGS[rival.protocol]
+
+
 def stems_for(stage: str | None, encounter: int, outcome: str) -> set[str]:
     """Which stems play: the Fuse Box loop between encounters, HUM and PULSE in a fight,
     ARC from encounter 2 and LEAD in encounter 3. Practice plays like encounter 1. While
@@ -149,10 +160,10 @@ class Audio:
         """Sound effects for one tick of simulation events."""
         if not self.enabled:
             return
+        sting = boot_sting(world)
+        if sting:
+            self.play(sting, 0.9)
         for event in events:
-            if event.kind == "protocol_boot" and world.rival is not None:
-                self.play(STINGS[world.rival.protocol], 0.9)
-                continue
             name = EVENT_SOUNDS.get(event.kind)
             if name is None:
                 continue

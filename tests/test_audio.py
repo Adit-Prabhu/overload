@@ -6,7 +6,14 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from overload.game.audio import EVENT_SOUNDS, STINGS, VISUAL_TWINS, Audio, stems_for
+from overload.game.audio import (
+    EVENT_SOUNDS,
+    STINGS,
+    VISUAL_TWINS,
+    Audio,
+    boot_sting,
+    stems_for,
+)
 from overload.paths import ASSETS
 
 SIM = Path(__file__).resolve().parents[1] / "src" / "overload" / "sim"
@@ -58,3 +65,20 @@ def test_muted_audio_is_inert() -> None:
     audio.events([], None)
     audio.update("encounter", 1, "playing")
     assert not audio.enabled and not audio.sounds
+
+
+def test_the_protocol_sting_plays_once_as_each_fight_starts() -> None:
+    from overload.sim.campaign import Campaign
+    from overload.sim.inputs import IDLE, InputFrame
+
+    campaign = Campaign(1)
+    stings = []
+    for _ in range(120):
+        campaign.step(IDLE)
+        stings.append(boot_sting(campaign.world))
+    assert [s for s in stings if s] == ["sting_oscillate"]
+    campaign.world.player.charge = 0
+    campaign.step(IDLE)
+    campaign.step(InputFrame(restart=True))
+    campaign.step(IDLE)
+    assert boot_sting(campaign.world) == "sting_oscillate", "a retry restarts the fight"
