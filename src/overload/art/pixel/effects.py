@@ -173,6 +173,14 @@ def spark_shot(target: pygame.Surface, light: pygame.Surface, pos: Point, angle:
         pygame.draw.lines(surface, rgb("px.spark.light"), False, points, 1)
 
 
+def fusion_rings(target: pygame.Surface, center: Point, progress: float) -> None:
+    """PK-03: a Spark ring and a Blink ring expand from the recipe as Arc Trail is fused."""
+    cx, cy = round(center[0]), round(center[1])
+    for i, token in enumerate(("power.spark", "power.blink")):
+        radius = 6 + round(7 * progress) + i * 3
+        pygame.draw.circle(target, rgb(token), (cx, cy), radius, 1)
+
+
 def bolt(target: pygame.Surface, light: pygame.Surface, pos: Point) -> None:
     _blit_center(target, hostile_bolt(), pos)
     _blit_center(light, hostile_bolt(), pos)

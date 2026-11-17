@@ -138,6 +138,8 @@ def items() -> list[tuple[str, Draw]]:
             lambda t, c: effects.aim_tell(t, scratch(), (c[0] - 22, c[1]), 0.0, 0.7, reach=40),
         ),
         ("relay target", lambda t, c: effects.relay_destination(t, c, 0.6)),
+        ("relay arming", centered(actors.relay(False, arming=True))),
+        ("fusion rings", lambda t, c: effects.fusion_rings(t, c, 0.7)),
         ("hazard tile", lambda t, c: effects.hazard_tile(t, scratch(), (c[0] - 8, c[1] - 8), 0.7)),
         ("reticle", centered(effects.reticle())),
     ]

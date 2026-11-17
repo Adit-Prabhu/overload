@@ -213,3 +213,29 @@ def test_the_unlock_notice_names_the_power_from_the_event(headless_pygame) -> No
     assert view.notice[0] == "BLINK STOLEN"
     view.consume(run, [Event("unlock", 10, 10, 5, "spark"), Event("unlock", 9, 9, 6, "blink")])
     assert view.notice[0] == "SPARK AND BLINK STOLEN"
+
+
+def test_tell_states_look_different_from_rest_states(headless_pygame) -> None:
+    """The Oscillate volley tell lights the fins and the Relay's blink tell flips its lever,
+    so each tell changes the sprite itself, not only the overlay."""
+    rest, lit = actors.regulator("oscillate", False), actors.regulator("oscillate", False, lit=True)
+    assert pygame.image.tobytes(rest, "RGBA") != pygame.image.tobytes(lit, "RGBA")
+    idle, arming = actors.relay(False), actors.relay(False, arming=True)
+    assert pygame.image.tobytes(idle, "RGBA") != pygame.image.tobytes(arming, "RGBA")
+
+
+def test_the_fusion_flash_lasts_a_fixed_number_of_ticks(headless_pygame) -> None:
+    from overload.game.view import FUSION_TICKS, PixelView
+    from overload.sim.campaign import Campaign
+    from overload.sim.powers import Kit
+
+    campaign = Campaign(1)
+    view = PixelView(campaign)
+    view.flash_fusion()
+    screen = pygame.Surface((256, 144))
+    for _ in range(50):  # drawing many frames does not shorten it
+        view.draw_fuse_box(screen, 2, True, None, Kit(), 0, None)
+    assert view.fusion_flash == FUSION_TICKS
+    for _ in range(FUSION_TICKS):
+        view.update(campaign, (128, 72))
+    assert view.fusion_flash == 0

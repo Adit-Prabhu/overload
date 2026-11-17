@@ -233,7 +233,7 @@ def relay_frames() -> tuple[pygame.Surface, ...]:
     return (up, down)
 
 
-def relay(tick: int, facing_left: bool, arming: bool = False) -> pygame.Surface:
+def relay(facing_left: bool, arming: bool = False) -> pygame.Surface:
     """The lever is up while the Relay idles or aims and flips down while its landing
     diamond is showing, so the switch itself announces the coming blink."""
     image = relay_frames()[1 if arming else 0]

@@ -37,6 +37,8 @@ COOLDOWNS = {
     "arc_trail": "arc_trail_cooldown",
 }
 RIVAL_FEET = 19
+FUSION_TICKS = 30
+RECIPE_CENTER = (178, 78)  # the middle of the recipe row in the Fuse Box
 RIVAL_FLASH = -1  # flash key for the Regulator (hostile IDs are positive)
 POSES = {"pressure": "clamp", "spacing": "insulate", "lateral": "oscillate"}
 
@@ -224,7 +226,7 @@ class PixelView:
             self.ghosts.append((player.x, player.y, 10))
 
     def flash_fusion(self) -> None:
-        self.fusion_flash = 30
+        self.fusion_flash = FUSION_TICKS
 
     def toast(self, message: str, ticks: int) -> None:
         self.notice = (message, ticks)
@@ -256,6 +258,7 @@ class PixelView:
         self.ghosts = [(x, y, life - 1) for x, y, life in self.ghosts if life > 1]
         self.blinks = [(x, y, life - 1) for x, y, life in self.blinks if life > 1]
         self.unlock_flash = max(0, self.unlock_flash - 1)
+        self.fusion_flash = max(0, self.fusion_flash - 1)  # per tick, so any frame rate
         if self.notice:
             message, ticks = self.notice
             self.notice = (message, ticks - 1) if ticks > 1 else None
@@ -323,7 +326,7 @@ class PixelView:
             ) -> None:
                 shadow(*v(*feet), 7 if relay else 6)
                 if relay:
-                    image = actors.relay(tick, left, arming=hostile.phase == "blink")
+                    image = actors.relay(left, arming=hostile.phase == "blink")
                 else:
                     image = actors.arc_mite(tick, left, charging)
                 if hostile.id in self.flashes:
@@ -524,12 +527,8 @@ class PixelView:
         w, h = screen.get_size()
         screen.blit(_dim(screen.get_size(), 235), (0, 0))
         if self.fusion_flash:
-            # PK-03: the recipe flares in its two power colors as Arc Trail is fused.
-            self.fusion_flash -= 1
             screen.blit(_flash(VIEW, self.fusion_flash * 6), (0, 0))
-            for i, token in enumerate(("power.spark", "power.blink")):
-                radius = 12 + (30 - self.fusion_flash) // 2 + i * 4
-                pygame.draw.circle(screen, rgb(token), (200, 73), radius, 1)
+            effects.fusion_rings(screen, RECIPE_CENTER, 1 - self.fusion_flash / FUSION_TICKS)
         hud.text(screen, "FUSE BOX", (w // 2, 3), "ui.text", "midtop")
         hud.text(screen, f"ENCOUNTER {encounter} OF 3 NEXT", (w // 2, 12), "ui.dim", "midtop")
 

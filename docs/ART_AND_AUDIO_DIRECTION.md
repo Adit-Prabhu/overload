@@ -154,7 +154,7 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | ID | Asset | Pri | Status |
 | --- | --- | --- | --- |
 | PK-01 | Charges (bolt, diamond, ring) that float and glow | P0 | Done |
-| PK-02, PK-03 | Unlock and fusion flashes | P0 | Done (unlock flash and STOLEN notice, fusion flash with Spark and Blink rings in the Fuse Box) |
+| PK-02, PK-03 | Unlock and fusion flashes | P0 | Done. The fusion rings and the Relay's arming lever are on the contact sheet. The unlock flash and the white fusion flash are full-screen effects, checked in play |
 | TL-01 | Aim tell (dotted line, filling ring of dots) | P0 | Done |
 | TL-02 | Relay landing diamond (hatched) | P0 | Done |
 | TL-03 | Hazard tile (hatching fills over the tell) | P0 | Done |
