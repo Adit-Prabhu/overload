@@ -213,21 +213,25 @@ def next_recipe(kit, selected: str = "") -> tuple[str, str] | None:
 
 class FuseBoxMenu:
     """The loadout and fusion menu. Keys: up and down pick a power, q and e equip it to
-    that slot, fuse tries the next open recipe, or rerolls the selected fusion once every
-    open recipe is fused. Returns each simulation-affecting action so the caller can record
-    it for the replay."""
+    that slot. Fuse makes the next recipe whose ingredients are both stolen. With none, it
+    rerolls the selected fusion, else reports what the next recipe needs (see next_recipe).
+    Rerolling an epic or legendary takes a second fuse press, since it can only lose.
+    Returns each simulation-affecting action so the caller can record it for the replay."""
 
     def __init__(self) -> None:
         self.selected = 0
         self.notice: str | None = None
         self.last_result = ""
+        self.armed: tuple[str, str] | None = None  # a reroll waiting for its second press
 
     def reset(self) -> None:
         self.selected = 0
         self.notice = None
+        self.armed = None
 
     def press(self, session: Session, key: str) -> list | None:
         rows = session.campaign.world.unlocked
+        armed, self.armed = self.armed, None  # any other key cancels a pending reroll
         if key in ("up", "down") and rows:
             step = -1 if key == "up" else 1
             self.selected = (self.selected + step) % len(rows)
@@ -247,6 +251,14 @@ class FuseBoxMenu:
                 self.notice = FUSE_NOTICES["pick"]
                 return None
             a, b = pair
+            recipe = RECIPES[frozenset((a, b))]
+            rarity = world.rarity.get(recipe, "rare")
+            spare = all(world.bank.get(p, 0) >= session.campaign.tuning.reroll_cost for p in pair)
+            if recipe in world.unlocked and rarity != "rare" and spare and armed != pair:
+                self.armed = pair
+                self.last_result = "confirm"
+                self.notice = f"F AGAIN TO REROLL {rarity.upper()}"
+                return None
             result = session.fuse(a, b)
             self.last_result = result
             self.notice = FUSE_NOTICES[result]

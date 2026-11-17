@@ -326,10 +326,20 @@ def test_the_menu_names_fused_powers_by_rarity_and_marks_it(headless_pygame, rar
     screen = pygame.Surface((256, 144))
     PixelView(Campaign(1)).draw_fuse_box(screen, 1, True, None, kit, 2, None, title="LOADOUT")
     mark = rgb(f"px.rarity.{rarity}")
-    found = {
+    # The marks sit at the right end of the power's row (row 3, the third 11 px row): count
+    # the crosses there, 5 lit pixels each.
+    left, row_y = 16, 8 + 4 + 15 + 11 + 2 * 11
+    lit = [
         (x, y)
-        for x in range(screen.get_width())
-        for y in range(screen.get_height())
+        for x in range(left + 86, left + 102)
+        for y in range(row_y, row_y + 8)
         if screen.get_at((x, y))[:3] == mark
-    }
-    assert found, "the rarity's marks and label are drawn in its color"
+    ]
+    assert len(lit) == 5 * ("rare", "epic", "legendary").index(rarity) + 5
+    spare_row = row_y - 2 * 11  # Spark's row shows its one spare charge as +1
+    dim = rgb("ui.dim")
+    assert any(
+        screen.get_at((x, y))[:3] == dim
+        for x in range(left + 74, left + 87)
+        for y in range(spare_row, spare_row + 8)
+    )

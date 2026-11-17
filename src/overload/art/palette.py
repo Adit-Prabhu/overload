@@ -79,9 +79,10 @@ TOKENS = MappingProxyType(
         "px.tint.1": "#FFFFFF",
         "px.tint.2": "#CCE6F2",
         "px.tint.3": "#F5CFDC",
-        # Fusion rarities (docs/POWERS_AND_FUSION.md), for menus and slots only. Always drawn
-        # as 1, 2 or 3 cross marks, so the rarity never rests on color alone. Steel, mint and
-        # champagne: hues no power, robot or hazard uses.
+        # Fusion rarities (docs/POWERS_AND_FUSION.md), for menus and HUD slots only, never in
+        # the world. Always drawn with 1, 2 or 3 cross marks, so the rarity never rests on color
+        # alone. Rare steel is plain on purpose (near ui.dim). Champagne is near Spark's yellow
+        # light, which is acceptable only because it never appears in play.
         "px.rarity.rare": "#A7B6CC",
         "px.rarity.epic": "#5FE3A1",
         "px.rarity.legendary": "#F5DFA0",

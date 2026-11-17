@@ -12,7 +12,7 @@ import random
 from collections import Counter
 
 import pytest
-from test_flow import clear_encounter, fuse_box_with
+from floorbot import clear_encounter, fuse_box_with
 
 from overload.agent.selector import NeutralSelector
 from overload.game.flow import FUSE_NOTICES, FuseBoxMenu, Session
@@ -21,7 +21,9 @@ from overload.sim.arena import SUBSTATION, Arena
 from overload.sim.campaign import Campaign, encounter_world
 from overload.sim.inputs import IDLE, InputFrame
 from overload.sim.powers import (
+    FUSION_NAMES,
     RARITIES,
+    RECIPES,
     Kit,
     absorb_charges,
     evolved,
@@ -59,6 +61,12 @@ def armed(power: str, rarity: str, fragments=None):
     world.hostiles.clear()
     world.rival = None
     world.player.x, world.player.y = OPEN.player_spawn
+    return world
+
+
+def armed_and_fired(power: str, rarity: str):
+    world = armed(power, rarity)
+    step(world, InputFrame(power_q=True, **AIM), arena=OPEN)
     return world
 
 
@@ -101,11 +109,15 @@ def test_two_rares_in_a_row_guarantee_epic_or_better() -> None:
     for seed in range(60):
         kit = Kit(["spark", "blink"], {}, ["", ""], bank={"spark": 99, "blink": 99})
         history = []
-        for _ in range(25):
-            if kit.streak >= DEFAULT.fuse_guarantee_after:
-                guaranteed += 1
+        trailing = 0  # rares in a row, counted here independently of the kit
+        for n in range(25):
+            due = trailing >= DEFAULT.fuse_guarantee_after
+            guaranteed += due
             assert fuse(kit, "spark", "blink", seed) == "fused"
             history.append(kit.rarity["arc_trail"])
+            assert history[n] == roll_rarity(seed, n, due), (seed, n)
+            trailing = trailing + 1 if history[n] == "rare" else 0
+            assert kit.streak == trailing, "the streak resets on epic or legendary"
         for i in range(2, len(history)):
             if history[i - 2] == history[i - 1] == "rare":
                 assert history[i] != "rare", (seed, history)
@@ -211,11 +223,12 @@ def test_the_menu_rerolls_the_picked_fusion_and_says_when_it_cannot() -> None:
     # Burst is not stolen: with a base power picked, F reports what Shock Cone still needs.
     assert menu.press(session, "fuse") == ["fuse", "spark", "burst"]
     assert menu.notice == FUSE_NOTICES["missing"] and world.fusions == 1
+    world.rarity["arc_trail"] = "rare"  # a rare rerolls at once (an epic asks first)
     menu.press(session, "up")  # wraps to the last row, Arc Trail: F now rerolls it
     assert menu.press(session, "fuse") == ["fuse", "spark", "blink"]
     assert menu.notice == FUSE_NOTICES["no_charges"] and world.fusions == 1
     world.bank = {"spark": 1, "blink": 1}
-    menu.press(session, "fuse")
+    assert menu.press(session, "fuse") == ["fuse", "spark", "blink"]
     rarity = world.rarity["arc_trail"]
     assert world.fusions == 2 and world.bank == {"spark": 0, "blink": 0}
     assert menu.notice == f"{fused_name('arc_trail', rarity)} {rarity.upper()}"
@@ -233,6 +246,36 @@ def test_with_every_recipe_fused_f_spends_nothing_until_a_fusion_is_picked() -> 
     assert world.bank == {"spark": 5, "blink": 5, "burst": 5} and world.fusions == 2
 
 
+@pytest.mark.parametrize("rarity", ["epic", "legendary"])
+def test_rerolling_an_epic_or_legendary_takes_a_second_press(rarity) -> None:
+    session = fuse_box_with("spark", "blink")
+    world = session.campaign.world
+    menu = FuseBoxMenu()
+    menu.press(session, "fuse")
+    world.rarity["arc_trail"], world.bank = rarity, {"spark": 2, "blink": 2}
+    menu.press(session, "up")  # Arc Trail
+    assert menu.press(session, "fuse") is None and world.fusions == 1, "nothing spent yet"
+    assert menu.notice == f"F AGAIN TO REROLL {rarity.upper()}"
+    menu.press(session, "down")  # any other key cancels
+    menu.press(session, "up")
+    assert menu.press(session, "fuse") is None and world.fusions == 1
+    assert menu.press(session, "fuse") == ["fuse", "spark", "blink"]
+    assert world.fusions == 2 and world.bank == {"spark": 1, "blink": 1}
+
+
+def test_the_session_trace_starts_with_the_run_seed(tmp_path) -> None:
+    trace = TraceWriter(tmp_path / "t.jsonl", condition="off", tuning_id="t", arena_id="a")
+    Session(Campaign(37), NeutralSelector(), trace, "anon")
+    rows = [json.loads(line) for line in (tmp_path / "t.jsonl").read_text().splitlines()]
+    start = next(r for r in rows if r["event"] == "encounter_start")
+    assert start["seed"] == 37 and start["encounter"] == 1
+
+
+def test_every_recipe_has_its_three_rarity_names() -> None:
+    assert set(FUSION_NAMES) == set(RECIPES.values())
+    assert all(len(names) == len(RARITIES) for names in FUSION_NAMES.values())
+
+
 # Rarity effects ------------------------------------------------------------------------------
 
 
@@ -247,6 +290,8 @@ def test_storm_step_leaves_a_longer_wider_trail_and_thunderhead_adds_a_ring() ->
     assert trails["epic"][:2] == (DEFAULT.storm_trail_ttl - 1, DEFAULT.storm_trail_width)
     assert trails["legendary"] == (DEFAULT.storm_trail_ttl - 1, DEFAULT.storm_trail_width, 8)
     assert trails["rare"][2] == trails["epic"][2] == 0
+    ring = sparks(armed_and_fired("arc_trail", "legendary"))
+    assert {(s.arc, s.damage) for s in ring} == {("none", DEFAULT.thunder_spark_damage)}
 
 
 def test_shock_fan_fires_five_sparks_and_overcurrent_chains_them() -> None:
@@ -337,6 +382,10 @@ def test_higher_rarities_are_stronger_but_only_modestly(power, evolutions) -> No
         {"fuse_odds": (100, 0, 0)},
         {"fuse_odds": (60, -1, 41)},
         {"reroll_cost": 0},
+        {"fuse_odds": (60.0, 30, 10)},
+        {"fan_spark_damage": 0},
+        {"thunder_spark_damage": 0},
+        {"overcurrent_chain_damage": 0},
         {"storm_trail_width": DEFAULT.trail_width - 1},
         {"fuse_guarantee_after": 0},
         {"storm_trail_ttl": DEFAULT.trail_ttl - 1},

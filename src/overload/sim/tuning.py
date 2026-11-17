@@ -246,8 +246,12 @@ class Tuning:
             raise ValueError("The caster tip is too far out to check for props between")
         if self.shot_speed + 2 * self.shot_radius >= THINNEST_OBSTACLE:
             raise ValueError("Shots could tunnel through the thinnest obstacle")
-        if len(self.fuse_odds) != 3 or min(self.fuse_odds) < 0 or sum(self.fuse_odds[1:]) <= 0:
-            raise ValueError("Fusion odds need three weights and a chance of epic or better")
+        odds = self.fuse_odds
+        if len(odds) != 3 or any(type(w) is not int or w < 0 for w in odds) or sum(odds[1:]) <= 0:
+            raise ValueError("Fusion odds need three whole weights and a chance of epic or better")
+        light = (self.fan_spark_damage, self.thunder_spark_damage, self.overcurrent_chain_damage)
+        if min(light) < 1:
+            raise ValueError("Every fused spark and arc must deal at least 1 damage")
         if self.reroll_cost < 1 or self.fuse_guarantee_after < 1:
             raise ValueError("A reroll must cost a charge and the guarantee needs a streak")
         if self.storm_trail_ttl < self.trail_ttl or self.storm_trail_width < self.trail_width:

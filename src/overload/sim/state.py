@@ -132,7 +132,7 @@ class Trail:
     x2: float
     y2: float
     ttl: int
-    width: float = 4.0  # how far from the line it reaches past a body's edge
+    width: float = 0.0  # how far it reaches past a body's edge (0: the Arc Trail's width)
 
 
 @dataclass(slots=True)

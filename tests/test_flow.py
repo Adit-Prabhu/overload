@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import threading
 
-from floorbot import FloorBot, enter, skip_sector
+from floorbot import FloorBot, clear_encounter, enter, fuse_box_with
 
 from overload.agent.client import TacticClient
 from overload.agent.selector import FixedSchedule, LiveSelector, NeutralSelector
@@ -15,11 +15,6 @@ from overload.sim.campaign import Campaign
 from overload.sim.inputs import IDLE, InputFrame
 from overload.sim.powers import fused_name
 from overload.sim.tuning import DEFAULT
-
-
-def clear_encounter(session: Session) -> None:
-    """Finish the current sector and stand in its Fuse Box (or reach the ending)."""
-    skip_sector(session.campaign, session.tick)
 
 
 def wait_in_fuse_box(session: Session, ticks: int) -> None:
@@ -186,13 +181,6 @@ def test_baseline_traces_never_claim_a_summary_was_sent(tmp_path) -> None:
     rows = [json.loads(line) for line in (tmp_path / "t.jsonl").read_text().splitlines()]
     assert all(row.get("context_hash") is None for row in rows if row["event"] == "decision")
     assert rows[-1]["event"] == "session_end"
-
-
-def fuse_box_with(*abilities: str) -> Session:
-    session = Session(Campaign(1), NeutralSelector())
-    clear_encounter(session)
-    session.campaign.world.unlocked = list(abilities)
-    return session
 
 
 def test_menu_equips_the_picked_power_and_reports_the_action() -> None:

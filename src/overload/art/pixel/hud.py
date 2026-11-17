@@ -61,7 +61,7 @@ RARITY_SHORT = {
     ("arc_trail", "epic"): "STORM",
     ("arc_trail", "legendary"): "RING",
     ("shock_cone", "epic"): "FAN",
-    ("shock_cone", "legendary"): "CHAIN",
+    ("shock_cone", "legendary"): "ARCS",  # not CHAIN, Spark's evolution
 }
 
 

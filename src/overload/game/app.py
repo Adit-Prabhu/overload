@@ -173,6 +173,8 @@ def fuse_box_frame(
     for key in keys:
         action = menu.press(session, key)
         if action is None:
+            if key == "fuse" and menu.last_result == "pick":
+                sounds.append("deny")  # nothing to fuse or reroll
             continue
         recording.fuse_box(*action)
         if action[0] == "equip":

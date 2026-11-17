@@ -605,12 +605,14 @@ class PixelView:
         ]
 
         for trail in world.trails:
+            storm = trail.width > tuning.trail_width  # Storm Step and Thunderhead
             effects.arc_trail(
                 screen,
                 self.glow.layer,
                 v(trail.x1, trail.y1),
                 v(trail.x2, trail.y2),
-                trail.ttl / tuning.trail_ttl,
+                trail.ttl / (tuning.storm_trail_ttl if storm else tuning.trail_ttl),
+                storm,
             )
         for hostile in world.hostiles:
             if hostile.kind == "relay" and hostile.phase == "blink":

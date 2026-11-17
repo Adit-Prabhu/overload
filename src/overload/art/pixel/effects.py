@@ -361,9 +361,16 @@ def charge(target: pygame.Surface, light: pygame.Surface, pos: Point, power: str
 
 
 def arc_trail(
-    target: pygame.Surface, light: pygame.Surface, start: Point, end: Point, life: float
+    target: pygame.Surface,
+    light: pygame.Surface,
+    start: Point,
+    end: Point,
+    life: float,
+    storm: bool = False,
 ) -> None:
-    """Spark + Blink fusion: a jagged spark line strung between two Blink diamonds."""
+    """Spark + Blink fusion: a jagged spark line strung between two Blink diamonds. A storm
+    trail (Storm Step, Thunderhead) is wider: a second bolt runs zigzag against the first,
+    so the epic's step shows by shape."""
     if life <= 0:
         return
     sx, sy = start
@@ -377,7 +384,15 @@ def arc_trail(
         offset = 0 if i in (0, steps) else (3 if i % 2 else -3)
         points.append((round(sx + dx * f + nx * offset), round(sy + dy * f + ny * offset)))
     diamond = render(_DIAMOND, LEGEND, outline=None)
+    # The storm's second bolt: each point mirrored across the straight line.
+    straight = [(sx + dx * i / steps, sy + dy * i / steps) for i in range(steps + 1)]
+    twin = [
+        (round(2 * bx - px), round(2 * by - py))
+        for (bx, by), (px, py) in zip(straight, points, strict=True)
+    ]
     for surface in (target, light):
+        if storm:
+            pygame.draw.lines(surface, rgb("power.spark"), False, twin, 1)
         pygame.draw.lines(surface, rgb("power.spark"), False, points, 2)
         pygame.draw.lines(surface, rgb("px.spark.light"), False, points, 1)
         _blit_center(surface, diamond, start)

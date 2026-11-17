@@ -255,8 +255,8 @@ _COS40 = 0.766044443118978
 _SIN40 = 0.6427876096865393
 
 
-def _fan(ax: float, ay: float, wide: bool) -> list[tuple[float, float]]:
-    turns = [(_COS20, _SIN20)] + ([(_COS40, _SIN40)] if wide else [])
+def _fan(ax: float, ay: float, five: bool) -> list[tuple[float, float]]:
+    turns = [(_COS20, _SIN20)] + ([(_COS40, _SIN40)] if five else [])
     directions = [(ax, ay)]
     for c, s in turns:
         directions.append((ax * c - ay * s, ax * s + ay * c))
@@ -315,7 +315,7 @@ def _burst(world: World, tuning: Tuning, arena: Arena, rarity: str = "") -> None
     if shock:
         # The outer pair of a five-spark fan (the 40 degree ones) hits lighter, and only the
         # inner three of Overcurrent's chain.
-        for i, direction in enumerate(_fan(ax, ay, wide=rarity != "rare")):
+        for i, direction in enumerate(_fan(ax, ay, five=rarity != "rare")):
             damage = tuning.fan_spark_damage if i >= 3 else None
             arc = "overcurrent" if rarity == "legendary" and i < 3 else ""
             _spark(world, tuning, arena, direction, arc, damage)
@@ -434,8 +434,9 @@ def tick_trails(world: World, tuning: Tuning) -> None:
         trail.ttl -= 1
         if trail.ttl % tuning.trail_interval == 0:
             a, b = (trail.x1, trail.y1), (trail.x2, trail.y2)
+            width = trail.width or tuning.trail_width
             for hostile in world.hostiles:
-                reach = hostile.radius + trail.width
+                reach = hostile.radius + width
                 if hostile.health > 0 and segment_distance_sq((hostile.x, hostile.y), a, b) < (
                     reach * reach
                 ):
@@ -443,7 +444,7 @@ def tick_trails(world: World, tuning: Tuning) -> None:
                     world.events.append(Event("hostile_hit", hostile.x, hostile.y, hostile.id))
             rival = world.rival
             if rival is not None and rival.health > 0:
-                reach = rival.radius + trail.width
+                reach = rival.radius + width
                 if segment_distance_sq((rival.x, rival.y), a, b) < reach * reach:
                     damage_rival(world, tuning.trail_damage, rival.x, rival.y)
         if trail.ttl > 0:
