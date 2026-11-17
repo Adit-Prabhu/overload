@@ -30,6 +30,7 @@ GDF v2.1 Sections 5.1/5.2 and Gate 1 read. Required live deployed model behavior
 | Nov 16, 2026 | Asset source: original code-authored pixel art, with free CC0 packs as the fallback if it did not look good. CC0 packs were evaluated (0x72 Robot Tileset is side-view, Kenney roguelike packs are fantasy and village themed) and none fit a top-down industrial setting | Adit chose the rule, the assistant ran the comparison |
 | Nov 16, 2026 | Pixel style frame round 2 approved ("much much better"). Make it playable | Adit |
 | Nov 16, 2026 | D6: the rival service calls Gemini on Vertex AI with the course credits, through a service account key held as a Cloudflare Worker secret. Resolves OQ2 pending deployment | Adit |
+| Nov 16, 2026 | D4 code-composed synth soundtrack. D5 protocol shown by pose, sound sting and icon at encounter start, no text. D7 fallback line "Grid link unstable. Regulator running default protocol." Banner labels "SHORT CIRCUIT" and "SECTOR CLEAR" kept | Adit |
 
 ## Differences from the Initial documents
 | Initial document says | Implementation uses | Reason |
