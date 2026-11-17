@@ -112,7 +112,7 @@ def items() -> list[tuple[str, Draw]]:
         ("drum", tiles.drum()),
     ):
         entries.append((name, centered(image)))
-    for power in ("spark", "blink", "burst"):
+    for power in ("spark", "blink", "arc_trail", "burst"):
         entries.append((f"{power} charge", centered(effects.charge_icon(power))))
     for protocol in ("clamp", "insulate", "oscillate"):
         entries.append((f"{protocol} icon", centered(effects.protocol_icon(protocol))))
@@ -122,7 +122,9 @@ def items() -> list[tuple[str, Draw]]:
 
     entries += [
         ("hostile bolt", centered(effects.hostile_bolt())),
+        ("orb", centered(pygame.transform.scale_by(effects.hostile_bolt(), 2))),
         ("player shot", lambda t, c: effects.player_shot(t, scratch(), c, 0.0)),
+        ("spark shot", lambda t, c: effects.spark_shot(t, scratch(), c, 0.0)),
         (
             "arc trail",
             lambda t, c: effects.arc_trail(

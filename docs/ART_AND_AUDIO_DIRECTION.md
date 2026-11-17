@@ -132,12 +132,12 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | ID | Asset | Look | Motion and tells | Pri | Status |
 | --- | --- | --- | --- | --- | --- |
 | CH-01 | Surge | Lineworker: white hard hat with a headlamp and reflective band, goggles, teal jacket with a reflective strip, utility belt, battery pack with two power sockets, siphon glove, spark caster | 2-frame idle, 4-frame walk, dodge ghosts, hit flicker, headlamp light follows the aim | P0 | Done |
-| CH-02 | Regulator | Orange machine with a big gauge face, ceramic insulator shoulders, vents, status lights, hazard-striped hip, treads. The needle tracks the Surge | Pose per protocol, protocol boot cue | P0 | Done (poses), boot cue pending |
-| CH-02a | Clamp protocol | Pincers forward | Lunge with a filling tell, then recovery | P0 | Pose done |
-| CH-02b | Insulate protocol | Hatched shield plates on both sides | Backs off, lays hatched hazard tiles, slow orbs | P0 | Pose done |
-| CH-02c | Oscillate protocol | Side thruster fins | Strafes, fins flash before a volley | P0 | Pose done |
+| CH-02 | Regulator | Orange machine with a big gauge face, ceramic insulator shoulders, vents, status lights, hazard-striped hip, treads. The needle tracks the Surge | Pose per protocol, protocol boot cue | P0 | Done (poses and boot cue: shield ring, protocol icon and sting) |
+| CH-02a | Clamp protocol | Pincers forward | Lunge with a filling tell, then recovery | P0 | Done |
+| CH-02b | Insulate protocol | Hatched shield plates on both sides | Backs off, lays hatched hazard tiles, slow orbs | P0 | Done |
+| CH-02c | Oscillate protocol | Side thruster fins | Strafes, fins flash before a volley | P0 | Done (the volley tell is the aim line and ring, fins do not flash yet) |
 | CH-03 | Arc Mite | Beetle machine with a shiny shell, a glowing bolt core, a sparking antenna, one eye, jointed legs | Legs cycle, faster while charging. Dotted aim line and filling ring for 0.45 s, then a spiked bolt | P0 | Done |
-| CH-04 | Relay | Boxy machine with a lever switch, visor eyes, a diamond core window, a status light, treads | Lever flips. A hatched landing diamond shows 0.5 s before it blinks | P0 | Drawn, behavior in task 9 |
+| CH-04 | Relay | Boxy machine with a lever switch, visor eyes, a diamond core window, a status light, treads | Lever flips. A hatched landing diamond shows 0.5 s before it blinks | P0 | Done (the lever does not flip yet) |
 | CH-05 | Coil | Coil-spring machine with a ring core | Coils tighten, then a shockwave | P2 | Not started |
 
 ### Abilities
@@ -145,8 +145,8 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | --- | --- | --- | --- | --- |
 | AB-01 | Gun shot | Small white streak with glow | P0 | Done |
 | AB-02 | Dodge | Fading white ghosts of the Surge | P0 | Done |
-| AB-03 | Spark | Bolt projectile | P0 | Symbol done, effect in task 8 |
-| AB-04 | Blink | Diamond at departure and arrival | P0 | Diamond done |
+| AB-03 | Spark | Bolt projectile | P0 | Done |
+| AB-04 | Blink | Diamond at departure and arrival | P0 | Done |
 | AB-05 | Arc Trail | Bolt line between two Blink diamonds | P0 | Done |
 | AB-06 to 08 | Burst, Shock Cone, evolutions | Ring-based effects | P2 | Not started |
 
@@ -154,7 +154,7 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | ID | Asset | Pri | Status |
 | --- | --- | --- | --- |
 | PK-01 | Charges (bolt, diamond, ring) that float and glow | P0 | Done |
-| PK-02, PK-03 | Unlock and fusion flashes | P0 | Task 8 |
+| PK-02, PK-03 | Unlock and fusion flashes | P0 | Unlock flash and notice done. Fusion is shown in the Fuse Box menu, no flash yet |
 | TL-01 | Aim tell (dotted line, filling ring of dots) | P0 | Done |
 | TL-02 | Relay landing diamond (hatched) | P0 | Done |
 | TL-03 | Hazard tile (hatching fills over the tell) | P0 | Done |
@@ -170,7 +170,7 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | EN-05 | Props: transformer, switchgear cabinet, insulator stack, cable reel, crate, oil drum | P0 | Done |
 | EN-06 | Stenciled signage on walls and floors | P0 | Done |
 | EN-07 | Blackout lighting: lamp and overhead pools, headlamp, glow | P0 | Done |
-| EN-08 | Fuse Box room | P0 | Task 8 |
+| EN-08 | Fuse Box room | P0 | Fuse Box menu screen done over the dimmed room. A separate room is not drawn |
 | EN-09 | Lighting states per encounter (standby, rising, overload) | P1 | Not started |
 
 ### UI and HUD
@@ -181,7 +181,7 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | UI-03 | Regulator bar with protocol icon, top center | P0 | Done |
 | UI-04 | Pixel reticle | P0 | Done |
 | UI-05 | Banners ("SHORT CIRCUIT", "SECTOR CLEAR") with the build stamp | P0 | Done, labels approved |
-| UI-06 | Fuse Box link status message | P0 | Task 5 |
+| UI-06 | Fuse Box link status message | P0 | Done (decision D7, live condition only) |
 | UI-07 | Title screen and wordmark | P1 | Not started |
 | UI-08 | Settings (volume, screen shake, flash reduction) | P1 | Not started |
 | UI-10 | Font: Silkscreen (SIL OFL 1.1), native 8 px | P0 | Done |
