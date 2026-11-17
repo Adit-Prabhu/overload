@@ -14,6 +14,8 @@ class InputFrame:
     fire: bool = False
     dodge: bool = False
     restart: bool = False
+    power_q: bool = False
+    power_e: bool = False
 
     def __post_init__(self) -> None:
         if self.move_x not in (-1, 0, 1) or self.move_y not in (-1, 0, 1):
@@ -28,12 +30,16 @@ class InputFrame:
             int(self.fire),
             int(self.dodge),
             int(self.restart),
+            int(self.power_q),
+            int(self.power_e),
         ]
 
     @classmethod
     def from_list(cls, values: list[int]) -> InputFrame:
-        mx, my, ax, ay, fire, dodge, restart = values
-        return cls(mx, my, ax, ay, bool(fire), bool(dodge), bool(restart))
+        mx, my, ax, ay, fire, dodge, restart, power_q, power_e = values
+        return cls(
+            mx, my, ax, ay, bool(fire), bool(dodge), bool(restart), bool(power_q), bool(power_e)
+        )
 
 
 IDLE = InputFrame()

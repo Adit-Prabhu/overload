@@ -18,7 +18,8 @@ from overload.sim.run import Run
 from overload.sim.tuning import DEFAULT, Tuning
 
 FORMAT = "overload-replay"
-VERSION = 3
+VERSION = 4
+MENU_OPS = ("equip", "fuse")
 
 
 @dataclass
@@ -31,11 +32,17 @@ class Recording:
     mode: str = "practice"
     protocols: list[str] = field(default_factory=list)  # one per encounter, in order
     starts: list[int] = field(default_factory=list)  # frame index of each begin_next
+    menu: list[list] = field(default_factory=list)  # [frame index, op, arg, arg] Fuse Box actions
 
     def begin_next(self, protocol: str) -> None:
         """Note that the next encounter starts here, before the next recorded frame."""
         self.protocols.append(protocol)
         self.starts.append(len(self.frames))
+
+    def fuse_box(self, op: str, a: int | str, b: str) -> None:
+        """Note a Fuse Box action (equip slot ability, or fuse power power) made here. Menu
+        actions at a frame index happen before an encounter start at the same index."""
+        self.menu.append([len(self.frames), op, a, b])
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -49,6 +56,7 @@ class Recording:
             "mode": self.mode,
             "protocols": self.protocols,
             "starts": self.starts,
+            "menu": self.menu,
             "frames": [frame.to_list() for frame in self.frames],
         }
         path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
@@ -67,6 +75,7 @@ class Recording:
             mode=payload["mode"],
             protocols=list(payload["protocols"]),
             starts=list(payload["starts"]),
+            menu=[list(entry) for entry in payload["menu"]],
         )
 
 
@@ -83,6 +92,38 @@ def check_campaign(recording: Recording) -> None:
         raise ValueError("encounter starts must be positive and strictly increasing")
     if recording.starts and recording.starts[-1] > len(recording.frames):
         raise ValueError("an encounter start lies beyond the recorded frames")
+    previous = 0
+    for entry in recording.menu:
+        if (
+            not isinstance(entry, list)
+            or len(entry) != 4
+            or not isinstance(entry[0], int)
+            or entry[1] not in MENU_OPS
+        ):
+            raise ValueError(f"malformed Fuse Box action {entry!r}")
+        if not previous <= entry[0] <= len(recording.frames):
+            raise ValueError("Fuse Box actions must be in order and within the recorded frames")
+        previous = entry[0]
+
+
+def menu_by_frame(recording: Recording) -> dict[int, list[list]]:
+    grouped: dict[int, list[list]] = {}
+    for entry in recording.menu:
+        grouped.setdefault(entry[0], []).append(entry)
+    return grouped
+
+
+def apply_menu(campaign: Campaign, entry: list) -> None:
+    """Replay one Fuse Box action. Invalid choices replay as the same harmless no-op they
+    were when recorded. An action outside the Fuse Box means the recording is corrupt."""
+    index, op, a, b = entry
+    try:
+        if op == "equip":
+            campaign.equip(int(a), str(b))
+        else:
+            campaign.fuse(str(a), str(b))
+    except RuntimeError as error:
+        raise ValueError(f"Fuse Box action at tick {index} outside the Fuse Box") from error
 
 
 def play(
@@ -106,7 +147,10 @@ def play(
     check_campaign(recording)
     campaign = Campaign(recording.seed, tuning, arena)
     starts = dict(zip(recording.starts, recording.protocols[1:], strict=True))
+    menu = menu_by_frame(recording)
     for index in range(len(recording.frames) + 1):
+        for action in menu.get(index, []):
+            apply_menu(campaign, action)
         if index in starts:
             try:
                 campaign.begin_next(starts[index])

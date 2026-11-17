@@ -24,6 +24,8 @@ class Player:
     dodge_dx: float = 0.0
     dodge_dy: float = 0.0
     invulnerable: int = 0
+    slots: list[str] = field(default_factory=lambda: ["", ""])  # Q and E, "" when empty
+    cooldowns: dict[str, int] = field(default_factory=dict)  # per ability, in ticks
 
     @property
     def dodging(self) -> bool:
@@ -45,6 +47,7 @@ class Projectile:
     damage: int
     hostile: bool
     ttl: int
+    kind: str = "shot"  # shot, spark, bolt or orb
 
 
 @dataclass(slots=True)
@@ -59,6 +62,9 @@ class Hostile:
     fire_timer: int
     tell_dx: float = 0.0
     tell_dy: float = 0.0
+    phase: str = ""  # Relay: "", "blink" (landing marker showing) or "aim"
+    dest_x: float = 0.0
+    dest_y: float = 0.0
 
 
 @dataclass(slots=True)
@@ -94,6 +100,28 @@ class Hazard:
 
 
 @dataclass(slots=True)
+class Charge:
+    """A power charge that broke loose from a destroyed machine, waiting to be absorbed."""
+
+    id: int
+    kind: str
+    x: float
+    y: float
+
+
+@dataclass(slots=True)
+class Trail:
+    """Arc Trail: an electric line from the blink's departure to its arrival."""
+
+    id: int
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    ttl: int
+
+
+@dataclass(slots=True)
 class Event:
     """Something that happened this tick, for rendering, audio and traces. Not hashed."""
 
@@ -116,6 +144,10 @@ class World:
     rival: Rival | None = None
     hazards: list[Hazard] = field(default_factory=list)
     encounter: int = 0
+    charges: list[Charge] = field(default_factory=list)
+    trails: list[Trail] = field(default_factory=list)
+    unlocked: list[str] = field(default_factory=list)  # abilities, in unlock order
+    fragments: dict[str, int] = field(default_factory=dict)  # charges absorbed per power
     events: list[Event] = field(default_factory=list)
 
     def new_id(self) -> int:
@@ -138,6 +170,10 @@ def state_hash(world: World) -> str:
         "rival": asdict(world.rival) if world.rival else None,
         "hazards": [asdict(h) for h in world.hazards],
         "encounter": world.encounter,
+        "charges": [asdict(c) for c in world.charges],
+        "trails": [asdict(t) for t in world.trails],
+        "unlocked": world.unlocked,
+        "fragments": world.fragments,
         "rng": rng_state,
     }
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))

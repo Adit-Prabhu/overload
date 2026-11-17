@@ -1,10 +1,12 @@
 """The rules: one fixed tick of the authoritative world.
 
 Order inside a tick (fixed, so outcomes are deterministic):
-1. aim, 2. dodge start, 3. player movement, 4. firing, 5. hostiles (tells and bolts),
-6. the Regulator (boot, protocol behavior), 7. hazard tiles, 8. projectile movement,
-9. hits, 10. timers, 11. outcome (player down takes precedence over clearing the room in the
-same tick), 12. tick counter.
+1. aim, 2. dodge start, 3. player movement, 4. firing, 5. powers (Q then E), 6. hostiles
+(tells, Relay blinks, bolts), 7. the Regulator (boot, protocol behavior), 8. hazard tiles,
+9. projectile movement, 10. Arc Trail pulses, 11. hits (destroyed machines drop charges),
+12. absorbing charges, 13. timers and cooldowns, 14. outcome (player down takes precedence
+over clearing the room in the same tick, and a win absorbs every charge left), 15. tick
+counter.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from __future__ import annotations
 import random
 
 from overload.sim.arena import SUBSTATION, Arena
+from overload.sim.damage import damage_rival
 from overload.sim.geometry import (
     circle_hits_rect,
     circles_overlap,
@@ -22,6 +25,13 @@ from overload.sim.geometry import (
     push_out_of_rect,
 )
 from overload.sim.inputs import InputFrame
+from overload.sim.powers import (
+    absorb_charges,
+    drop_charge,
+    tick_cooldowns,
+    tick_trails,
+    use_powers,
+)
 from overload.sim.state import Event, Hazard, Hostile, Player, Projectile, Rival, World
 from overload.sim.tuning import DEFAULT, Tuning
 
@@ -55,6 +65,21 @@ def spawn_arc_mite(world: World, x: float, y: float, tuning: Tuning = DEFAULT) -
     return hostile
 
 
+def spawn_relay(world: World, x: float, y: float, tuning: Tuning = DEFAULT) -> Hostile:
+    hostile = Hostile(
+        id=world.new_id(),
+        kind="relay",
+        x=x,
+        y=y,
+        radius=tuning.relay_radius,
+        health=tuning.relay_health,
+        max_health=tuning.relay_health,
+        fire_timer=tuning.relay_idle + world.rng.randrange(tuning.relay_idle),
+    )
+    world.hostiles.append(hostile)
+    return hostile
+
+
 def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena = SUBSTATION):
     """Advance one tick. A finished world (down or clear) does not change."""
     world.events.clear()
@@ -64,22 +89,33 @@ def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena =
     _dodge(world, inp, tuning)
     _move_player(world.player, inp, tuning, arena)
     _fire(world, inp, tuning)
-    _hostiles(world, tuning)
+    use_powers(world, inp, tuning, arena)
+    _hostiles(world, tuning, arena)
     _rival(world, tuning, arena)
     _hazards(world, tuning)
     _move_projectiles(world, arena)
+    tick_trails(world, tuning)
     _hits(world, tuning)
+    absorb_charges(world, tuning)
     _timers(world.player)
-    _outcome(world)
+    tick_cooldowns(world)
+    _outcome(world, tuning)
     world.tick += 1
 
 
 def telegraphing(hostile: Hostile, tuning: Tuning = DEFAULT) -> bool:
+    """True while a shot is being aimed (the dotted line and filling ring)."""
+    if hostile.kind == "relay":
+        return hostile.phase == "aim"
     return 0 < hostile.fire_timer <= tuning.arc_mite_tell
 
 
 def tell_progress(hostile: Hostile, tuning: Tuning = DEFAULT) -> float:
-    """0 when a tell starts, 1 at the moment of firing."""
+    """0 when a tell starts, 1 at the moment of firing (or, for a Relay's landing marker,
+    of arriving)."""
+    if hostile.kind == "relay":
+        total = {"aim": tuning.relay_aim_tell, "blink": tuning.relay_blink_tell}.get(hostile.phase)
+        return 1.0 - hostile.fire_timer / total if total else 0.0
     if not telegraphing(hostile, tuning):
         return 0.0
     return 1.0 - hostile.fire_timer / tuning.arc_mite_tell
@@ -135,9 +171,12 @@ def _fire(world: World, inp: InputFrame, tuning: Tuning) -> None:
     world.events.append(Event("shot", player.x, player.y))
 
 
-def _hostiles(world: World, tuning: Tuning) -> None:
+def _hostiles(world: World, tuning: Tuning, arena: Arena) -> None:
     player = world.player
     for hostile in world.hostiles:
+        if hostile.kind == "relay":
+            _relay(world, hostile, tuning, arena)
+            continue
         hostile.fire_timer -= 1
         if hostile.fire_timer == tuning.arc_mite_tell:
             dx, dy = normalize(player.x - hostile.x, player.y - hostile.y)
@@ -156,10 +195,75 @@ def _hostiles(world: World, tuning: Tuning) -> None:
                     damage=tuning.bolt_damage,
                     hostile=True,
                     ttl=tuning.bolt_ttl,
+                    kind="bolt",
                 )
             )
             hostile.fire_timer = tuning.arc_mite_fire_interval
             world.events.append(Event("bolt", hostile.x, hostile.y, hostile.id))
+
+
+# Eight hop directions for the Relay (unit vectors, exact constants, no runtime trig).
+_DIAG = 0.7071067811865476
+_HOPS = (
+    (1.0, 0.0),
+    (_DIAG, _DIAG),
+    (0.0, 1.0),
+    (-_DIAG, _DIAG),
+    (-1.0, 0.0),
+    (-_DIAG, -_DIAG),
+    (0.0, -1.0),
+    (_DIAG, -_DIAG),
+)
+
+
+def _relay(world: World, relay: Hostile, tuning: Tuning, arena: Arena) -> None:
+    """Idle, then mark a landing spot (0.5 s), blink there, aim (0.5 s) and fire one bolt."""
+    player = world.player
+    relay.fire_timer -= 1
+    if relay.fire_timer > 0:
+        return
+    if relay.phase == "":
+        start = world.rng.randrange(len(_HOPS))
+        distance = tuning.relay_hop_min + world.rng.random() * (
+            tuning.relay_hop_max - tuning.relay_hop_min
+        )
+        relay.dest_x, relay.dest_y = relay.x, relay.y
+        for i in range(len(_HOPS)):
+            hx, hy = _HOPS[(start + i) % len(_HOPS)]
+            spot = (relay.x + hx * distance, relay.y + hy * distance)
+            if not outside_bounds(spot, relay.radius, arena.bounds) and not any(
+                circle_hits_rect(spot, relay.radius, rect) for rect in arena.obstacles
+            ):
+                relay.dest_x, relay.dest_y = spot
+                break
+        relay.phase, relay.fire_timer = "blink", tuning.relay_blink_tell
+        world.events.append(Event("relay_mark", relay.dest_x, relay.dest_y, relay.id))
+    elif relay.phase == "blink":
+        world.events.append(Event("relay_from", relay.x, relay.y, relay.id))
+        relay.x, relay.y = relay.dest_x, relay.dest_y
+        dx, dy = normalize(player.x - relay.x, player.y - relay.y)
+        relay.tell_dx, relay.tell_dy = (dx, dy) if (dx or dy) else (1.0, 0.0)
+        relay.phase, relay.fire_timer = "aim", tuning.relay_aim_tell
+        world.events.append(Event("relay_blink", relay.x, relay.y, relay.id))
+        world.events.append(Event("tell", relay.x, relay.y, relay.id))
+    else:
+        offset = relay.radius + tuning.bolt_radius + 1.0
+        world.projectiles.append(
+            Projectile(
+                id=world.new_id(),
+                x=relay.x + relay.tell_dx * offset,
+                y=relay.y + relay.tell_dy * offset,
+                vx=relay.tell_dx * tuning.bolt_speed,
+                vy=relay.tell_dy * tuning.bolt_speed,
+                radius=tuning.bolt_radius,
+                damage=tuning.bolt_damage,
+                hostile=True,
+                ttl=tuning.bolt_ttl,
+                kind="bolt",
+            )
+        )
+        relay.phase, relay.fire_timer = "", tuning.relay_idle
+        world.events.append(Event("bolt", relay.x, relay.y, relay.id))
 
 
 def _move_projectiles(world: World, arena: Arena) -> None:
@@ -197,13 +301,7 @@ def _hits(world: World, tuning: Tuning) -> None:
                 and rival.health > 0
                 and circles_overlap(center, shot.radius, (rival.x, rival.y), rival.radius)
             ):
-                if rival.boot > 0:
-                    world.events.append(Event("rival_shielded", shot.x, shot.y))
-                else:
-                    rival.health -= shot.damage
-                    world.events.append(Event("rival_hit", rival.x, rival.y))
-                    if rival.health <= 0:
-                        world.events.append(Event("rival_destroyed", rival.x, rival.y))
+                damage_rival(world, shot.damage, shot.x, shot.y)
                 continue
             target = next(
                 (
@@ -222,6 +320,7 @@ def _hits(world: World, tuning: Tuning) -> None:
     for hostile in world.hostiles:
         if hostile.health <= 0:
             world.events.append(Event("hostile_destroyed", hostile.x, hostile.y, hostile.id))
+            drop_charge(world, hostile.kind, hostile.x, hostile.y)
     world.hostiles = [h for h in world.hostiles if h.health > 0]
 
 
@@ -232,15 +331,16 @@ def _timers(player: Player) -> None:
     player.invulnerable = max(0, player.invulnerable - 1)
 
 
-def _outcome(world: World) -> None:
+def _outcome(world: World, tuning: Tuning) -> None:
     """Going down takes precedence. With a Regulator present, beating it clears the encounter.
-    Without one (practice), clearing every hostile does."""
+    Without one (practice), clearing every hostile does. A win absorbs every charge left."""
     rival_beaten = world.rival is not None and world.rival.health <= 0
     if world.player.charge <= 0:
         world.outcome = "down"
         world.events.append(Event("player_down", world.player.x, world.player.y))
     elif rival_beaten or (world.rival is None and not world.hostiles):
         world.outcome = "clear"
+        absorb_charges(world, tuning, everything=True)
         world.events.append(Event("clear"))
 
 
@@ -334,6 +434,7 @@ def _rival_shoot(
             damage=tuning.bolt_damage,
             hostile=True,
             ttl=ttl,
+            kind="orb" if radius > tuning.bolt_radius else "bolt",
         )
     )
 

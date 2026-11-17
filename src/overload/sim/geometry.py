@@ -70,3 +70,14 @@ def outside_bounds(center: Point, radius: float, bounds: Rect) -> bool:
     x, y, w, h = bounds
     cx, cy = center
     return cx - radius < x or cx + radius > x + w or cy - radius < y or cy + radius > y + h
+
+
+def segment_distance_sq(point: Point, a: Point, b: Point) -> float:
+    """Squared distance from `point` to the segment a-b."""
+    ax, ay = a
+    dx, dy = b[0] - ax, b[1] - ay
+    px, py = point[0] - ax, point[1] - ay
+    span = dx * dx + dy * dy
+    t = 0.0 if span == 0.0 else min(1.0, max(0.0, (px * dx + py * dy) / span))
+    ex, ey = px - t * dx, py - t * dy
+    return ex * ex + ey * ey

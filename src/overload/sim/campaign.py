@@ -13,23 +13,36 @@ import copy
 import hashlib
 import json
 import random
+from dataclasses import asdict
 from typing import Literal
 
 from overload.sim.arena import SUBSTATION, Arena
 from overload.sim.inputs import InputFrame
+from overload.sim.powers import Kit, equip, fuse
 from overload.sim.state import Player, World, state_hash
 from overload.sim.tuning import DEFAULT, Tuning
-from overload.sim.world import PROTOCOLS, spawn_arc_mite, spawn_rival, step
+from overload.sim.world import PROTOCOLS, spawn_arc_mite, spawn_relay, spawn_rival, step
 
 ENCOUNTERS = 3
 NEUTRAL = "lateral"
 Stage = Literal["encounter", "fuse_box", "ending"]
 
 
+# Which machines each encounter brings. Arc Mites carry Spark, Relays carry Blink, so the
+# Surge can unlock both by encounter 2 and fuse Arc Trail before encounter 3.
+ROSTER = {1: ("arc_mite", "arc_mite"), 2: ("arc_mite", "relay"), 3: ("relay", "arc_mite")}
+
+
 def encounter_world(
-    seed: int, encounter: int, protocol: str, tuning: Tuning = DEFAULT, arena: Arena = SUBSTATION
+    seed: int,
+    encounter: int,
+    protocol: str,
+    tuning: Tuning = DEFAULT,
+    arena: Arena = SUBSTATION,
+    kit: Kit | None = None,
 ) -> World:
-    """A fresh fight: full charge, the Regulator in its frozen protocol, two Arc Mites."""
+    """A fresh fight: full charge, the carried kit, the Regulator in its frozen protocol and
+    the encounter's machines."""
     world_seed = seed * 10 + encounter
     sx, sy = arena.player_spawn
     world = World(
@@ -38,10 +51,14 @@ def encounter_world(
         player=Player(x=sx, y=sy, charge=tuning.player_max_charge),
         encounter=encounter,
     )
+    (kit or Kit()).apply(world)
     rx, ry = arena.rival_spawn
     spawn_rival(world, rx, ry, protocol, tuning)
-    for x, y in arena.practice_spawns:
-        spawn_arc_mite(world, x, y, tuning)
+    for kind, (x, y) in zip(ROSTER[encounter], arena.practice_spawns, strict=True):
+        if kind == "relay":
+            spawn_relay(world, x, y, tuning)
+        else:
+            spawn_arc_mite(world, x, y, tuning)
     return world
 
 
@@ -54,7 +71,8 @@ class Campaign:
         self.stage: Stage = "encounter"
         self.protocols: dict[int, str] = {1: NEUTRAL}
         self.retries: dict[int, int] = {1: 0}
-        self.world = encounter_world(seed, 1, NEUTRAL, tuning, arena)
+        self.kit = Kit()
+        self.world = encounter_world(seed, 1, NEUTRAL, tuning, arena, self.kit)
         self.checkpoint = copy.deepcopy(self.world)
 
     def step(self, inp: InputFrame) -> None:
@@ -69,7 +87,22 @@ class Campaign:
             return
         step(self.world, inp, self.tuning, self.arena)
         if self.world.outcome == "clear":
+            self.kit = Kit.from_world(self.world)
             self.stage = "fuse_box" if self.encounter < ENCOUNTERS else "ending"
+
+    def equip(self, slot: int, ability: str) -> bool:
+        """Fuse Box: put an unlocked ability in slot 0 (Q) or 1 (E)."""
+        self._require_fuse_box()
+        return equip(self.kit, slot, ability)
+
+    def fuse(self, a: str, b: str) -> str:
+        """Fuse Box: fuse two base powers. See powers.fuse for the result codes."""
+        self._require_fuse_box()
+        return fuse(self.kit, a, b)
+
+    def _require_fuse_box(self) -> None:
+        if self.stage != "fuse_box":
+            raise RuntimeError(f"the Fuse Box is not open (stage {self.stage})")
 
     def begin_next(self, protocol: str) -> None:
         """Leave the Fuse Box and start the next encounter in `protocol`, frozen from now on."""
@@ -80,7 +113,9 @@ class Campaign:
         self.encounter += 1
         self.protocols[self.encounter] = protocol
         self.retries[self.encounter] = 0
-        self.world = encounter_world(self.seed, self.encounter, protocol, self.tuning, self.arena)
+        self.world = encounter_world(
+            self.seed, self.encounter, protocol, self.tuning, self.arena, self.kit
+        )
         self.checkpoint = copy.deepcopy(self.world)
         self.stage = "encounter"
 
@@ -92,6 +127,7 @@ class Campaign:
                 "encounter": self.encounter,
                 "protocols": self.protocols,
                 "retries": self.retries,
+                "kit": asdict(self.kit),
             },
             sort_keys=True,
             separators=(",", ":"),

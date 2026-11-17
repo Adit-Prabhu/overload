@@ -21,7 +21,7 @@ from overload.sim.tuning import DEFAULT, TICK_RATE, Tuning
 
 
 def scripted_inputs(seed: int, ticks: int) -> list[InputFrame]:
-    """Busy pseudo-random play: moving, aiming around, firing, dodging and retrying."""
+    """Busy pseudo-random play: moving, aiming around, firing, dodging, powers, retrying."""
     rng = random.Random(seed)
     frames = []
     move = (0, 0)
@@ -37,6 +37,8 @@ def scripted_inputs(seed: int, ticks: int) -> list[InputFrame]:
                 fire=rng.random() < 0.7,
                 dodge=rng.random() < 0.02,
                 restart=rng.random() < 0.01,
+                power_q=rng.random() < 0.05,
+                power_e=rng.random() < 0.05,
             )
         )
     return frames
@@ -106,9 +108,9 @@ def test_pinned_hashes_match_across_python_versions() -> None:
     If a deliberate rule or tuning change moves these, update them in the same PR and say so
     in its description. An unexplained change means determinism broke.
     """
-    assert DEFAULT.tuning_id() == "debc5999"
-    assert run_all(21, scripted_inputs(21, 5000)).state_hash() == "bac340fb48a6f965"
-    assert run_all(3, scripted_inputs(9, 1200)).state_hash() == "52748b39379a359b"
+    assert DEFAULT.tuning_id() == "5611ba14"
+    assert run_all(21, scripted_inputs(21, 5000)).state_hash() == "e586ef5b0b639a47"
+    assert run_all(3, scripted_inputs(9, 1200)).state_hash() == "d29ca25e322449cf"
 
 
 @pytest.mark.parametrize(
