@@ -109,3 +109,30 @@ def test_a_corridor_through_decor_is_refused() -> None:
     plan._clear(decor, 0, 0, room, room)  # bare floor is fine
     with pytest.raises(ValueError, match="erase decor"):
         plan._clear(decor, 1, 0, room, room)
+
+
+def test_spawn_points_are_clear_and_away_from_doors() -> None:
+    """Every warp-in tile fits the largest robot and is at least 3 tiles from any door, so
+    nothing appears inside a prop or on top of the Surge as it walks in."""
+    for room in FLOOR.rooms:
+        if room.kind != "combat":
+            continue
+        assert len(room.spawns) == 8, room.id
+        for tx, ty in room.spawns:
+            point = (tx * TILE + TILE / 2, ty * TILE + TILE / 2)
+            assert not blocked(None, FLOOR_ARENA, point, 9.0), (room.id, tx, ty)
+            for door in FLOOR.doors_of(room.id):
+                dx, dy, dw, dh = door.rect
+                gap = max(dx - tx, tx - (dx + dw - 1), dy - ty, ty - (dy + dh - 1), 0)
+                assert gap >= 3, (room.id, (tx, ty), door.id)
+
+
+def test_each_sector_has_its_own_combat_rooms() -> None:
+    from overload.floor import _PLAN
+
+    templates = {sector: set() for sector in (1, 2, 3)}
+    for _, kind, sector, _, template in _PLAN:
+        if kind == "combat":
+            templates[sector].add(template)
+    assert all(len(t) == 2 for t in templates.values())
+    assert len(templates[1] | templates[2] | templates[3]) == 6, "no template is shared"

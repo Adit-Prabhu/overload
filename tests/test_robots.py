@@ -137,3 +137,48 @@ def test_a_sentry_never_starts_inside_its_tell() -> None:
 
     with pytest.raises(ValueError):
         dataclasses.replace(DEFAULT, sentry_interval=90, sentry_tell=48)
+
+
+def test_robots_are_built_for_their_sector() -> None:
+    """Sector 3 fields Overcharged variants: more health, faster walking and shorter rests.
+    Sector 2's Cooled variants keep stock stats (only their colors change). Tells and punish
+    windows never change."""
+    import math
+
+    from overload.sim.spawns import TIER_HEALTH, TIER_REST
+
+    world = encounter_world(1, 1, "lateral")
+    for kind in ATTACKS:
+        stock = spawn_robot(world, kind, 100, 100)
+        for tier in (2, 3):
+            tough = spawn_robot(world, kind, 100, 100, tier=tier)
+            assert tough.tier == tier
+            assert tough.max_health == math.ceil(stock.max_health * TIER_HEALTH[tier])
+            assert tough.max_health >= stock.max_health
+    assert TIER_REST[3] < TIER_REST[2] == TIER_REST[1] == 1.0
+    assert TIER_HEALTH[3] > TIER_HEALTH[2] == 1.0
+
+
+def test_warped_robots_take_the_tier_of_their_room() -> None:
+    from floorbot import enter
+
+    from overload.sim.campaign import Campaign
+
+    for room, tier in (("s1_hall", 1), ("s2_yard", 2), ("s3_core", 3)):
+        campaign = Campaign(1)
+        enter(campaign, room)
+        for _ in range(DEFAULT.warp_tell + 2):
+            campaign.world.player.invulnerable = 10**9
+            campaign.step(IDLE)
+        assert campaign.world.hostiles
+        assert {h.tier for h in campaign.world.hostiles} == {tier}, room
+
+
+def test_a_tougher_robot_keeps_its_tell_length() -> None:
+    world = encounter_world(1, 1, "lateral")
+    world.hostiles.clear()
+    drone = spawn_robot(world, "drone", world.player.x + 60, world.player.y, tier=3)
+    drone.fire_timer = 3
+    for _ in range(4):
+        step(world, IDLE)
+    assert drone.fire_timer > DEFAULT.drone_tell, "a shorter rest, but never a shorter tell"

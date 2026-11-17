@@ -175,7 +175,19 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | EN-06 | Stenciled signage on walls and floors | P0 | Done |
 | EN-07 | Blackout lighting: lamp and overhead pools, headlamp, glow | P0 | Done |
 | EN-08 | Fuse Box room | P0 | Fuse Box menu screen done over the dimmed room. A separate room is not drawn |
-| EN-09 | Lighting states per encounter (standby, rising, overload) | P1 | Not started |
+| EN-09 | Lighting states per encounter (standby, rising, overload) | P1 | Partly done: one light per sector (below) |
+| EN-10 | Sector identity (Nov 17) | P0 | Done, see below |
+
+#### Sector identity (Nov 17)
+Each sector should read as a different part of the station within a second of walking in, without changing the rules.
+
+| Sector | Place | Rooms | Floor | Light | Robots |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Switchyard | Open halls with transformers and a conduit cross | Steel tiles, hazard keep-out paint | Untinted | Stock orange shells |
+| 2 | Cooling plant | Pipe walls that split the room into lanes, a hall of square pillars, drums and crates | Cracked concrete | Cold (`px.tint.2`, multiplied) | Cooled: blue shells (`px.conduit`, Blink cyan), stock stats |
+| 3 | Grid core | Bus bars on lit conduit lines, four pillars around a conduit square, grates | Grates and lit conduits | Hot (`px.tint.3`, multiplied) | Overcharged: violet shells (`px.core`), a little tougher and quicker |
+
+The light eases in over about half a second as the Surge walks into a sector's room. Glow (shots, tells, powers) is drawn after the tint, so danger red and the power colors never shift. Robot recolors swap only the shell ramp: eyes, tells and danger red stay the same in every sector.
 
 ### UI and HUD
 #### HUD layout (Nov 17 redesign)
