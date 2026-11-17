@@ -50,6 +50,11 @@ EVENT_SOUNDS = {
     "rival_destroyed": "regulator_defeated",
     "absorb": "pickup",
     "unlock": "unlock",
+    "shards": "mite_zap",
+    "shell": "orb_fire",
+    "raise": "hazard_fill",
+    "slam": "lunge",
+    "rush": "tread",
     "room_lock": "deny",
     "room_clear": "confirm",
     "warp": "relay_click",
@@ -83,6 +88,11 @@ VISUAL_TWINS = {
     "absorb": "burst in the power color",
     "unlock": "screen flash and a SPARK STOLEN or BLINK STOLEN notice",
     "protocol_boot": "protocol pose, shield ring and protocol icon",
+    "shards": "a fan of three diamond shards",
+    "shell": "a slow heavy round shell",
+    "raise": "the Breaker raises its fists and a dotted ring fills at the slam's reach",
+    "slam": "a dashed shockwave ring runs along the floor",
+    "rush": "the Sweeper's wheels spin fast and it shoots forward",
     "room_lock": "hazard-striped shutters close over the doors and LOCKDOWN",
     "room_clear": "the shutters open and ROOM CLEAR",
     "warp": "a closing ring of red dots where a robot will appear",
@@ -95,7 +105,9 @@ VISUAL_TWINS = {
     "low_health": "two or fewer battery cells left in the HUD",
 }
 STINGS = {"pressure": "sting_clamp", "spacing": "sting_insulate", "lateral": "sting_oscillate"}
-TELLS = {"mite_tell", "hazard_fill", "relay_click"}  # a warp marker uses relay_click too
+# Hostile tells duck the music: aim tells, hazard arming and a Breaker raising its fists
+# (hazard_fill), and warp markers (relay_click).
+TELLS = {"mite_tell", "hazard_fill", "relay_click"}
 STEMS = ("hum", "pulse", "arc", "lead", "fuse_box")
 # Stem levels leave headroom so a full battle mix plus an effect stays out of clipping.
 LEVELS = {"hum": 0.42, "pulse": 0.38, "arc": 0.22, "lead": 0.3, "fuse_box": 0.5}

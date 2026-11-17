@@ -63,7 +63,7 @@ class Hostile:
     fire_timer: int
     tell_dx: float = 0.0
     tell_dy: float = 0.0
-    phase: str = ""  # Relay: "", "blink" (landing marker showing) or "aim"
+    phase: str = ""  # Relay Bot: blink or aim. Breaker: raise or recover. Sweeper: rev, rush, rest
     dest_x: float = 0.0
     dest_y: float = 0.0
 
@@ -123,6 +123,17 @@ class Trail:
 
 
 @dataclass(slots=True)
+class Shockwave:
+    """A Breaker's slam: a ring running along the floor. It hurts once as it passes."""
+
+    id: int
+    x: float
+    y: float
+    radius: float
+    hit: bool
+
+
+@dataclass(slots=True)
 class Warp:
     """A robot about to warp in: the marker shows for the whole timer (the tell)."""
 
@@ -169,6 +180,7 @@ class World:
     wave: int = 0
     cleared: list[str] = field(default_factory=list)
     warps: list[Warp] = field(default_factory=list)
+    shockwaves: list[Shockwave] = field(default_factory=list)
     secret_hits: dict[str, int] = field(default_factory=dict)
     events: list[Event] = field(default_factory=list)
 
@@ -203,6 +215,7 @@ def state_hash(world: World) -> str:
         "wave": world.wave,
         "cleared": world.cleared,
         "warps": [asdict(w) for w in world.warps],
+        "shockwaves": [asdict(s) for s in world.shockwaves],
         "secret_hits": world.secret_hits,
         "rng": rng_state,
     }

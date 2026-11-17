@@ -41,11 +41,11 @@ class Tuning:
     bolt_damage: int = 1
     bolt_ttl: int = 240
 
-    arc_mite_radius: float = 6.0
-    arc_mite_health: int = 6
-    arc_mite_fire_interval: int = 96
-    arc_mite_tell: int = 27
-    arc_mite_recovery: int = 18
+    drone_radius: float = 6.0
+    drone_health: int = 6
+    drone_fire_interval: int = 96
+    drone_tell: int = 27
+    drone_recovery: int = 18
 
     # The Regulator. Every attack has a tell of at least 0.5 s (30 ticks).
     rival_radius: float = 14.0
@@ -104,6 +104,37 @@ class Tuning:
     relay_hop_min: float = 40.0
     relay_hop_max: float = 80.0
     relay_landing_gap: float = 12.0  # never lands this close to the Surge
+    shard_speed: float = 2.0
+    shard_radius: float = 2.5
+
+    # The rest of the roster (overhaul): every robot has its own attack.
+    drone_speed: float = 0.45
+    drone_near: float = 56.0
+    drone_far: float = 110.0
+    breaker_radius: float = 9.0
+    breaker_health: int = 16
+    breaker_speed: float = 0.55
+    breaker_reach: float = 44.0
+    breaker_tell: int = 36
+    breaker_recover: int = 48
+    wave_speed: float = 1.6
+    wave_width: float = 4.0
+    wave_reach: float = 72.0
+    sweeper_radius: float = 5.0
+    sweeper_health: int = 4
+    sweeper_speed: float = 0.9
+    sweeper_trigger: float = 90.0
+    sweeper_tell: int = 30
+    sweeper_rush_speed: float = 3.0
+    sweeper_rush_ticks: int = 22
+    sweeper_rest: int = 50
+    sentry_radius: float = 7.0
+    sentry_health: int = 10
+    sentry_interval: int = 150
+    sentry_tell: int = 48
+    shell_speed: float = 1.2
+    shell_radius: float = 3.5
+    shell_ttl: int = 300
 
     # Rooms (overhaul): robots warp in after a visible marker, secret walls crack open.
     warp_tell: int = 36
@@ -111,14 +142,14 @@ class Tuning:
 
     def __post_init__(self) -> None:
         """Reject values that would break readability rules or the tell logic."""
-        if self.arc_mite_tell < 0.40 * TICK_RATE:
-            raise ValueError("Arc Mite tell must last at least 0.40 s")
-        if self.arc_mite_recovery < 0.25 * TICK_RATE:
-            raise ValueError("Arc Mite recovery must last at least 0.25 s")
-        if self.arc_mite_fire_interval - self.arc_mite_tell < self.arc_mite_recovery:
-            raise ValueError("Arc Mite fire interval leaves no room for recovery")
-        if self.arc_mite_fire_interval // 2 <= self.arc_mite_tell:
-            raise ValueError("Arc Mite first shot could start inside its tell window")
+        if self.drone_tell < 0.40 * TICK_RATE:
+            raise ValueError("Arc Drone tell must last at least 0.40 s")
+        if self.drone_recovery < 0.25 * TICK_RATE:
+            raise ValueError("Arc Drone recovery must last at least 0.25 s")
+        if self.drone_fire_interval - self.drone_tell < self.drone_recovery:
+            raise ValueError("Arc Drone fire interval leaves no room for recovery")
+        if self.drone_fire_interval // 2 <= self.drone_tell:
+            raise ValueError("Arc Drone first shot could start inside its tell window")
         for name in ("clamp_tell", "insulate_hazard_tell", "insulate_orb_tell", "oscillate_tell"):
             if getattr(self, name) < 0.50 * TICK_RATE:
                 raise ValueError(f"{name}: Regulator tells must last at least 0.50 s")
@@ -135,6 +166,13 @@ class Tuning:
             raise ValueError("Relay tells are below the readability minimums")
         if self.warp_tell < 0.50 * TICK_RATE:
             raise ValueError("Robots must show their warp marker for at least 0.50 s")
+        for name in ("breaker_tell", "sweeper_tell", "sentry_tell"):
+            if getattr(self, name) < 0.50 * TICK_RATE:
+                raise ValueError(f"{name}: robot tells must last at least 0.50 s")
+        if self.sentry_interval // 2 <= self.sentry_tell:
+            raise ValueError("A Sentry's first shot could start inside its tell window")
+        if self.sweeper_rush_speed >= THINNEST_OBSTACLE:
+            raise ValueError("A Sweeper's rush could tunnel through the thinnest obstacle")
         if self.blink_min_distance > self.blink_distance:
             raise ValueError("Blink minimum distance exceeds its range")
         if (abs(self.hand_x) + abs(self.hand_y) + self.barrel) / 4 > 4.0:

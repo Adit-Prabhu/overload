@@ -31,7 +31,7 @@ def parse_args(argv: list[str] | None) -> Options:
         "--replay", type=Path, help="Play back a replay file and check its final state hash."
     )
     parser.add_argument(
-        "--practice", action="store_true", help="Practice arena: two Arc Mites, no Regulator."
+        "--practice", action="store_true", help="Practice arena: two Arc Drones, no Regulator."
     )
     parser.add_argument(
         "--condition",

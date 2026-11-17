@@ -336,26 +336,32 @@ _SPAWNS = {
 }
 
 # Robot waves per combat room: each wave is a list of (robot kind, spawn index). The next wave
-# warps in when the last robot of the previous one is down. Sector 1 robots carry Spark,
-# sector 2 adds Blink, sector 3 mixes them.
+# warps in when the last robot of the previous one is down. Sector 1 brings Arc Drones (Spark)
+# and Sweepers, sector 2 Relay Bots (Blink) and Sentries, sector 3 Breakers (Burst) and a mix.
 WAVES: dict[str, tuple[tuple[tuple[str, int], ...], ...]] = {
     "s1_hall": (
-        (("arc_mite", 0), ("arc_mite", 3)),
-        (("arc_mite", 4), ("arc_mite", 6), ("arc_mite", 7)),
+        (("drone", 0), ("drone", 3)),
+        (("drone", 4), ("sweeper", 6), ("sweeper", 7)),
     ),
     "s1_bay": (
-        (("arc_mite", 0), ("arc_mite", 1), ("arc_mite", 4)),
-        (("arc_mite", 2), ("arc_mite", 3), ("arc_mite", 6), ("arc_mite", 7)),
+        (("drone", 0), ("drone", 1), ("sweeper", 4)),
+        (("drone", 2), ("sweeper", 3), ("drone", 6), ("sweeper", 7)),
     ),
-    "s2_yard": ((("relay", 2), ("arc_mite", 3)), (("relay", 0), ("relay", 5), ("arc_mite", 6))),
-    "s2_tanks": ((("relay", 2), ("relay", 3)), (("arc_mite", 0), ("relay", 4), ("arc_mite", 1))),
+    "s2_yard": (
+        (("relay", 2), ("sentry", 4)),
+        (("relay", 0), ("drone", 5), ("sentry", 7)),
+    ),
+    "s2_tanks": (
+        (("relay", 2), ("relay", 3)),
+        (("sentry", 0), ("relay", 4), ("sweeper", 5), ("drone", 1)),
+    ),
     "s3_core": (
-        (("arc_mite", 2), ("relay", 4), ("arc_mite", 3)),
-        (("relay", 0), ("arc_mite", 5), ("relay", 1), ("arc_mite", 6)),
+        (("breaker", 4), ("drone", 2), ("sweeper", 3)),
+        (("relay", 0), ("breaker", 5), ("sentry", 1), ("drone", 6)),
     ),
     "s3_bus": (
-        (("arc_mite", 0), ("arc_mite", 1), ("relay", 5)),
-        (("relay", 2), ("relay", 3), ("arc_mite", 6), ("arc_mite", 7)),
+        (("breaker", 0), ("relay", 1), ("sentry", 5)),
+        (("breaker", 2), ("relay", 3), ("sweeper", 6), ("drone", 7)),
     ),
 }
 

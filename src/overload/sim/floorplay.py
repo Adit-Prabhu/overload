@@ -9,7 +9,7 @@ from __future__ import annotations
 from overload.floor import TILE, WAVES, Floor, FloorRoom
 from overload.sim.geometry import circle_hits_rect
 from overload.sim.powers import absorb_charges
-from overload.sim.spawns import spawn_arc_mite, spawn_relay, spawn_rival
+from overload.sim.spawns import spawn_rival, spawn_robot
 from overload.sim.state import Event, Warp, World
 from overload.sim.tuning import Tuning
 
@@ -89,10 +89,7 @@ def _warps(world: World, tuning: Tuning) -> None:
         if warp.timer > 0:
             waiting.append(warp)
             continue
-        if warp.kind == "relay":
-            spawn_relay(world, warp.x, warp.y, tuning)
-        else:
-            spawn_arc_mite(world, warp.x, warp.y, tuning)
+        spawn_robot(world, warp.kind, warp.x, warp.y, tuning)
         world.events.append(Event("warp_in", warp.x, warp.y))
     world.warps = waiting
 
