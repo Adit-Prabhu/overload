@@ -15,27 +15,29 @@ TICK_RATE = 60
 
 @dataclass(frozen=True)
 class Tuning:
-    player_radius: float = 12.0
-    player_speed: float = 4.2
+    """Pixel scale: 16 px tiles, the view is 256 x 144. Radii are body sizes."""
+
+    player_radius: float = 5.0
+    player_speed: float = 1.3
     player_max_charge: int = 6
     hit_invulnerability: int = 40
 
     gun_cooldown: int = 10
-    shot_speed: float = 13.0
-    shot_radius: float = 3.0
+    shot_speed: float = 4.5
+    shot_radius: float = 1.5
     shot_damage: int = 1
-    shot_ttl: int = 70
+    shot_ttl: int = 60
 
     dodge_ticks: int = 9
-    dodge_speed: float = 11.0
+    dodge_speed: float = 3.2
     dodge_cooldown: int = 45
 
-    bolt_speed: float = 6.0
-    bolt_radius: float = 6.0
+    bolt_speed: float = 1.9
+    bolt_radius: float = 2.5
     bolt_damage: int = 1
     bolt_ttl: int = 240
 
-    arc_mite_radius: float = 15.0
+    arc_mite_radius: float = 6.0
     arc_mite_health: int = 6
     arc_mite_fire_interval: int = 96
     arc_mite_tell: int = 27

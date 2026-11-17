@@ -94,9 +94,9 @@ def test_pinned_hashes_match_across_python_versions() -> None:
     If a deliberate rule or tuning change moves these, update them in the same PR and say so
     in its description. An unexplained change means determinism broke.
     """
-    assert DEFAULT.tuning_id() == "c971599c"
-    assert run_all(21, scripted_inputs(21, 5000)).state_hash() == "8ae29e6f17c48b9a"
-    assert run_all(3, scripted_inputs(9, 1200)).state_hash() == "dc971dfe67445e55"
+    assert DEFAULT.tuning_id() == "6019347a"
+    assert run_all(21, scripted_inputs(21, 5000)).state_hash() == "4014069942d5e018"
+    assert run_all(3, scripted_inputs(9, 1200)).state_hash() == "d9f610ee825ace68"
 
 
 @pytest.mark.parametrize(
@@ -171,11 +171,11 @@ def test_every_shot_is_preceded_by_a_full_tell() -> None:
 def test_holding_fire_respects_the_cooldown() -> None:
     run = Run(1)
     run.world.hostiles.clear()
-    rules.spawn_arc_mite(run.world, 1200, 680)
+    rules.spawn_arc_mite(run.world, 380, 200)
     run.world.hostiles[0].fire_timer = 10_000
     shots = 0
     for _ in range(100):
-        run.step(InputFrame(aim_x=1200, aim_y=360, fire=True))
+        run.step(InputFrame(aim_x=380, aim_y=60, fire=True))
         shots += sum(1 for e in run.world.events if e.kind == "shot")
     assert shots == 100 // DEFAULT.gun_cooldown
 
