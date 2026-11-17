@@ -13,8 +13,6 @@ ducks by 6 dB while a hostile tell sounds, so tells always cut through.
 
 from __future__ import annotations
 
-import os
-
 import pygame
 
 from overload.paths import ASSETS
@@ -68,7 +66,7 @@ VISUAL_TWINS = {
     "bolt": "the spiked hostile bolt",
     "relay_mark": "hatched landing diamond",
     "relay_blink": "the Relay jumps, diamond left behind",
-    "hostile_destroyed": "short-circuit burst in the machine's power color",
+    "hostile_destroyed": "short-circuit burst in the color of the power it carried",
     "rival_tell": "dotted aim line and filling ring around the Regulator",
     "rival_lunge": "the Regulator dashes along its aim line",
     "hazard_armed": "hatched hazard tile that fills as it arms",
@@ -77,14 +75,20 @@ VISUAL_TWINS = {
     "rival_hit": "white flash on the Regulator, its bar drops",
     "rival_destroyed": "large burst, the Regulator disappears",
     "absorb": "burst in the power color",
-    "unlock": "screen flash and POWER STOLEN notice",
+    "unlock": "screen flash and a SPARK STOLEN or BLINK STOLEN notice",
     "protocol_boot": "protocol pose, shield ring and protocol icon",
     "fusion": "FUSED status and the Arc Trail icon in the menu",
+    "confirm": "the slot icon changes, or the Fuse Box closes",
+    "deny": "a notice naming the supported recipe, or ROUTING POWER while the link is busy",
+    "low_health": "two or fewer battery cells left in the HUD",
 }
 STINGS = {"pressure": "sting_clamp", "spacing": "sting_insulate", "lateral": "sting_oscillate"}
 TELLS = {"mite_tell", "hazard_fill", "relay_click"}
 STEMS = ("hum", "pulse", "arc", "lead", "fuse_box")
-LEVELS = {"hum": 0.55, "pulse": 0.5, "arc": 0.3, "lead": 0.4, "fuse_box": 0.6}
+# Stem levels leave headroom so a full battle mix plus an effect stays out of clipping.
+LEVELS = {"hum": 0.42, "pulse": 0.38, "arc": 0.22, "lead": 0.3, "fuse_box": 0.5}
+SFX_LEVEL = 0.7
+FADE_STEP = 0.08  # per frame, so ducking and layer changes ramp instead of clicking
 
 
 def boot_sting(world) -> str | None:
@@ -124,13 +128,14 @@ class Audio:
         self.started = 0
         self.bar = -1
         self.duck_until = 0
-        if not enabled or os.environ.get("SDL_AUDIODRIVER") == "dummy":
+        self.volumes: dict[str, float] = {}
+        if not enabled:
             return
         try:
             if not pygame.mixer.get_init():
                 pygame.mixer.init(frequency=44_100, size=-16, channels=2, buffer=512)
             pygame.mixer.set_num_channels(32)
-            pygame.mixer.set_reserved(len(STEMS))
+            pygame.mixer.set_reserved(len(STEMS))  # Sound.play never takes these
             for path in sorted(AUDIO.glob("*.ogg")):
                 self.sounds[path.stem] = pygame.mixer.Sound(str(path))
         except (pygame.error, FileNotFoundError):
@@ -138,21 +143,26 @@ class Audio:
         self.enabled = True
         self.started = pygame.time.get_ticks()
         for i, stem in enumerate(STEMS):
+            sound = self.sounds.get(f"music_{stem}")
+            if sound is None:
+                continue  # a missing stem is simply silent
             channel = pygame.mixer.Channel(i)
             channel.set_volume(0.0)
-            channel.play(self.sounds[f"music_{stem}"], loops=-1)
+            channel.play(sound, loops=-1)
             self.music[stem] = channel
+            self.volumes[stem] = 0.0
 
-    def play(self, name: str, volume: float = 0.8) -> None:
+    def play(self, name: str, volume: float = SFX_LEVEL) -> None:
         if not self.enabled:
             return
         sound = self.sounds.get(f"sfx_{name}") or self.sounds.get(name)
         if sound is None:
             return
-        channel = pygame.mixer.find_channel(True)
+        # Sound.play respects the reserved music channels (a forced find_channel does not),
+        # and returns None when every effect channel is busy: the effect is simply dropped.
+        channel = sound.play()
         if channel is not None:
             channel.set_volume(volume)
-            channel.play(sound)
         if name in TELLS:
             self.duck_until = pygame.time.get_ticks() + DUCK_MS
 
@@ -167,7 +177,7 @@ class Audio:
             name = EVENT_SOUNDS.get(event.kind)
             if name is None:
                 continue
-            self.play(name, 0.35 if name == "shot" else 0.8)
+            self.play(name, 0.3 if name == "shot" else SFX_LEVEL)
             if event.kind == "player_hit" and 0 < world.player.charge <= 2:
                 self.play("low_health", 0.6)
 
@@ -182,4 +192,8 @@ class Audio:
             self.bar = bar
         duck = DUCK if now < self.duck_until else 1.0
         for stem, channel in self.music.items():
-            channel.set_volume(LEVELS[stem] * duck if stem in self.targets else 0.0)
+            target = LEVELS[stem] * duck if stem in self.targets else 0.0
+            current = self.volumes[stem]
+            step = max(-FADE_STEP, min(FADE_STEP, target - current))
+            self.volumes[stem] = current + step
+            channel.set_volume(self.volumes[stem])
