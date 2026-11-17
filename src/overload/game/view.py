@@ -18,6 +18,7 @@ from overload.art.palette import rgb, rgba
 from overload.art.pixel import actors, effects, hud, tiles
 from overload.art.pixel.light import Glow
 from overload.art.pixel.lighting import Lighting, pool, quantize
+from overload.sim import aiming
 from overload.sim import world as rules
 from overload.sim.arena import arena_id
 from overload.sim.campaign import Campaign
@@ -154,9 +155,14 @@ class PixelView:
     def update(self, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         """Advance cosmetic state by one simulation tick. Called once per tick, never per
         rendered frame, so effects and camera behave the same at any display rate."""
+        self.after_tick(run)
+        self.follow(run, cursor)
+
+    def after_tick(self, run: Run | Campaign) -> None:
+        """Effects and animation for the tick that just ran (the camera moves separately,
+        before the next input is read)."""
         self.consume(run, run.world.events)
         self._tick_cosmetics()
-        self.follow(run, cursor)
 
     def follow(self, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         """Ease toward the player, nudged a little toward where they are aiming. In a fight
@@ -281,7 +287,7 @@ class PixelView:
         self.glow.layer.blit(self.room.light, (-cam[0], -cam[1]))
 
         aim = math.atan2(player.aim_y, player.aim_x)
-        facing_left = player.aim_x < 0
+        facing_left = player.facing < 0
 
         def shadow(x: float, y: float, half: int) -> None:
             screen.blit(_shadow(half), (round(x - half), round(y - 3)))
@@ -386,7 +392,7 @@ class PixelView:
             if hit_blink:
                 image = effects.tinted(image, "fx.flash")
             draw_at_feet(image, surge_feet)
-            hand = v(player.x + (-3 if facing_left else 3), player.y + 1)
+            hand = v(*aiming.hand(player, tuning))
             caster = pygame.transform.rotate(actors.caster(), -math.degrees(aim))
             screen.blit(
                 caster,
@@ -395,7 +401,7 @@ class PixelView:
                 ),
             )
             if self.muzzle:
-                tip = (hand[0] + player.aim_x * 9, hand[1] + player.aim_y * 9)
+                tip = v(*aiming.muzzle(player, tuning))
                 for surface in (screen, self.glow.layer):
                     pygame.draw.circle(
                         surface, rgb("player.core"), (round(tip[0]), round(tip[1])), 2

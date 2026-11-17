@@ -24,6 +24,9 @@ class Tuning:
     hit_invulnerability: int = 40
 
     gun_cooldown: int = 10
+    hand_x: float = 3.0  # the caster is held this far to the facing side of the body center
+    hand_y: float = 1.0  # and this far below it
+    barrel: float = 9.0  # shots leave the caster's tip, this far along the aim
     shot_speed: float = 4.5
     shot_radius: float = 1.5
     shot_damage: int = 1
@@ -128,6 +131,8 @@ class Tuning:
             raise ValueError("Relay tells are below the readability minimums")
         if self.blink_min_distance > self.blink_distance:
             raise ValueError("Blink minimum distance exceeds its range")
+        if (abs(self.hand_x) + abs(self.hand_y) + self.barrel) / 4 > 4.0:
+            raise ValueError("The caster tip is too far out to check for props between")
         if self.shot_speed + 2 * self.shot_radius >= THINNEST_OBSTACLE:
             raise ValueError("Shots could tunnel through the thinnest obstacle")
         if self.dodge_speed >= self.player_radius:

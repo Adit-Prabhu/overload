@@ -311,6 +311,9 @@ def play(options: Options) -> int:
                         finished = True
                         break
                 else:
+                    # Move the camera first, so the cursor is read against the same camera
+                    # the frame will be drawn with: the reticle and the aim point agree.
+                    view.follow(run, cursor)
                     frame = reader.frame(view.camera_offset()) if not options.headless else IDLE
                 if session is not None:
                     session.tick(frame)
@@ -321,7 +324,9 @@ def play(options: Options) -> int:
                 if scripted is not None:
                     cam = view.camera_offset()
                     cursor = (frame.aim_x - cam[0], frame.aim_y - cam[1])
-                view.update(run, cursor)
+                    view.update(run, cursor)
+                else:
+                    view.after_tick(run)
             if session is not None:
                 for sound in fuse_box_frame(session, menu, reader, recording, in_fuse_box):
                     audio.play(sound)
