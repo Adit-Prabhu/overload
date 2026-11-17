@@ -31,3 +31,11 @@ Proposed dependencies: pygame-ce (LGPL v2.1), Cloudflare Agents SDK (MIT) and th
 Verified upstream dependency references:
 - https://github.com/pygame-community/pygame-ce/blob/main/pyproject.toml
 - https://github.com/cloudflare/agents/blob/main/LICENSE
+
+## Added after G1
+| Source | What it informs | What Overload takes or changes | Terms |
+| --- | --- | --- | --- |
+| ChillyRoom, Soul Knight | Style and genre inspiration: pixel heroes in a 3/4 top-down view, readable machines, looting enemies for new weapons | Overload takes the genre feel only. Characters, tiles, enemies and UI are original | Proprietary. No assets, screenshots or code copied |
+| 0x72, DungeonTileset II (https://0x72.itch.io/dungeontileset-ii) | How a top-down tileset is structured: thin wall rims, two-tile wall faces, set dressing, Y-sorted props | Studied for structure only. No tiles copied or redrawn | CC0 (no attribution required, credited here anyway) |
+| Kenney, Roguelike Characters and Roguelike Indoors (https://kenney.nl/assets) | Evaluated as a CC0 fallback for assets | Not used. The packs are village and fantasy themed and do not fit the substation | CC0 |
+| Silkscreen font by Jason Kottke (https://github.com/google/fonts/tree/main/ofl/silkscreen) | Pixel UI text and stenciled signage | Used as is | SIL Open Font License 1.1, license in `assets/fonts/silkscreen/OFL.txt` |

@@ -16,6 +16,10 @@ dev = [
     "pytest==9.2.0",
     "ruff==0.17.5",
 ]
+# Review tools (contact sheet color-vision simulation). Not needed to play or test.
+tools = [
+    "numpy==2.5.4; python_version >= '3.12'",
+]
 
 [build-system]
 requires = ["uv_build>=0.10,<0.11"]

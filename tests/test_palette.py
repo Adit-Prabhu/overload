@@ -5,7 +5,9 @@ so comments and docstrings never trigger it. It flags:
 - hex color strings (#RGB, #RGBA, #RRGGBB, #RRGGBBAA), alone or inside a longer string
 - pygame color names such as "red" used as a string literal
 - 0xRRGGBB integer literals
-- tuples or lists of three or four integers from 0 to 255
+- tuples or lists of three or four integers from 0 to 255 where a color goes: the color
+  argument of fill, set_at, pygame.draw.* and font render, color keywords, variables named
+  like colors, and UPPER_CASE constants. Rects and positions elsewhere are not colors.
 - any construction of pygame's Color class, however it was imported
 """
 
@@ -49,17 +51,50 @@ def _color_aliases(tree: ast.AST) -> set[str]:
     return aliases
 
 
+COLOR_ARG = {"fill": 0, "set_at": 1, "render": 2}
+COLOR_KEYWORDS = {"color", "colour", "background", "bgcolor", "setcolor", "unsetcolor"}
+
+
+def _color_slots(tree: ast.AST) -> set[int]:
+    """Nodes that sit where pygame expects a color. Tuples elsewhere (rects, positions, loop
+    values) are coordinates and are not flagged."""
+    slots = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+            index = COLOR_ARG.get(name)
+            owner = func.value if isinstance(func, ast.Attribute) else None
+            if (isinstance(owner, ast.Attribute) and owner.attr == "draw") or (
+                isinstance(owner, ast.Name) and owner.id == "draw"
+            ):
+                index = 1
+            if index is not None and len(node.args) > index:
+                slots.add(id(node.args[index]))
+            for keyword in node.keywords:
+                if keyword.arg in COLOR_KEYWORDS:
+                    slots.add(id(keyword.value))
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and (
+                    re.search("colou?r", target.id.lower()) or target.id.isupper()
+                ):
+                    slots.add(id(node.value))
+    return slots
+
+
 def color_literals(source: str) -> list[int]:
     """Return the line numbers of color literals in Python source."""
     tree = ast.parse(source)
     skip = _docstring_ids(tree)
+    slots = _color_slots(tree)
     aliases = _color_aliases(tree)
     lines = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in skip:
             if HEX_IN_STRING.search(node.value) or node.value.lower() in COLOR_NAMES:
                 lines.add(node.lineno)
-        elif isinstance(node, ast.Tuple | ast.List):
+        elif isinstance(node, ast.Tuple | ast.List) and id(node) in slots:
             if len(node.elts) in (3, 4) and all(_is_byte(e) for e in node.elts):
                 lines.add(node.lineno)
         elif isinstance(node, ast.Call):
@@ -81,7 +116,7 @@ def test_tokens_are_valid_hex() -> None:
 
 def test_rgb_converts_tokens() -> None:
     assert palette.rgb("fx.flash") == (255, 255, 255)
-    assert palette.rgb("bg.void") == (10, 14, 23)
+    assert palette.rgb("px.void") == (7, 9, 14)
 
 
 def test_unknown_token_is_rejected() -> None:
@@ -101,6 +136,13 @@ def test_unknown_token_is_rejected() -> None:
         "screen.fill(0xFF00AA)",
         "import pygame\nc = pygame.Color(1, 2, 3)",
         "from pygame import Color as C\nc = C('x')",
+        "pygame.draw.circle(s, (1, 2, 3), (5, 5), 2)",
+        "from pygame import draw\ndraw.line(s, (9, 9, 9), (0, 0), (1, 1))",
+        "s.set_at((1, 1), (9, 9, 9))",
+        'font.render("x", False, (1, 2, 3))',
+        "glow_color = (10, 20, 30)",
+        "make(color=(1, 2, 3))",
+        "LAMP = (255, 200, 120)",
     ],
 )
 def test_scanner_catches_color_literals(snippet: str) -> None:
@@ -116,6 +158,11 @@ def test_scanner_catches_color_literals(snippet: str) -> None:
         "point = (300, 400, 500)",
         'name = "Regulator"',
         "frames = [1, 2]",
+        "width, height, gap = 16, 18, 4",
+        "for x in (4, 14, 24):\n    pass",
+        "pygame.draw.rect(s, rgb('ui.text'), (7, 7, 5, 7), 1)",
+        "s.fill(rgb('ui.text'), (8, 6, 3, 1))",
+        "s.set_at((1, 2), rgb('ui.text'))",
     ],
 )
 def test_scanner_ignores_non_colors(snippet: str) -> None:
