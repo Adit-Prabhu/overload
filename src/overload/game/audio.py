@@ -65,6 +65,12 @@ EVENT_SOUNDS = {
     "warp_in": "relay_blink",
     "secret_hit": "regulator_hit",
     "secret_open": "unlock",
+    "boss_tell": "boss_charge",
+    "boss_ring": "ring_burst",
+    "boss_spiral": "ring_burst",
+    "quake": "quake",
+    "summon": "summon",
+    "overload": "overload",
 }
 # Each sound's visual twin: the game is fully playable muted.
 VISUAL_TWINS = {
@@ -107,6 +113,12 @@ VISUAL_TWINS = {
     "warp_in": "a red burst as the robot appears",
     "secret_hit": "another crack in the wall",
     "secret_open": "the wall breaks and A HIDDEN ROOM",
+    "boss_tell": "a filling ring of dots around the boss plus the shape of what is coming",
+    "boss_ring": "eight bolts fly out from the Linesman in a ring",
+    "boss_spiral": "two opposite streams of bolts turn around the Grid Core",
+    "quake": "a screen jolt and a wide dashed ring runs out across the floor",
+    "summon": "warp markers close in on both sides of the chamber",
+    "overload": "a flash, cracks in the Grid Core's shell and GRID CORE OVERLOAD",
     "fusion": "FUSED status and the Arc Trail icon in the menu",
     "confirm": "the slot icon changes, or the Fuse Box closes",
     "deny": "a notice naming the supported recipe, or ROUTING POWER while the link is busy",
@@ -114,8 +126,8 @@ VISUAL_TWINS = {
 }
 STINGS = {"pressure": "sting_clamp", "spacing": "sting_insulate", "lateral": "sting_oscillate"}
 # Hostile tells duck the music: aim tells, hazard arming and a Breaker raising its fists
-# (hazard_fill), and warp markers (relay_click).
-TELLS = {"mite_tell", "hazard_fill", "relay_click"}
+# (hazard_fill), warp markers (relay_click) and a boss winding up its signature (boss_charge).
+TELLS = {"mite_tell", "hazard_fill", "relay_click", "boss_charge"}
 STEMS = ("hum", "pulse", "arc", "lead", "fuse_box")
 # Stem levels leave headroom so a full battle mix plus an effect stays out of clipping.
 LEVELS = {"hum": 0.42, "pulse": 0.38, "arc": 0.22, "lead": 0.3, "fuse_box": 0.5}

@@ -235,11 +235,23 @@ def _fill(s: pygame.Surface, token: str, x: int, y: int, w: int = 1, h: int = 1)
     s.fill(rgb(token), (x, y, w, h))
 
 
+SHELLS = {
+    "linesman": ("px.hostile.0", "px.hostile.1", "px.hostile.2", "px.hostile.3"),
+    "transformer": ("px.coil.0", "px.coil.1", "px.coil.2", "px.coil.3"),
+    "grid_core": ("px.core.0", "px.core.1", "px.core.2", "px.core.3"),
+}
+SHELLS["regulator"] = SHELLS["linesman"]
+
+
 @cache
-def mech_body() -> pygame.Surface:
-    """A big armored control mech: a domed head with a red visor, an orange chest with the
+def mech_body(kind: str = "linesman", overload: bool = False) -> pygame.Surface:
+    """A big armored control mech: a domed head with a red visor, a shell chest with the
     gauge face that tracks the Surge, ceramic insulator shoulders, striped hips, stubby
-    legs. Protocol arms attach at the shoulders."""
+    legs. Protocol arms attach at the shoulders. Each chassis has its own shell and head:
+    the Linesman an orange shell and one beacon, the Transformer a brass shell with ceramic
+    bushings on its head and coil bands, the Grid Core a violet shell with a crown of
+    magenta pylons (cracked and glowing once it overloads)."""
+    dark, shade, base, light = SHELLS[kind]
     w, h = MECH_SIZE
     s = pygame.Surface((w, h), pygame.SRCALPHA)
     # Legs and feet.
@@ -253,11 +265,15 @@ def mech_body() -> pygame.Surface:
         for y in (30, 31, 32):
             _fill(s, "px.hazard.1" if ((x + y) // 2) % 2 == 0 else "px.hazard.0", x, y)
     # Chest shell, lit from the top left.
-    _fill(s, "px.hostile.2", 4, 13, 28, 18)
-    _fill(s, "px.hostile.3", 5, 13, 26, 2)
-    _fill(s, "px.hostile.3", 4, 14, 1, 14)
-    _fill(s, "px.hostile.1", 4, 28, 28, 3)
-    _fill(s, "px.hostile.1", 31, 14, 1, 14)
+    _fill(s, base, 4, 13, 28, 18)
+    _fill(s, light, 5, 13, 26, 2)
+    _fill(s, light, 4, 14, 1, 14)
+    _fill(s, shade, 4, 28, 28, 3)
+    _fill(s, shade, 31, 14, 1, 14)
+    if kind == "transformer":  # coil bands across the chest
+        for y in (17, 21, 25):
+            _fill(s, shade, 5, y, 6, 1)
+            _fill(s, shade, 26, y, 5, 1)
     # Insulator shoulders.
     for x in (1, 30):
         for i, y in enumerate(range(12, 21, 2)):
@@ -271,15 +287,27 @@ def mech_body() -> pygame.Surface:
     _fill(s, "px.bot.3", 9, 3, 1, 8)
     _fill(s, "px.bot.1", 9, 11, 18, 2)
     _fill(s, "px.goggle.0", 11, 5, 14, 5)
-    _fill(s, "hostile.danger", 13, 7, 3, 2)
-    _fill(s, "hostile.danger", 20, 7, 3, 2)
-    _fill(s, "px.hostile.3", 13, 7, 1, 1)
-    _fill(s, "px.hostile.3", 20, 7, 1, 1)
-    _fill(s, "px.bot.3", 17, 0, 2, 2)
-    _fill(s, "px.led.amber", 17, 0, 2, 1)
+    eye = "px.burst.light" if overload else "hostile.danger"
+    _fill(s, eye, 13, 7, 3, 2)
+    _fill(s, eye, 20, 7, 3, 2)
+    _fill(s, light, 13, 7, 1, 1)
+    _fill(s, light, 20, 7, 1, 1)
+    if kind == "transformer":  # two ceramic bushings on the head
+        for x in (10, 23):
+            for i, y in enumerate((0, 1, 2, 3)):
+                _fill(s, "px.ceramic.1" if i % 2 else "px.ceramic.2", x, y, 3, 1)
+            _fill(s, "px.led.amber", x + 1, 0)
+    elif kind == "grid_core":  # a crown of three pylons with magenta tips
+        for x, top in ((11, 1), (17, 0), (23, 1)):
+            _fill(s, "px.bot.3", x, top + 1, 2, 3 - top)
+            _fill(s, "power.burst", x, top, 2, 1)
+    else:
+        _fill(s, "px.bot.3", 17, 0, 2, 2)
+        _fill(s, "px.led.amber", 17, 0, 2, 1)
     # Gauge face on the chest.
     cx, cy = MECH_GAUGE
-    pygame.draw.circle(s, rgb("px.bot.3"), (cx, cy), 7)
+    rim = "power.burst" if kind == "grid_core" else "px.bot.3"
+    pygame.draw.circle(s, rgb(rim), (cx, cy), 7)
     pygame.draw.circle(s, rgb("px.bot.0"), (cx, cy), 6)
     pygame.draw.circle(s, rgb("px.dial.1"), (cx, cy), 5)
     for dx, dy in ((-3, 1), (-3, -2), (-1, -4), (2, -4), (4, -2)):
@@ -287,17 +315,38 @@ def mech_body() -> pygame.Surface:
     for dx, dy in ((3, -3), (4, -2), (3, -4)):
         _fill(s, "hostile.danger", cx + dx, cy + dy)
     # Status lights.
-    for i, token in enumerate(("px.hostile.3", "px.led.amber", "px.ceramic.2")):
+    for i, token in enumerate((light, "px.led.amber", "px.ceramic.2")):
         _fill(s, token, 7, 17 + i * 3)
+    if overload:  # glowing cracks through the shell
+        for x, y in (
+            (6, 15),
+            (7, 16),
+            (7, 17),
+            (8, 18),
+            (27, 14),
+            (28, 15),
+            (28, 16),
+            (29, 17),
+            (26, 24),
+            (27, 25),
+            (9, 25),
+            (10, 26),
+        ):
+            _fill(s, "hostile.danger", x, y)
     add_outline(s, "px.outline")
     return s
 
 
 def regulator_mech(
-    protocol: str, facing_left: bool, needle: float | None = None, lit: bool = False
+    protocol: str,
+    facing_left: bool,
+    needle: float | None = None,
+    lit: bool = False,
+    kind: str = "linesman",
+    overload: bool = False,
 ) -> pygame.Surface:
     """The mech with its protocol arms: Clamp pincers, Insulate plates or Oscillate fins."""
-    body = mech_body()
+    body = mech_body(kind, overload)
     bw, bh = body.get_size()
     if protocol == "clamp":
         arm = actors.clamp_arm()

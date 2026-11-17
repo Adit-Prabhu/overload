@@ -87,6 +87,13 @@ class Rival:
     aim_y: float = 0.0
     strafe: int = 1
     strafe_timer: int = 90
+    # The chassis (sim/bosses.py) and its signature attack, on a timer of its own.
+    kind: str = "regulator"
+    phase: int = 1
+    sig_action: str = "idle"  # idle, tell, fire (the spiral) or quiet
+    sig_timer: int = 0
+    spin_x: float = 1.0
+    spin_y: float = 0.0
 
 
 @dataclass(slots=True)
@@ -132,6 +139,7 @@ class Shockwave:
     y: float
     radius: float
     hit: bool
+    reach: float = 0.0  # where the ring stops (0 means a Breaker's wave_reach)
 
 
 @dataclass(slots=True)

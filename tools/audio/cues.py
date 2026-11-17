@@ -345,6 +345,50 @@ def _regulator_defeated() -> np.ndarray:
     return drive(svf(down, sweep(2500, 120, n), q=1.2) * 0.4 + crackle * 0.5, 1.5) * decay(n, 1.6)
 
 
+def _boss_charge() -> np.ndarray:
+    """A chassis winding up its signature: a rising, beating saw pair, louder than a robot
+    tell so it reads as the bigger threat."""
+    n = samples(0.75)
+    rise = sweep(hz("B1"), hz("F#3"), n)
+    pair = saw(rise, n) + saw(rise * 1.012, n)
+    return svf(pair, sweep(200, 2600, n), q=3.0) * envelope(n, 0.05, 0.05, 0.9, 0.05) * 0.3
+
+
+def _ring_burst() -> np.ndarray:
+    """Eight bolts at once: a bright crack with a short falling zap."""
+    n = samples(0.32)
+    zap = square(sweep(hz("B5"), hz("B3"), n), n, duty=0.3) * decay(n, 0.12)
+    return crush(zap * 0.5 + noise(n, "ring") * decay(n, 0.03) * 0.5, bits=7)
+
+
+def _quake() -> np.ndarray:
+    """The Transformer's stomp: a deep drop with rumble trailing behind the ring."""
+    n = samples(0.9)
+    boom = sine(sweep(80, 28, n), n) * decay(n, 0.5)
+    rumble = svf(noise(n, "quake"), 140, q=1.2) * decay(n, 0.7)
+    return drive(boom * 0.9 + rumble * 0.7 + noise(n, "crack") * decay(n, 0.02) * 0.4, 2.0) * 0.8
+
+
+def _summon() -> np.ndarray:
+    """The Grid Core calls drones: two rising blips, a fifth apart."""
+    n = samples(0.5)
+    half = n // 2
+    out = np.zeros(n)
+    for i, note in enumerate(("B3", "F#4")):
+        part = sine(sweep(hz(note), hz(note) * 2, half), half) * decay(half, 0.18)
+        out[i * half : (i + 1) * half] += part
+    return out * 0.5
+
+
+def _overload() -> np.ndarray:
+    """Phase 2: a two-tone alarm over a crackling surge."""
+    n = samples(1.4)
+    rng = np.random.default_rng(23)
+    tone = square(np.where((np.arange(n) // samples(0.14)) % 2 == 0, hz("B4"), hz("F4")), n)
+    crackle = noise(n, "overload") * (rng.random(n) > 0.92)
+    return (svf(tone, 1800) * 0.35 + crackle * 0.4) * envelope(n, 0.02, 0.1, 0.8, 0.4)
+
+
 def _motif(notes: tuple[str, ...], step: float, length: float, octave_up: bool = True):
     out = np.zeros(samples(step * len(notes) + length))
     for i, note in enumerate(notes):
@@ -417,6 +461,11 @@ SFX: dict[str, Callable[[], np.ndarray]] = {
     "sfx_orb_fire": _orb_fire,
     "sfx_regulator_hit": _regulator_hit,
     "sfx_regulator_defeated": _regulator_defeated,
+    "sfx_boss_charge": _boss_charge,
+    "sfx_ring_burst": _ring_burst,
+    "sfx_quake": _quake,
+    "sfx_summon": _summon,
+    "sfx_overload": _overload,
     "sfx_pickup": _pickup,
     "sfx_unlock": _unlock,
     "sfx_fusion": _fusion,

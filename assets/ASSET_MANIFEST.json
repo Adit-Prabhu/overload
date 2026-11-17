@@ -147,6 +147,18 @@
       "approval": "Pending Adit's listen-through"
     },
     {
+      "id": "SFX.boss_charge",
+      "path": "assets/audio/sfx_boss_charge.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "Original work, see assets/audio/LICENSE.txt",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "588363feff9b4576da25d7af2a7c3da38c377753085fe4ec31fef6f40f3630bf",
+      "added": "2026-11-17",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
       "id": "SFX.confirm",
       "path": "assets/audio/sfx_confirm.ogg",
       "kind": "audio",
@@ -291,6 +303,18 @@
       "approval": "Pending Adit's listen-through"
     },
     {
+      "id": "SFX.overload",
+      "path": "assets/audio/sfx_overload.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "Original work, see assets/audio/LICENSE.txt",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "b50eff013c05fbbb0e030d6d259308d2e5355fb00fb61b6056705241b8c506a0",
+      "added": "2026-11-17",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
       "id": "SFX.pickup",
       "path": "assets/audio/sfx_pickup.ogg",
       "kind": "audio",
@@ -311,6 +335,18 @@
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
       "sha256": "a8b560013e90f4b3f7d0296ce23b0bb386127b6e13b292cd7a1098fd03c4bfd4",
+      "added": "2026-11-17",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
+      "id": "SFX.quake",
+      "path": "assets/audio/sfx_quake.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "Original work, see assets/audio/LICENSE.txt",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "1fac5acae1e13a30337e57383f4cf026527a83e2d7992ed0783217ecbe7afe57",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -363,6 +399,18 @@
       "approval": "Pending Adit's listen-through"
     },
     {
+      "id": "SFX.ring_burst",
+      "path": "assets/audio/sfx_ring_burst.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "Original work, see assets/audio/LICENSE.txt",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "5d8b0fb8744ca3990fa8bd5521c07cdf08d17a3bb580d8de2d428de152c4315e",
+      "added": "2026-11-17",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
       "id": "SFX.shot",
       "path": "assets/audio/sfx_shot.ogg",
       "kind": "audio",
@@ -383,6 +431,18 @@
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
       "sha256": "79bd7a9705b0ac98c81cfd8c501c30a8a437084091f234af58ad09eb0fc4462c",
+      "added": "2026-11-17",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
+      "id": "SFX.summon",
+      "path": "assets/audio/sfx_summon.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "Original work, see assets/audio/LICENSE.txt",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "993a6f52603524a23a8ed74e7f69e385e36610299085d11e1057b01e3c4701fc",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },

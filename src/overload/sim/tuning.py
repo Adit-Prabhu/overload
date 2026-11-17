@@ -151,6 +151,22 @@ class Tuning:
     boost_ticks: int = 60
     boost_factor: float = 1.5
 
+    # Regulator chassis signatures (sim/bosses.py): time between them, and their tells.
+    ring_every: int = 300
+    ring_tell: int = 42
+    quake_every: int = 270
+    quake_tell: int = 48
+    quake_reach: float = 120.0
+    summon_every: int = 420
+    summon_tell: int = 48
+    summon_cap: int = 2  # no summon while this many robots are already up
+    spiral_every: int = 240
+    spiral_tell: int = 36
+    spiral_ticks: int = 60
+    spiral_gap: int = 5
+    overload_shield: int = 60
+    signature_quiet: int = 66  # the protocol rests this long after a signature (a quake's run)
+
     # Rooms (overhaul): robots warp in after a visible marker, secret walls crack open.
     warp_tell: int = 36
     secret_wall_hits: int = 3
@@ -181,6 +197,9 @@ class Tuning:
             raise ValueError("Relay tells are below the readability minimums")
         if self.warp_tell < 0.50 * TICK_RATE:
             raise ValueError("Robots must show their warp marker for at least 0.50 s")
+        for name in ("ring_tell", "quake_tell", "summon_tell", "spiral_tell"):
+            if getattr(self, name) < 0.50 * TICK_RATE:
+                raise ValueError(f"{name}: chassis signature tells must last at least 0.50 s")
         for name in ("breaker_tell", "sweeper_tell", "sentry_tell"):
             if getattr(self, name) < 0.50 * TICK_RATE:
                 raise ValueError(f"{name}: robot tells must last at least 0.50 s")

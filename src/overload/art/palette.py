@@ -64,6 +64,16 @@ TOKENS = MappingProxyType(
         "px.hostile.1": "#8C3326",
         "px.hostile.2": "#D9572B",
         "px.hostile.3": "#FF8A47",
+        # Regulator chassis shells (sim/bosses.py): the Transformer's coil brass, the Grid
+        # Core's violet.
+        "px.coil.0": "#3A2F12",
+        "px.coil.1": "#7A6224",
+        "px.coil.2": "#C79A2E",
+        "px.coil.3": "#F2CB5C",
+        "px.core.0": "#24143A",
+        "px.core.1": "#4A2A73",
+        "px.core.2": "#7E48C2",
+        "px.core.3": "#B58CF0",
         "px.dial.0": "#C9CED8",
         "px.dial.1": "#F2F4F8",
         "px.spark.light": "#FFF3A6",
