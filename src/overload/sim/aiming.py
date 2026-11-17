@@ -4,7 +4,8 @@ so every shot passes exactly through the cursor and visibly comes out of the cas
 from __future__ import annotations
 
 from overload.sim.arena import Arena
-from overload.sim.geometry import circle_hits_rect, normalize
+from overload.sim.collision import blocked
+from overload.sim.geometry import normalize
 from overload.sim.inputs import InputFrame
 from overload.sim.state import Event, Player, World
 from overload.sim.tuning import DEFAULT, Tuning
@@ -44,7 +45,7 @@ def launch_point(world: World, tuning: Tuning, arena: Arena) -> tuple[float, flo
     dx, dy = tip[0] - player.x, tip[1] - player.y
     for i in range(1, 5):
         point = (player.x + dx * i / 4, player.y + dy * i / 4)
-        if any(circle_hits_rect(point, 1.0, rect) for rect in arena.obstacles):
+        if blocked(world, arena, point, 1.0):
             world.events.append(Event("fizzle", point[0], point[1]))
             return None
     return tip

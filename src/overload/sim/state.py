@@ -150,6 +150,7 @@ class World:
     trails: list[Trail] = field(default_factory=list)
     unlocked: list[str] = field(default_factory=list)  # abilities, in unlock order
     fragments: dict[str, int] = field(default_factory=dict)  # charges absorbed per power
+    locked: list[str] = field(default_factory=list)  # ids of doors that are shut right now
     events: list[Event] = field(default_factory=list)
 
     def new_id(self) -> int:
@@ -176,6 +177,7 @@ def state_hash(world: World) -> str:
         "trails": [asdict(t) for t in world.trails],
         "unlocked": world.unlocked,
         "fragments": world.fragments,
+        "locked": world.locked,
         "rng": rng_state,
     }
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
