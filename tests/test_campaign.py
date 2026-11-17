@@ -25,7 +25,7 @@ ATTACKS = {"rival_lunge", "rival_orb", "rival_volley"}
 
 def scripted_player(world, tick: int, near: float = 90, far: float = 135) -> InputFrame:
     """A plain but competent player: aim at the Regulator, hold a distance band while
-    strafing, dodge as a tell finishes, step out of armed hazard tiles."""
+    strafing, dodge as a tell finishes, step out of hazard tiles and dodge out of armed ones."""
     player, rival = world.player, world.rival
     if rival is None or rival.health <= 0:
         return IDLE
@@ -39,13 +39,15 @@ def scripted_player(world, tick: int, near: float = 90, far: float = 135) -> Inp
         mx, my = ux, uy
     else:
         mx, my = -uy * side, ux * side
+    trapped = False
     for hazard in world.hazards:
         cx, cy = hazard.x + hazard.size / 2, hazard.y + hazard.size / 2
         if abs(player.x - cx) < 16 and abs(player.y - cy) < 16:
             mx, my = player.x - cx, player.y - cy
+            trapped = trapped or hazard.arming == 0
     sx = 0 if abs(mx) < 0.3 else (1 if mx > 0 else -1)
     sy = 0 if abs(my) < 0.3 else (1 if my > 0 else -1)
-    dodge = rival.action == "tell" and rival.timer <= 4
+    dodge = trapped or (rival.action == "tell" and rival.timer <= 4)
     return InputFrame(sx, sy, int(rival.x), int(rival.y), fire=True, dodge=dodge)
 
 
@@ -310,4 +312,4 @@ def test_pinned_campaign_hash_matches_across_python_versions() -> None:
             break
         campaign.step(scripted_player(campaign.world, tick))
     assert (campaign.stage, campaign.encounter) == ("ending", 3)
-    assert campaign.state_hash() == "b46a1a43d70c2fbd"
+    assert campaign.state_hash() == "4bb04726124fadae"

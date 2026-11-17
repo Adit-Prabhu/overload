@@ -248,7 +248,6 @@ def play(options: Options) -> int:
         protocols=[] if practice else [run.protocols[1]],
     )
     scripted: Iterator[InputFrame] | None = iter(replay.frames) if replay else None
-    stats = {"ticks": 0, "shots": 0}
 
     pygame.init()
     try:
@@ -299,18 +298,11 @@ def play(options: Options) -> int:
                         break
                 else:
                     frame = reader.frame(view.camera_offset()) if not options.headless else IDLE
-                playing = (
-                    getattr(run, "stage", "encounter") == "encounter"
-                    and run.world.outcome == "playing"
-                )
                 if session is not None:
                     session.tick(frame)
                 else:
                     run.step(frame)
                 recording.frames.append(frame)
-                if playing:  # a tick of actual fighting, never a retry or a menu tick
-                    stats["ticks"] += 1
-                    stats["shots"] += sum(1 for e in run.world.events if e.kind == "shot")
                 if scripted is not None:
                     cam = view.camera_offset()
                     cursor = (frame.aim_x - cam[0], frame.aim_y - cam[1])
@@ -327,7 +319,11 @@ def play(options: Options) -> int:
                 )
             elif stage == "ending":
                 view.draw_ending(
-                    screen, stats["ticks"] / TICK_RATE, sum(run.retries.values()), stats["shots"]
+                    screen,
+                    run.stats["ticks"] / TICK_RATE,
+                    sum(run.retries.values()),
+                    run.stats["shots"],
+                    run.stats["powers"],
                 )
             pygame.display.flip()
             frames += 1

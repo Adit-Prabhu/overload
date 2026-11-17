@@ -560,15 +560,40 @@ class PixelView:
         prompt = "ENTER TO CONTINUE" if ready else "ROUTING POWER..."
         hud.text(screen, prompt, (w // 2, 131), "px.hazard.1" if ready else "ui.dim", "midtop")
 
-    def draw_ending(self, screen: pygame.Surface, seconds: float, retries: int, shots: int) -> None:
+    def draw_ending(
+        self,
+        screen: pygame.Surface,
+        seconds: float,
+        retries: int,
+        shots: int,
+        powers: dict[str, int] | None = None,
+    ) -> None:
+        """The readout: completion time, short circuits, shots and the powers tried. No score
+        and no ranking (GDD)."""
         w, h = screen.get_size()
-        screen.blit(_dim(screen.get_size()), (0, 0))
-        hud.text(screen, "SECTOR CLEAR", (w // 2, 34), "ui.text", "midtop")
+        screen.blit(_dim(screen.get_size(), 235), (0, 0))
+        hud.text(screen, "SECTOR CLEAR", (w // 2, 14), "ui.text", "midtop")
+        hud.text(screen, "THE GRID IS BACK ONLINE", (w // 2, 25), "ui.dim", "midtop")
         minutes, rest = divmod(int(seconds), 60)
-        lines = (f"TIME {minutes:02d}:{rest:02d}", f"RETRIES {retries}", f"SHOTS {shots}")
-        for i, line in enumerate(lines):
-            hud.text(screen, line, (w // 2, 58 + i * 12), "ui.dim", "midtop")
-        hud.text(screen, "ESC TO QUIT", (w // 2, h - 30), "px.hazard.1", "midtop")
+        rows = (
+            ("TIME", f"{minutes:02d}:{rest:02d}"),
+            ("SHORT CIRCUITS", str(retries)),
+            ("SHOTS", str(shots)),
+        )
+        for i, (label, value) in enumerate(rows):
+            y = 44 + i * 11
+            hud.text(screen, label, (w // 2 - 6, y), "ui.dim", "topright")
+            hud.text(screen, value, (w // 2 + 6, y), "ui.text")
+        hud.text(screen, "POWERS TRIED", (w // 2, 82), "ui.dim", "midtop")
+        tried = [(name, n) for name, n in (powers or {}).items() if n and name in NAMES]
+        if not tried:
+            hud.text(screen, "GUN AND DODGE ONLY", (w // 2, 94), "px.floor.3", "midtop")
+        for i, (name, count) in enumerate(tried):
+            x = w // 2 - (len(tried) * 40) // 2 + i * 40 + 20
+            icon = effects.charge_icon(name)
+            screen.blit(icon, icon.get_rect(center=(x, 97)))
+            hud.text(screen, str(count), (x, 103), "ui.text", "midtop")
+        hud.text(screen, "ESC TO QUIT", (w // 2, h - 22), "px.hazard.1", "midtop")
         hud.text(screen, self.stamp, (4, h - 3), "px.floor.3", "bottomleft")
 
     def _banner(self, screen: pygame.Surface, outcome: str) -> None:

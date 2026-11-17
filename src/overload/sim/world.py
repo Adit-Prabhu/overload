@@ -3,9 +3,10 @@
 Order inside a tick (fixed, so outcomes are deterministic):
 1. aim, 2. dodge start, 3. player movement, 4. firing, 5. powers (Q then E), 6. hostiles
 (tells, Relay blinks, bolts), 7. the Regulator (boot, protocol behavior), 8. hazard tiles,
-9. projectile movement, 10. Arc Trail pulses, 11. hits (destroyed machines drop charges),
-12. absorbing charges, 13. timers and cooldowns, 14. outcome (player down takes precedence
-over clearing the room in the same tick, and a win absorbs every charge left), 15. tick
+9. body collision (the Surge is pushed out of the Regulator and machines unless dodging),
+10. projectile movement, 11. Arc Trail pulses, 12. hits (destroyed machines drop charges),
+13. absorbing charges, 14. timers and cooldowns, 15. outcome (player down takes precedence
+over clearing the room in the same tick, and a win absorbs every charge left), 16. tick
 counter.
 """
 
@@ -93,6 +94,7 @@ def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena =
     _hostiles(world, tuning, arena)
     _rival(world, tuning, arena)
     _hazards(world, tuning)
+    _separate(world, tuning, arena)
     _move_projectiles(world, arena)
     tick_trails(world, tuning)
     _hits(world, tuning)
@@ -350,6 +352,35 @@ def _outcome(world: World, tuning: Tuning) -> None:
         world.outcome = "clear"
         absorb_charges(world, tuning, everything=True)
         world.events.append(Event("clear"))
+
+
+def _separate(world: World, tuning: Tuning, arena: Arena) -> None:
+    """Bodies are solid: the Surge cannot stand inside the Regulator or a machine. It is the
+    one pushed (it is the lightest body), then kept out of walls. A dodge slips through."""
+    player = world.player
+    if player.dodging:
+        return
+    bodies = [(h.x, h.y, h.radius) for h in world.hostiles if h.health > 0]
+    rival = world.rival
+    if rival is not None and rival.health > 0:
+        bodies.append((rival.x, rival.y, rival.radius))
+    # A few passes settle a Surge squeezed between two bodies. Pinned between a body and a
+    # wall it may still overlap a little: walls always win, so it never ends up inside one.
+    for _ in range(3):
+        moved = False
+        for bx, by, radius in bodies:
+            dx, dy = player.x - bx, player.y - by
+            reach = radius + tuning.player_radius
+            if dx * dx + dy * dy >= reach * reach:
+                continue
+            nx, ny = normalize(dx, dy)
+            if not (nx or ny):
+                nx, ny = -player.aim_x, -player.aim_y
+            player.x, player.y = bx + nx * reach, by + ny * reach
+            moved = True
+        player.x, player.y = move_body(player.x, player.y, 0.0, 0.0, tuning.player_radius, arena)
+        if not moved:
+            break
 
 
 def hurt_player(world: World, damage: int, tuning: Tuning) -> None:
