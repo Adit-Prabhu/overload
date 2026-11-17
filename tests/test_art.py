@@ -9,6 +9,7 @@ import pygame
 import pytest
 
 from overload.art import palette, scene, sprites
+from overload.art import primitives as p
 from overload.art.fonts import font
 from overload.paths import ROOT
 
@@ -24,17 +25,66 @@ def headless_pygame():
     pygame.quit()
 
 
-def silhouette(sprite: sprites.Sprite) -> pygame.Mask:
+def silhouette(draw) -> pygame.Mask:
+    """Mask of whatever `draw(surface, center)` paints, or of a Sprite drawn at the center."""
     canvas = pygame.Surface((CANVAS, CANVAS), pygame.SRCALPHA)
-    sprite.draw(canvas, (CANVAS / 2, CANVAS / 2))
+    if isinstance(draw, sprites.Sprite):
+        draw.draw(canvas, (CANVAS / 2, CANVAS / 2))
+    else:
+        draw(canvas, (CANVAS / 2, CANVAS / 2))
     return pygame.mask.from_surface(canvas, 127)
 
 
-def overlap_ratio(a: pygame.Mask, b: pygame.Mask) -> float:
-    """Intersection over union of two silhouettes. 1.0 means identical shapes."""
-    both = a.overlap_area(b, (0, 0))
-    union = a.count() + b.count() - both
-    return both / union if union else 1.0
+def outline(mask: pygame.Mask) -> pygame.Mask:
+    """Boundary pixels only. Filled shapes overlap a lot even when they look different (a disk
+    covers most of a square), so shapes are compared by their outlines."""
+    outside = mask.copy()
+    outside.invert()
+    near_outside = outside.convolve(pygame.mask.Mask((3, 3), fill=True))
+    return mask.overlap_mask(near_outside, (-1, -1))
+
+
+def normalized(mask: pygame.Mask, size: int = 48, grow: int = 5) -> pygame.Mask:
+    """Crop to the shape, scale to a fixed square and thicken slightly.
+
+    Size and stroke width stop mattering, so two drawings of the same shape at different
+    sizes compare as similar. That is the failure mode the shape-before-color rule is about.
+    """
+    rects = mask.get_bounding_rects()
+    box = rects[0].unionall(rects[1:])
+    side = max(box.w, box.h)
+    square = pygame.Surface((side, side), pygame.SRCALPHA)
+    crop = mask.to_surface(
+        setcolor=palette.rgba("fx.flash", 255), unsetcolor=palette.rgba("bg.void", 0)
+    ).subsurface(box)
+    square.blit(crop, ((side - box.w) // 2, (side - box.h) // 2))
+    small = pygame.mask.from_surface(pygame.transform.smoothscale(square, (size, size)), 60)
+    return small.convolve(pygame.mask.Mask((grow, grow), fill=True))
+
+
+def similarity(a, b) -> float:
+    """Intersection over union of normalized silhouettes. 1.0 means the same shape."""
+    ma, mb = normalized(outline(silhouette(a))), normalized(outline(silhouette(b)))
+    both = ma.overlap_area(mb, (0, 0))
+    return both / (ma.count() + mb.count() - both)
+
+
+SIMILAR = 0.62
+
+
+def test_metric_flags_same_shape_at_different_sizes() -> None:
+    def ring(radius):
+        return lambda surface, c: p.ring(surface, "ui.text", c, radius, 2)
+
+    def diamond(radius):
+        return lambda surface, c: p.stroke(surface, "ui.text", p.diamond(c, radius), 2, True)
+
+    def disk(radius):
+        return lambda surface, c: p.dot(surface, "ui.text", c, radius)
+
+    assert similarity(ring(6), ring(14)) >= SIMILAR
+    assert similarity(diamond(8), diamond(20)) >= SIMILAR
+    assert similarity(disk(10), disk(25)) >= SIMILAR
 
 
 def test_every_sprite_has_visible_pixels() -> None:
@@ -42,22 +92,46 @@ def test_every_sprite_has_visible_pixels() -> None:
         assert silhouette(sprite).count() > 20, name
 
 
-@pytest.mark.parametrize(
-    "group",
-    [
-        [sprites.power_icon(power, 14) for power in sprites.POWER_TOKENS],
-        [sprites.protocol_pose(protocol) for protocol in sprites.PROTOCOLS],
-        [sprites.protocol_icon(protocol, 12) for protocol in sprites.PROTOCOLS],
-        [sprites.arc_mite(), sprites.relay(), sprites.surge()],
-    ],
-    ids=["power icons", "protocol poses", "protocol icons", "characters"],
-)
-def test_silhouettes_are_distinct(group: list[sprites.Sprite]) -> None:
-    for a, b in itertools.combinations(group, 2):
-        assert overlap_ratio(silhouette(a), silhouette(b)) < 0.6
+def _confusable_pairs():
+    s = sprites
+    group = {
+        "power icons": [s.power_icon(power, 14) for power in s.POWER_TOKENS],
+        "charges": [s.charge(power) for power in s.POWER_TOKENS],
+        "protocol poses": [s.protocol_pose(protocol) for protocol in s.PROTOCOLS],
+        "protocol icons": [s.protocol_icon(protocol, 12) for protocol in s.PROTOCOLS],
+        "characters": [s.arc_mite(), s.relay(), s.surge()],
+    }
+    for name, items in group.items():
+        for a, b in itertools.combinations(items, 2):
+            yield pytest.param(a, b, id=name)
+
+    def bolt(surface, c):
+        scene.draw_hostile_bolt(surface, c)
+
+    def shot(surface, c):
+        scene.draw_player_shot(surface, c, 0.0)
+
+    def via(surface, c):
+        p.ring(surface, "bg.trace", c, 4, 2)
+
+    def afterimage(surface, c):
+        scene.draw_blink_afterimage(surface, c, 0.6)
+
+    def destination(surface, c):
+        scene.draw_relay_destination(surface, c, 0.6)
+
+    yield pytest.param(bolt, shot, id="hostile bolt vs player shot")
+    yield pytest.param(bolt, via, id="hostile bolt vs floor via")
+    yield pytest.param(bolt, s.charge("burst"), id="hostile bolt vs Burst charge")
+    yield pytest.param(afterimage, destination, id="Blink afterimage vs Relay destination")
 
 
-def test_rotation_keeps_the_shape() -> None:
+@pytest.mark.parametrize(("a", "b"), list(_confusable_pairs()))
+def test_confusable_things_have_distinct_shapes(a, b) -> None:
+    assert similarity(a, b) < SIMILAR
+
+
+def test_rotation_cache() -> None:
     mite = sprites.arc_mite()
     rotated = mite.rotated(1.0)
     assert rotated is not mite.surface

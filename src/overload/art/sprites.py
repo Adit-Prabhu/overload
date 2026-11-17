@@ -82,10 +82,18 @@ def power_icon(power: str, r: int) -> Sprite:
 
 @cache
 def charge(power: str) -> Sprite:
-    """A dropped charge: the power symbol inside a thin ring of the same color."""
-    surface, c = _canvas(16)
-    p.ring(surface, POWER_TOKENS[power], c, 12, 1)
-    draw_power_symbol(surface, power, c, 7)
+    """A dropped charge: the power symbol inside a thin echo of its own shape."""
+    token = POWER_TOKENS[power]
+    surface, c = _canvas(20)
+    if power == "spark":
+        p.stroke(surface, token, p.bolt(c, 15 / 0.6), 1, closed=True)
+    elif power == "blink":
+        p.stroke(surface, token, p.diamond(c, 15), 1, closed=True)
+    elif power == "burst":
+        p.ring(surface, token, c, 15, 1)
+    else:
+        raise KeyError(power)
+    draw_power_symbol(surface, power, c, 8)
     return Sprite(surface)
 
 
@@ -120,16 +128,28 @@ def arc_mite() -> Sprite:
 
 @cache
 def relay() -> Sprite:
-    """Blink carrier: a relay housing with an open switch and a visible Blink core."""
+    """Blink carrier: a wide relay box (as drawn in schematics) with its Blink core on the
+    left and an open switch on the right."""
     r = RELAY_RADIUS
-    surface, c = _canvas(r + 6)
+    surface, c = _canvas(round(r * 1.3) + 4)
     cx, cy = c
-    p.shape(surface, p.regular_polygon(c, r, 6), "hostile.body", "hostile.line")
-    left, right = (cx - r * 0.5, cy + r * 0.45), (cx + r * 0.5, cy + r * 0.45)
-    p.stroke(surface, "hostile.line", [left, (cx + r * 0.38, cy + r * 0.12)], 2)
+    hw, hh, cut = r * 1.25, r * 0.62, r * 0.26
+    housing = [
+        (cx - hw + cut, cy - hh),
+        (cx + hw - cut, cy - hh),
+        (cx + hw, cy - hh + cut),
+        (cx + hw, cy + hh - cut),
+        (cx + hw - cut, cy + hh),
+        (cx - hw + cut, cy + hh),
+        (cx - hw, cy + hh - cut),
+        (cx - hw, cy - hh + cut),
+    ]
+    p.shape(surface, housing, "hostile.body", "hostile.line")
+    draw_power_symbol(surface, "blink", (cx - r * 0.55, cy), r * 0.36)
+    left, right = (cx + r * 0.05, cy + r * 0.28), (cx + r * 0.85, cy + r * 0.28)
+    p.stroke(surface, "hostile.line", [left, (cx + r * 0.78, cy - r * 0.18)], 2)
     p.dot(surface, "hostile.line", left, 2.5)
     p.dot(surface, "hostile.line", right, 2.5)
-    draw_power_symbol(surface, "blink", (cx, cy - r * 0.2), r * 0.38)
     return Sprite(surface)
 
 

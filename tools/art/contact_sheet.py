@@ -1,10 +1,14 @@
 """Render the contact sheet: every sprite and effect, plus color-vision simulations.
 
-Usage: uv run --group tools python tools/art/contact_sheet.py [output_dir]
+Usage (Python 3.12, numpy comes from the tools group):
+    uv run --group tools python tools/art/contact_sheet.py [output_dir]
 
-Writes contact_sheet.png (each item at 1x and 2x on the real floor color) and
-contact_sheet_cvd.png (grayscale, deuteranopia, protanopia and tritanopia). QA checks that
-every power, enemy and hostile projectile stays distinguishable in all four.
+Writes three files:
+- contact_sheet.png: every item at 1x on the real floor color
+- contact_sheet_2x.png: the same sheet at 2x, every item included
+- contact_sheet_cvd.png: grayscale, deuteranopia, protanopia and tritanopia versions
+
+QA checks that every power, enemy and hostile projectile stays distinguishable in all four.
 Simulation uses the Machado, Oliveira and Fernandes (2009) matrices at full severity,
 applied in linear RGB.
 """
@@ -173,18 +177,12 @@ def main(argv: list[str]) -> int:
     try:
         out_dir.mkdir(parents=True, exist_ok=True)
         base = render_sheet(1)
-        combined = pygame.Surface((base.get_width(), base.get_height() * 3))
-        combined.blit(base, (0, 0))
-        double = render_sheet(2)
-        combined.blit(
-            double.subsurface((0, 0, base.get_width(), base.get_height() * 2)),
-            (0, base.get_height()),
-        )
-        pygame.image.save(combined, str(out_dir / "contact_sheet.png"))
+        pygame.image.save(base, str(out_dir / "contact_sheet.png"))
+        pygame.image.save(render_sheet(2), str(out_dir / "contact_sheet_2x.png"))
         pygame.image.save(render_cvd(base), str(out_dir / "contact_sheet_cvd.png"))
     finally:
         pygame.quit()
-    print(f"wrote {out_dir / 'contact_sheet.png'} and {out_dir / 'contact_sheet_cvd.png'}")
+    print(f"wrote contact_sheet.png, contact_sheet_2x.png and contact_sheet_cvd.png to {out_dir}")
     return 0
 
 
