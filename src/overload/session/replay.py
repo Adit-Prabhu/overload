@@ -75,7 +75,7 @@ class Recording:
             mode=payload["mode"],
             protocols=list(payload["protocols"]),
             starts=list(payload["starts"]),
-            menu=[list(entry) for entry in payload["menu"]],
+            menu=list(payload["menu"]),
         )
 
 
@@ -94,16 +94,25 @@ def check_campaign(recording: Recording) -> None:
         raise ValueError("an encounter start lies beyond the recorded frames")
     previous = 0
     for entry in recording.menu:
-        if (
-            not isinstance(entry, list)
-            or len(entry) != 4
-            or not isinstance(entry[0], int)
-            or entry[1] not in MENU_OPS
-        ):
+        if not _well_formed(entry):
             raise ValueError(f"malformed Fuse Box action {entry!r}")
         if not previous <= entry[0] <= len(recording.frames):
             raise ValueError("Fuse Box actions must be in order and within the recorded frames")
         previous = entry[0]
+
+
+def _is_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _well_formed(entry: object) -> bool:
+    """[frame, "equip", slot, ability] or [frame, "fuse", power, power], exact types only."""
+    if not isinstance(entry, list) or len(entry) != 4 or not _is_int(entry[0]):
+        return False
+    _, op, a, b = entry
+    if op == "equip":
+        return _is_int(a) and isinstance(b, str)
+    return op == "fuse" and isinstance(a, str) and isinstance(b, str)
 
 
 def menu_by_frame(recording: Recording) -> dict[int, list[list]]:
@@ -116,12 +125,14 @@ def menu_by_frame(recording: Recording) -> dict[int, list[list]]:
 def apply_menu(campaign: Campaign, entry: list) -> None:
     """Replay one Fuse Box action. Invalid choices replay as the same harmless no-op they
     were when recorded. An action outside the Fuse Box means the recording is corrupt."""
+    if not _well_formed(entry):
+        raise ValueError(f"malformed Fuse Box action {entry!r}")
     index, op, a, b = entry
     try:
         if op == "equip":
-            campaign.equip(int(a), str(b))
+            campaign.equip(a, b)
         else:
-            campaign.fuse(str(a), str(b))
+            campaign.fuse(a, b)
     except RuntimeError as error:
         raise ValueError(f"Fuse Box action at tick {index} outside the Fuse Box") from error
 

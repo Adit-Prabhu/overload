@@ -231,8 +231,16 @@ def _relay(world: World, relay: Hostile, tuning: Tuning, arena: Arena) -> None:
         for i in range(len(_HOPS)):
             hx, hy = _HOPS[(start + i) % len(_HOPS)]
             spot = (relay.x + hx * distance, relay.y + hy * distance)
-            if not outside_bounds(spot, relay.radius, arena.bounds) and not any(
-                circle_hits_rect(spot, relay.radius, rect) for rect in arena.obstacles
+            on_player = circles_overlap(
+                spot,
+                relay.radius + tuning.relay_landing_gap,
+                (player.x, player.y),
+                tuning.player_radius,
+            )
+            if (
+                not on_player
+                and not outside_bounds(spot, relay.radius, arena.bounds)
+                and not any(circle_hits_rect(spot, relay.radius, rect) for rect in arena.obstacles)
             ):
                 relay.dest_x, relay.dest_y = spot
                 break

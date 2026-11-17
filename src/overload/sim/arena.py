@@ -69,7 +69,7 @@ def from_room(
 ) -> Arena:
     w, h = room.size
     obstacles = tuple(wall_rects(room) + prop_rects(room))
-    clearance = max(DEFAULT.player_radius, DEFAULT.arc_mite_radius)
+    clearance = max(DEFAULT.player_radius, DEFAULT.arc_mite_radius, DEFAULT.relay_radius)
 
     def center(tile: tuple[int, int]) -> Point:
         point = (tile[0] * TILE + TILE / 2, tile[1] * TILE + TILE / 2)

@@ -33,6 +33,9 @@ RECIPES = {frozenset(("spark", "blink")): "arc_trail"}
 ABILITIES = ("spark", "blink", "arc_trail")
 DROPS = {"arc_mite": "spark", "relay": "blink"}
 SLOTS = 2
+# Blink and Arc Trail are both teleports and share one cooldown, so two slots can never
+# chain them into a double-range jump or double the teleport rate.
+COOLDOWN_KEYS = {"spark": "spark", "blink": "teleport", "arc_trail": "teleport"}
 
 
 @dataclass
@@ -94,16 +97,17 @@ def use_powers(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> N
         ability = player.slots[slot]
         if not pressed or not ability or ability not in world.unlocked or player.dodging:
             continue
-        if player.cooldowns.get(ability, 0) > 0:
+        key = COOLDOWN_KEYS[ability]
+        if player.cooldowns.get(key, 0) > 0:
             continue
         if ability == "spark":
             _spark(world, tuning)
-            player.cooldowns[ability] = tuning.spark_cooldown
+            player.cooldowns[key] = tuning.spark_cooldown
         elif _blink(world, inp, tuning, arena, trail=ability == "arc_trail"):
             cooldown = (
                 tuning.arc_trail_cooldown if ability == "arc_trail" else tuning.blink_cooldown
             )
-            player.cooldowns[ability] = cooldown
+            player.cooldowns[key] = cooldown
         else:
             continue  # rejected Blink: no cost, and it does not count as a use
         world.events.append(Event(f"power_{ability}", player.x, player.y, slot))

@@ -150,7 +150,7 @@ def test_arc_trail_blinks_and_leaves_a_damaging_line() -> None:
     mite.fire_timer = 10_000
     press(world, power_q=True, aim_x=80, aim_y=100)
     assert len(world.trails) == 1
-    assert world.player.cooldowns["arc_trail"] == DEFAULT.arc_trail_cooldown - 1
+    assert world.player.cooldowns["teleport"] == DEFAULT.arc_trail_cooldown - 1
     for _ in range(DEFAULT.trail_interval * 3):
         step(world, IDLE, arena=ROOM)
     assert mite.health == DEFAULT.arc_mite_health - 3 * DEFAULT.trail_damage
@@ -167,6 +167,29 @@ def test_the_boot_shield_blocks_arc_trail() -> None:
     )
     step(world, IDLE)
     assert rival.health == rival.max_health
+    assert "rival_shielded" in {e.kind for e in world.events}
+
+
+def test_arc_trail_hurts_the_regulator_after_boot() -> None:
+    world = encounter_world(1, 1, "lateral", kit=kit_with("spark", "blink", "arc_trail"))
+    rival = world.rival
+    rival.boot = 0
+    world.trails.append(
+        Trail(1, rival.x - 20, rival.y, rival.x + 20, rival.y, DEFAULT.trail_interval + 1)
+    )
+    step(world, IDLE)
+    assert rival.health == rival.max_health - DEFAULT.trail_damage
+    assert "rival_hit" in {e.kind for e in world.events}
+
+
+def test_blink_and_arc_trail_share_one_cooldown() -> None:
+    world = bare_world(kit_with("spark", "blink", "arc_trail", slots=("blink", "arc_trail")))
+    world.player.x, world.player.y = 20.0, 100.0
+    press(world, power_q=True, power_e=True, aim_x=150, aim_y=100)
+    assert world.player.x == pytest.approx(20.0 + DEFAULT.blink_distance), "one jump per tick"
+    assert world.trails == []
+    press(world, power_e=True, aim_x=150, aim_y=100)
+    assert world.trails == [], "Arc Trail waits for the Blink cooldown"
 
 
 # Equip and fuse ------------------------------------------------------------------------------
@@ -338,7 +361,7 @@ def test_full_loop_collect_equip_fuse_use(tmp_path) -> None:
     path = tmp_path / "loop.json"
     recording.save(path)
     assert play(Recording.load(path)).state_hash() == recording.final_hash
-    assert recording.final_hash == "8a040896c2e65025", "pinned on Python 3.11 and 3.12"
+    assert recording.final_hash == "2a3a95a0e4057a8d", "pinned on Python 3.11 and 3.12"
 
 
 @pytest.mark.parametrize(
@@ -348,6 +371,13 @@ def test_full_loop_collect_equip_fuse_use(tmp_path) -> None:
         [[0, "teleport", 0, "spark"]],  # unknown action
         [[3, "fuse", "a", "b"], [2, "fuse", "a", "b"]],  # out of order
         [[99, "fuse", "spark", "blink"]],  # beyond the frames
+        [[5, "equip", None, "spark"]],  # slot is not an integer
+        [[5, "equip", [0], "spark"]],
+        [[5, "equip", 1.7, "spark"]],
+        [[5, "equip", "1", "spark"]],
+        [[True, "fuse", "spark", "blink"]],  # a bool is not a frame index
+        [[5, "fuse", 1, "blink"]],
+        [7],  # not a list
     ],
 )
 def test_malformed_fuse_box_actions_are_rejected(menu) -> None:
@@ -371,3 +401,34 @@ def test_power_tuning_guards() -> None:
         dataclasses.replace(DEFAULT, relay_blink_tell=10)
     with pytest.raises(ValueError):
         dataclasses.replace(DEFAULT, blink_min_distance=90.0)
+
+
+def test_a_saved_file_with_a_malformed_menu_is_rejected(tmp_path) -> None:
+    recording = Recording(
+        seed=1,
+        tuning_id=DEFAULT.tuning_id(),
+        arena_id=arena_id(SUBSTATION),
+        mode="campaign",
+        protocols=["lateral"],
+        frames=[IDLE] * 10,
+    )
+    path = tmp_path / "r.json"
+    recording.save(path)
+    path.write_text(path.read_text().replace('"menu":[]', '"menu":[7, "x"]'))
+    with pytest.raises(ValueError):
+        play(Recording.load(path))
+
+
+def test_relay_never_lands_on_the_surge() -> None:
+    for seed in range(20):
+        world = encounter_world(seed, 2, "lateral")
+        world.rival = None
+        relay = next(h for h in world.hostiles if h.kind == "relay")
+        world.hostiles = [relay]
+        for _ in range(400):
+            world.player.invulnerable = 1_000
+            world.player.x, world.player.y = relay.x + 30, relay.y  # stand in its hop range
+            step(world, IDLE)
+            if relay.phase == "blink":
+                gap = math.dist((relay.dest_x, relay.dest_y), (world.player.x, world.player.y))
+                assert gap >= relay.radius + DEFAULT.relay_landing_gap + DEFAULT.player_radius

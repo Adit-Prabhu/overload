@@ -100,6 +100,7 @@ class Tuning:
     relay_aim_tell: int = 30
     relay_hop_min: float = 40.0
     relay_hop_max: float = 80.0
+    relay_landing_gap: float = 12.0  # never lands this close to the Surge
 
     def __post_init__(self) -> None:
         """Reject values that would break readability rules or the tell logic."""
