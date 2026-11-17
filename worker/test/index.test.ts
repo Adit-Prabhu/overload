@@ -165,7 +165,9 @@ describe("knowledge boundary and limits", () => {
     const prompt = buildPrompt(summary(0.8, 0.1), []);
     expect(prompt.user).toContain("e1.far_share");
     expect(prompt.user).toContain("pressure");
-    expect(prompt.system).toContain("insufficient evidence select lateral");
+    expect(prompt.system).toContain("no dominant habit select lateral");
+    expect(prompt.system).toContain("counter the habit");
+    expect(prompt.user).toContain("Best against a Surge who keeps their distance");
     expect(prompt.user).not.toMatch(/hp|health|inventory|seed|position/i);
   });
 

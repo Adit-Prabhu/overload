@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "note": "Authored observation histories for the rival live suite. intended is the designer's intent (counter the dominant habit, neutral when none dominates). It is a reference for human review, not ground truth.",
+  "cases": [
+    {"id": "far_heavy", "intended": "pressure", "values": {"far_share": 0.75, "mid_share": 0.2, "near_share": 0.05, "shots_per_minute": 48.0, "dodges": 3}},
+    {"id": "near_heavy", "intended": "spacing", "values": {"far_share": 0.05, "mid_share": 0.25, "near_share": 0.7, "shots_per_minute": 52.0, "dodges": 4}},
+    {"id": "balanced", "intended": "lateral", "values": {"far_share": 0.32, "mid_share": 0.36, "near_share": 0.32, "shots_per_minute": 40.0, "dodges": 5}},
+    {"id": "far_dodgy", "intended": "pressure", "values": {"far_share": 0.62, "mid_share": 0.3, "near_share": 0.08, "shots_per_minute": 30.0, "dodges": 14}},
+    {"id": "near_quiet", "intended": "spacing", "values": {"far_share": 0.1, "mid_share": 0.24, "near_share": 0.66, "shots_per_minute": 12.0, "dodges": 1}},
+    {"id": "thin_evidence", "intended": "lateral", "values": {"far_share": 0.4, "mid_share": 0.3, "near_share": 0.3, "shots_per_minute": 6.0, "dodges": 0}}
+  ]
+}

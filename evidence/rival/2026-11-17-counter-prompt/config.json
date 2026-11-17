@@ -1,0 +1,10 @@
+{
+  "suite_version": 1,
+  "repeats": 3,
+  "max_attempts": 18,
+  "prices_usd_per_million": {
+    "input": 0.3,
+    "output": 2.5
+  },
+  "started_utc": "2026-11-17T03:42:42+00:00"
+}

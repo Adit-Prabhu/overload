@@ -11,9 +11,12 @@ function line(item: EvidenceItem): string {
 }
 
 export const SYSTEM_INSTRUCTIONS =
-  "Select one allowed next-encounter tactic from the supplied catalogue using only observed " +
-  "history. Return tactic_id and evidence_ids as JSON. Do not invent evidence or change game " +
-  `rules. With insufficient evidence select ${NEUTRAL_TACTIC}.`;
+  "You choose the Regulator's tactic for the next encounter. The Regulator's goal is to counter " +
+  "the habit the Surge relied on most in the observed history, so the player has to change " +
+  "their approach. Select one allowed tactic from the supplied catalogue using only observed " +
+  "history. Return tactic_id and evidence_ids as JSON, citing the evidence that shows the habit. " +
+  "Do not invent evidence or change game rules. " +
+  `With insufficient evidence or no dominant habit select ${NEUTRAL_TACTIC}.`;
 
 export interface PromptInput {
   system: string;
@@ -23,7 +26,7 @@ export interface PromptInput {
 export function buildPrompt(summary: Summary, history: Summary[]): PromptInput {
   const lines = [
     "Allowed tactics:",
-    ...CATALOGUE.tactics.map((t) => `- ${t.id}: ${t.description}`),
+    ...CATALOGUE.tactics.map((t) => `- ${t.id}: ${t.description} ${t.counters}`),
     "",
     `Previous accepted tactic: ${summary.previous_tactic}`,
     "Observed in the last encounter (id: description = value):",

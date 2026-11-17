@@ -1,21 +1,24 @@
 {
-  "version": 1,
+  "version": 2,
   "neutral": "lateral",
   "tactics": [
     {
       "id": "pressure",
       "protocol": "Clamp",
-      "description": "Close the distance with clearly signaled lunges, then recover."
+      "description": "Close the distance with clearly signaled lunges, then recover.",
+      "counters": "Best against a Surge who keeps their distance and shoots from far away."
     },
     {
       "id": "spacing",
       "protocol": "Insulate",
-      "description": "Back off and hold the player at range with hatched hazard tiles and slow orbs."
+      "description": "Back off and hold the player at range with hatched hazard tiles and slow orbs.",
+      "counters": "Best against a Surge who fights up close."
     },
     {
       "id": "lateral",
       "protocol": "Oscillate",
-      "description": "Strafe side to side and fire perpendicular volleys. The neutral default."
+      "description": "Strafe side to side and fire perpendicular volleys. The neutral default.",
+      "counters": "Neutral. Use when no habit dominates or the evidence is thin."
     }
   ]
 }
