@@ -36,6 +36,9 @@ EVENT_SOUNDS = {
     "blink_to": "blink_arrive",
     "blink_rejected": "blink_deny",
     "power_arc_trail": "arc_trail",
+    "lance": "arc_trail",  # Bolt Lance
+    "blast": "lunge",  # the ring blasts of Shock Mine, Impact Blink, Displacer and Meteor
+    "leap": "blink_depart",  # Meteor takes off
     "tell": "mite_tell",
     "bolt": "mite_zap",
     "relay_mark": "relay_click",
@@ -83,6 +86,9 @@ VISUAL_TWINS = {
     "blink_to": "Blink diamond and burst at the arrival point",
     "blink_rejected": "grey fizzle and NO ROOM TO BLINK",
     "power_arc_trail": "the Arc Trail line",
+    "lance": "a jagged bolt runs behind the dashing Surge",
+    "blast": "a magenta ring runs out from the blast",
+    "leap": "the Surge rises over its shadow and a landing ring fills",
     "tell": "dotted aim line and filling ring",
     "bolt": "the spiked hostile bolt",
     "relay_mark": "hatched landing diamond",

@@ -108,9 +108,9 @@ def test_pinned_hashes_match_across_python_versions() -> None:
     If a deliberate rule or tuning change moves these, update them in the same PR and say so
     in its description. An unexplained change means determinism broke.
     """
-    assert DEFAULT.tuning_id() == "49307b98"
-    assert run_all(21, scripted_inputs(21, 5000)).state_hash() == "cb79bfa8ead2a72e"
-    assert run_all(3, scripted_inputs(9, 1200)).state_hash() == "793492ff13881af2"
+    assert DEFAULT.tuning_id() == "e8489869"
+    assert run_all(21, scripted_inputs(21, 5000)).state_hash() == "f5706c3df2e8e3d1"
+    assert run_all(3, scripted_inputs(9, 1200)).state_hash() == "b4aac51cecf7e534"
 
 
 @pytest.mark.parametrize(

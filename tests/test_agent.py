@@ -356,7 +356,6 @@ def test_hidden_state_never_changes_the_summary() -> None:
         twin.fragments = {"spark": 5, "blink": 3}
         twin.player.slots = ["arc_trail", "blink"]
         twin.bank = {"spark": 4, "blink": 2}
-        twin.rarity = {"arc_trail": "legendary"}
         twin.fusions, twin.streak = 6, 2
         twin.player.cooldowns = {"teleport": 40}
         for hostile in twin.hostiles:

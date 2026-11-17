@@ -86,6 +86,70 @@ _CHARGE = {
         ".U...U.",
         "..UUU..",
     ],
+    # Fused powers: one icon per power, drawn for its own verb (POWERS_AND_FUSION section 8).
+    "bolt_lance": [  # a lightning spear
+        ".......",
+        "k...Y..",
+        "kk..YY.",
+        "kKYYYYY",
+        "kk..YY.",
+        "k...Y..",
+        ".......",
+    ],
+    "chain_jump": [  # hops linking three targets
+        "K.....K",
+        "Ky...yK",
+        ".Y...Y.",
+        "..Y.Y..",
+        "...K...",
+        "...K...",
+        ".......",
+    ],
+    "shock_mine": [  # a spiked charge
+        "...Y...",
+        "..U.U..",
+        ".UyYyU.",
+        "UYyuyYU",
+        ".UyYyU.",
+        "..U.U..",
+        "...U...",
+    ],
+    "storm_aura": [  # a ring of bolts
+        ".Y.U.Y.",
+        "Y.U.U.Y",
+        ".U...U.",
+        "U..Y..U",
+        ".U...U.",
+        "Y.U.U.Y",
+        ".Y.U.Y.",
+    ],
+    "impact_blink": [  # a Blink diamond landing in a blast
+        "U..k..U",
+        "..kKk..",
+        ".kK.Kk.",
+        "UK...KU",
+        ".kK.Kk.",
+        "..kKk..",
+        "U..k..U",
+    ],
+    "displacer": [  # two arrows trading places
+        "..K....",
+        ".KKKKK.",
+        "..K..K.",
+        ".......",
+        ".U..U..",
+        ".UUUUU.",
+        "....U..",
+    ],
+    "meteor": [  # a rock falling with a trail
+        "k......",
+        ".k.....",
+        "..kU...",
+        "...UUU.",
+        "...UuUU",
+        "....UUU",
+        ".......",
+    ],
 }
 _DIAMOND = [
     "..k..",
@@ -475,3 +539,75 @@ def ghost(target: pygame.Surface, image: pygame.Surface, top_left: Point, alpha:
     faded = tinted(image, "player.halo")
     faded.set_alpha(alpha)
     target.blit(faded, (round(top_left[0]), round(top_left[1])))
+
+
+# Fused powers --------------------------------------------------------------------------------
+
+
+def blast_ring(
+    target: pygame.Surface, light: pygame.Surface, pos: Point, radius: float, life: float
+) -> None:
+    """A ring blast (Impact Blink, Displacer, Shock Mine, Meteor): a magenta ring that runs
+    out to the blast's edge as `life` falls from 1 to 0."""
+    r = max(2, round(radius * (1.0 - 0.7 * life)))
+    center = (round(pos[0]), round(pos[1]))
+    for surface in (target, light):
+        pygame.draw.circle(surface, rgb("power.burst"), center, r, 2)
+        pygame.draw.circle(surface, rgb("px.burst.light"), center, max(1, r - 3), 1)
+
+
+def mine(target: pygame.Surface, light: pygame.Surface, pos: Point, fuse: float) -> None:
+    """A Shock Mine: a spiked charge. Armed, a dotted ring closes in as the fuse burns
+    (`fuse` from 1 at arming to 0 at the burst), the same filling tell as hostile attacks
+    but in power colors."""
+    _blit_center(target, charge_icon("shock_mine"), pos)
+    _blit_center(light, charge_icon("shock_mine"), pos)
+    if fuse < 0:
+        return
+    dots = 8
+    lit = round(dots * (1.0 - fuse))
+    for i in range(dots):
+        a = math.tau * i / dots
+        point = (round(pos[0] + math.cos(a) * 9), round(pos[1] + math.sin(a) * 9))
+        token = "power.spark" if i < lit else "px.floor.3"
+        target.fill(rgb(token), (*point, 1, 1))
+
+
+def aura(target: pygame.Surface, light: pygame.Surface, pos: Point, tick: int) -> None:
+    """Storm Aura: a crackling ring of short bolts turning around the Surge."""
+    for i in range(6):
+        a = math.tau * i / 6 + tick * 0.08
+        x, y = pos[0] + math.cos(a) * 11, pos[1] + math.sin(a) * 9
+        b = a + 0.5
+        x2, y2 = pos[0] + math.cos(b) * 13, pos[1] + math.sin(b) * 10
+        for surface in (target, light):
+            pygame.draw.line(surface, rgb("power.spark"), (x, y), (x2, y2), 1)
+
+
+def landing_marker(target: pygame.Surface, pos: Point, radius: float, progress: float) -> None:
+    """Meteor: a ring of dashes the size of the blast where the Surge will land, lighting up
+    around the ring as the fall goes on, with a cross at the center."""
+    center = (round(pos[0]), round(pos[1]))
+    dashes = 20
+    lit = round(dashes * progress)
+    for i in range(dashes):
+        a = math.tau * i / dashes
+        x, y = center[0] + math.cos(a) * radius, center[1] + math.sin(a) * radius * 0.6
+        token = "power.burst" if i < lit else "px.floor.3"
+        target.fill(rgb("px.outline"), (round(x) - 2, round(y) - 1, 5, 4))
+        target.fill(rgb(token), (round(x) - 1, round(y), 3, 2))
+    for dx, dy in ((-3, 0), (3, 0), (0, -2), (0, 2), (0, 0)):
+        target.fill(rgb("power.burst"), (center[0] + dx, center[1] + dy, 1, 1))
+
+
+def lance_streak(
+    target: pygame.Surface, light: pygame.Surface, pos: Point, dx: float, dy: float
+) -> None:
+    """Bolt Lance: a jagged bolt trailing behind the Surge as it dashes."""
+    points = []
+    for i in range(5):
+        side = (i % 2) * 2 - 1
+        points.append((pos[0] - dx * i * 4 - dy * side * 2, pos[1] - dy * i * 4 + dx * side * 2))
+    for surface in (target, light):
+        pygame.draw.lines(surface, rgb("power.spark"), False, points, 2)
+        pygame.draw.lines(surface, rgb("px.blink.light"), False, points, 1)

@@ -28,14 +28,30 @@ class Player:
     invulnerable: int = 0
     slots: list[str] = field(default_factory=lambda: ["", ""])  # Q and E, "" when empty
     cooldowns: dict[str, int] = field(default_factory=dict)  # per ability, in ticks
+    # Fused powers (sim/fusions.py). Bolt Lance rides the dodge: `lance` marks a dodge that
+    # strikes, `struck` the bodies it already hit. Meteor: `leap` ticks left in the air, from
+    # (leap_x0, leap_y0) to (leap_x1, leap_y1). Storm Aura: `aura` ticks left.
+    lance: bool = False
+    struck: list[int] = field(default_factory=list)
+    leap: int = 0
+    leap_x0: float = 0.0
+    leap_y0: float = 0.0
+    leap_x1: float = 0.0
+    leap_y1: float = 0.0
+    aura: int = 0
 
     @property
     def dodging(self) -> bool:
         return self.dodge_ticks > 0
 
     @property
+    def busy(self) -> bool:
+        """Dodging, lancing or in the air: no shots, no powers, no new dodge."""
+        return self.dodge_ticks > 0 or self.leap > 0
+
+    @property
     def protected(self) -> bool:
-        return self.dodge_ticks > 0 or self.invulnerable > 0
+        return self.dodge_ticks > 0 or self.leap > 0 or self.invulnerable > 0
 
 
 @dataclass(slots=True)
@@ -50,9 +66,6 @@ class Projectile:
     hostile: bool
     ttl: int
     kind: str = "shot"  # shot, spark, bolt or orb
-    # How a spark arcs on from a robot it hits: "" when Spark is evolved, "overcurrent"
-    # always and twice, "none" never (Thunderhead's ring).
-    arc: str = ""
 
 
 @dataclass(slots=True)
@@ -132,7 +145,6 @@ class Trail:
     x2: float
     y2: float
     ttl: int
-    width: float = 0.0  # how far it reaches past a body's edge (0: the Arc Trail's width)
 
 
 @dataclass(slots=True)
@@ -145,6 +157,20 @@ class Shockwave:
     radius: float
     hit: bool
     reach: float = 0.0  # where the ring stops (0 means a Breaker's wave_reach)
+
+
+@dataclass(slots=True)
+class Device:
+    """Something a fused power leaves in the room. A Shock Mine flies to (tx, ty), then
+    counts `timer` down and bursts."""
+
+    id: int
+    kind: str
+    x: float
+    y: float
+    tx: float
+    ty: float
+    timer: int
 
 
 @dataclass(slots=True)
@@ -187,7 +213,6 @@ class World:
     unlocked: list[str] = field(default_factory=list)  # abilities, in unlock order
     fragments: dict[str, int] = field(default_factory=dict)  # charges absorbed per power
     bank: dict[str, int] = field(default_factory=dict)  # spare charges per power (rerolls)
-    rarity: dict[str, str] = field(default_factory=dict)  # each fused power's rarity
     fusions: int = 0  # fusions so far this run, the roll stream's index
     streak: int = 0  # rare fusions in a row, for the guarantee
     locked: list[str] = field(default_factory=list)  # ids of doors that are shut right now
@@ -199,6 +224,7 @@ class World:
     cleared: list[str] = field(default_factory=list)
     warps: list[Warp] = field(default_factory=list)
     shockwaves: list[Shockwave] = field(default_factory=list)
+    devices: list[Device] = field(default_factory=list)
     secret_hits: dict[str, int] = field(default_factory=dict)
     events: list[Event] = field(default_factory=list)
 
@@ -224,10 +250,10 @@ def state_hash(world: World) -> str:
         "encounter": world.encounter,
         "charges": [asdict(c) for c in world.charges],
         "trails": [asdict(t) for t in world.trails],
+        "devices": [asdict(d) for d in world.devices],
         "unlocked": world.unlocked,
         "fragments": world.fragments,
         "bank": world.bank,
-        "rarity": world.rarity,
         "fusions": world.fusions,
         "streak": world.streak,
         "locked": world.locked,

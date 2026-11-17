@@ -21,7 +21,7 @@ from overload.agent.tactics import Decision
 from overload.session.trace import TraceWriter
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import InputFrame
-from overload.sim.powers import RECIPE_ORDER, RECIPES, Kit, fused_name
+from overload.sim.powers import NAMES, RECIPE_ORDER, Kit, owned_result, rarity_of
 from overload.sim.tuning import TICK_RATE
 
 MIN_FUSE_TICKS = round(DEADLINE_SECONDS * TICK_RATE)
@@ -148,16 +148,18 @@ class Session:
         for luck. The rival never sees any of it."""
         campaign = self.campaign
         world, tuning = campaign.world, campaign.tuning
-        recipe = RECIPES.get(frozenset((a, b)))
-        n, streak, reroll = world.fusions, world.streak, recipe in world.unlocked
+        before = owned_result(world.unlocked, a, b)
+        n, streak = world.fusions, world.streak
         result = campaign.fuse(a, b)
         fields: dict = {"encounter": self._menu_encounter(), "recipe": [a, b], "result": result}
         if result == "fused":
+            power = owned_result(campaign.world.unlocked, a, b)
             fields.update(
-                power=recipe,
-                rarity=campaign.world.rarity[recipe],
+                power=power,
+                replaced=before,
+                rarity=rarity_of(power),
                 n=n,
-                cost=tuning.reroll_cost if reroll else 0,
+                cost=tuning.reroll_cost if before else 0,
                 guaranteed=streak >= tuning.fuse_guarantee_after,
             )
         self._trace("fuse", **fields)
@@ -199,14 +201,12 @@ def next_recipe(kit, selected: str = "") -> tuple[str, str] | None:
     else a reroll of the selected power if it is a fusion, else the first one not fused yet
     (it will report what is missing). None when every recipe is fused and no fusion is
     selected, so F never spends charges on a power the player did not pick."""
-    open_recipes = [
-        (a, b) for a, b in RECIPE_ORDER if RECIPES[frozenset((a, b))] not in kit.unlocked
-    ]
+    open_recipes = [(a, b) for a, b in RECIPE_ORDER if not owned_result(kit.unlocked, a, b)]
     for a, b in open_recipes:
         if a in kit.unlocked and b in kit.unlocked:
             return a, b
     for a, b in RECIPE_ORDER:
-        if RECIPES[frozenset((a, b))] == selected:
+        if selected and owned_result(kit.unlocked, a, b) == selected:
             return a, b
     return open_recipes[0] if open_recipes else None
 
@@ -251,10 +251,10 @@ class FuseBoxMenu:
                 self.notice = FUSE_NOTICES["pick"]
                 return None
             a, b = pair
-            recipe = RECIPES[frozenset((a, b))]
-            rarity = world.rarity.get(recipe, "rare")
+            recipe = owned_result(world.unlocked, a, b)
+            rarity = rarity_of(recipe)
             spare = all(world.bank.get(p, 0) >= session.campaign.tuning.reroll_cost for p in pair)
-            if recipe in world.unlocked and rarity != "rare" and spare and armed != pair:
+            if recipe and rarity != "rare" and spare and armed != pair:
                 self.armed = pair
                 self.last_result = "confirm"
                 self.notice = f"F AGAIN TO REROLL {rarity.upper()}"
@@ -263,9 +263,8 @@ class FuseBoxMenu:
             self.last_result = result
             self.notice = FUSE_NOTICES[result]
             if result == "fused":
-                recipe = RECIPES[frozenset((a, b))]
-                rarity = world.rarity[recipe]
+                power = owned_result(world.unlocked, a, b)
                 # short: it shares the footer line
-                self.notice = f"{fused_name(recipe, rarity)} {rarity.upper()}"
+                self.notice = f"{NAMES[power]} {rarity_of(power).upper()}"
             return ["fuse", a, b]
         return None

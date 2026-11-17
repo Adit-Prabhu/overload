@@ -124,11 +124,15 @@ def test_the_fuse_key_picks_the_next_open_recipe() -> None:
     assert fuse(kit, *next_recipe(kit), seed=1) == "fused"
     assert next_recipe(kit) == ("spark", "burst")
     assert fuse(kit, *next_recipe(kit), seed=1) == "fused"
+    assert next_recipe(kit) == ("blink", "burst")
+    assert fuse(kit, *next_recipe(kit), seed=1) == "fused"
     assert next_recipe(kit) is None, "all fused and no fusion picked: F spends nothing"
     assert next_recipe(kit, "spark") is None
-    assert next_recipe(kit, "shock_cone") == ("spark", "burst"), "the picked fusion rerolls"
+    cone = kit.unlocked[4]  # whatever Spark + Burst rolled
+    assert next_recipe(kit, cone) == ("spark", "burst"), "the picked fusion rerolls"
     assert fuse(kit, "spark", "burst", seed=1) == "no_charges"
-    assert fuse(Kit(["spark"], {}, ["", ""]), "blink", "burst", seed=1) == "unsupported"
+    assert fuse(Kit(["spark"], {}, ["", ""]), "blink", "burst", seed=1) == "missing"
+    assert fuse(Kit(["spark"], {}, ["", ""]), "spark", "spark", seed=1) == "unsupported"
 
 
 def test_power_guards() -> None:
