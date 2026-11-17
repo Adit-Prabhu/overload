@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import http.client
 import json
 import re
 import threading
@@ -115,6 +116,48 @@ def test_invalid_replies_fall_back_to_neutral(overrides, reason) -> None:
     assert decision.reason == reason
 
 
+@pytest.mark.parametrize(
+    ("reply", "reason"),
+    [
+        (["not", "an", "object"], "malformed_reply"),
+        ("pressure", "malformed_reply"),
+        (
+            {
+                "status": "ok",
+                "session_id": SESSION,
+                "request_id": "req-1",
+                "encounter": 2,
+                "tactic_id": "pressure",
+                "source": "fixture",
+                "evidence_ids": [{"id": 1}],
+            },
+            "malformed_evidence",
+        ),
+        (
+            {
+                "status": "ok",
+                "session_id": SESSION,
+                "request_id": "req-1",
+                "encounter": 2,
+                "tactic_id": "pressure",
+                "source": "fixture",
+                "evidence_ids": "e1.far_share",
+            },
+            "malformed_evidence",
+        ),
+    ],
+)
+def test_malformed_replies_fall_back_instead_of_crashing(reply, reason) -> None:
+    decision = validate(
+        reply,
+        session_id=SESSION,
+        request_id="req-1",
+        encounter=2,
+        supplied_ids=frozenset({"e1.far_share"}),
+    )
+    assert (decision.source, decision.reason) == ("fallback", reason)
+
+
 def test_valid_reply_is_accepted() -> None:
     body = {"request_id": "req-1", "encounter": 2}
     decision = validate(
@@ -214,13 +257,18 @@ def test_retry_reuses_the_frozen_decision_without_a_new_request() -> None:
     [
         ({"status": 500, "reply": lambda body: {}}, "http_500"),
         ({"reply": lambda body: (_ for _ in ()).throw(OSError("refused"))}, "transport_error"),
+        (
+            {"reply": lambda body: (_ for _ in ()).throw(http.client.IncompleteRead(b""))},
+            "transport_error",
+        ),
+        ({"reply": lambda body: ["a", "list"]}, "malformed_reply"),
     ],
 )
 def test_service_failures_fall_back(service_kwargs, reason) -> None:
     clock = Clock()
     selector = live(Service(clock, **service_kwargs), clock)
     selector.prepare(2, summary())
-    with contextlib.suppress(OSError):
+    with contextlib.suppress(Exception):
         settle(selector, 2)
     assert selector.poll(2).reason == reason
 
@@ -283,28 +331,33 @@ def test_summary_matches_the_service_schema() -> None:
 
 
 def test_hidden_state_never_changes_the_summary() -> None:
+    """Over a whole stretch of play, worlds that differ only in hidden state (charge,
+    cooldowns, invulnerability, RNG, other entities) produce identical summaries."""
     run = Run(4)
-    for tick in range(120):
+    rival = (300.0, 100.0)
+    logs = (ObservationLog(1), ObservationLog(1))
+    for tick in range(180):
         run.step(
             InputFrame(
-                move_x=1 if tick < 60 else 0,
+                move_x=1 if tick < 60 else -1 if tick > 120 else 0,
                 aim_x=300,
                 aim_y=100,
                 fire=tick % 3 == 0,
-                dodge=tick == 30,
+                dodge=tick in (30, 140),
             )
         )
-    twin = copy.deepcopy(run.world)
-    twin.player.charge = 1
-    twin.player.gun_cooldown = 7
-    twin.player.invulnerable = 33
-    twin.rng.seed(999)
-    twin.hostiles.clear()
-    rival = (300.0, 100.0)
-    logs = (ObservationLog(1), ObservationLog(1))
-    for world, log in zip((run.world, twin), logs, strict=True):
-        observe_world(log, world, rival)
-    assert logs[0].summary("lateral") == logs[1].summary("lateral")
+        twin = copy.deepcopy(run.world)
+        twin.player.charge = 1
+        twin.player.gun_cooldown = 7
+        twin.player.invulnerable = 33
+        twin.rng.seed(999)
+        twin.hostiles.clear()
+        twin.projectiles.clear()
+        observe_world(logs[0], run.world, rival)
+        observe_world(logs[1], twin, rival)
+    first, second = (log.summary("lateral") for log in logs)
+    assert first == second
+    assert logs[0].ticks == 180 and logs[0].actions["dodge"] >= 1
 
 
 def test_trace_records_decisions_without_identity(tmp_path) -> None:
@@ -315,4 +368,5 @@ def test_trace_records_decisions_without_identity(tmp_path) -> None:
     record = json.loads((tmp_path / "trace.jsonl").read_text().strip())
     assert record["context_hash"] == context_hash(data)
     assert record["tactic"] == catalogue().neutral and record["condition"] == "live"
+    assert len(record["config_hash"]) == 16
     assert not {"name", "email", "player"} & set(record)

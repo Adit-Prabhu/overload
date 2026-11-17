@@ -34,7 +34,8 @@ GDF v2.1 Sections 5.1/5.2 and Gate 1 read. Required live deployed model behavior
 ## Differences from the Initial documents
 | Initial document says | Implementation uses | Reason |
 | --- | --- | --- |
-| Rival service artifact `worker/src/rival.ts` | Entry point `worker/src/index.ts`, with rival logic planned in `worker/src/rival.ts` | Workers need one entry module. The rival logic file keeps its planned name |
+| Rival service artifact `worker/src/rival.ts` | `worker/src/index.ts` (routes) and `session.ts` (RivalSession, a Cloudflare Agents SDK agent), with `schema.ts`, `prompt.ts`, `providers.ts`, `google.ts` and `budget.ts` | Workers need one entry module, the Agents SDK gives each session its own isolated state and scheduled expiry, and small files keep validation, prompt and provider separately testable |
+| Evidence labels written by the client | Labels come from `config/evidence.json` on the server, and only the listed observation kinds are accepted | A modified client could otherwise put arbitrary text into the prompt |
 | Context source `src/overload/observations.py:summary` | `src/overload/agent/observations.py:summary` | The knowledge boundary code is grouped under `agent/` |
 
 ## Pinned dependencies (OQ4, partly resolved)

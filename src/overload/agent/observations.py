@@ -7,8 +7,21 @@ cooldowns, inventory, RNG, other entities) cannot reach the summary by construct
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Iterable
+from functools import cache
+
+from overload.paths import ROOT
+
+EVIDENCE_PATH = ROOT / "config" / "evidence.json"
+
+
+@cache
+def evidence_labels() -> dict[str, str]:
+    """Observation kinds shared with the rival service (config/evidence.json)."""
+    return json.loads(EVIDENCE_PATH.read_text(encoding="utf-8"))["kinds"]
+
 
 NEAR = 40.0  # px, about 2.5 tiles
 FAR = 104.0  # px, about 6.5 tiles
@@ -42,28 +55,17 @@ class ObservationLog:
         e = f"e{self.encounter}"
         total = max(1, self.ticks)
         minutes = max(total / TICKS_PER_MINUTE, 1 / 60)
+        values = {
+            "far_share": round(self.bands["far"] / total, 2),
+            "mid_share": round(self.bands["mid"] / total, 2),
+            "near_share": round(self.bands["near"] / total, 2),
+            "shots_per_minute": round(self.actions["shot"] / minutes, 1),
+            "dodges": self.actions["dodge"],
+        }
+        labels = evidence_labels()
         items = [
-            {
-                "id": f"{e}.far_share",
-                "label": "share of the fight the Surge spent far away",
-                "value": round(self.bands["far"] / total, 2),
-            },
-            {
-                "id": f"{e}.mid_share",
-                "label": "share of the fight at middle range",
-                "value": round(self.bands["mid"] / total, 2),
-            },
-            {
-                "id": f"{e}.near_share",
-                "label": "share of the fight the Surge spent close",
-                "value": round(self.bands["near"] / total, 2),
-            },
-            {
-                "id": f"{e}.shots_per_minute",
-                "label": "shots fired per minute",
-                "value": round(self.actions["shot"] / minutes, 1),
-            },
-            {"id": f"{e}.dodges", "label": "dodges used", "value": self.actions["dodge"]},
+            {"id": f"{e}.{kind}", "label": labels[kind], "value": value}
+            for kind, value in values.items()
         ]
         return {"items": items, "previous_tactic": previous_tactic}
 

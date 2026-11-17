@@ -11,6 +11,9 @@ interface Ledger {
 
 export class BudgetLedger extends DurableObject<Env> {
   async reserve(amountUsd: number, capUsd: number): Promise<boolean> {
+    if (!(Number.isFinite(amountUsd) && amountUsd > 0 && Number.isFinite(capUsd) && capUsd > 0)) {
+      return false; // fail closed on any malformed amount or cap
+    }
     const today = new Date().toISOString().slice(0, 10);
     const ledger = (await this.ctx.storage.get<Ledger>("ledger")) ?? { day: today, reservedUsd: 0 };
     const current = ledger.day === today ? ledger.reservedUsd : 0;
@@ -24,9 +27,13 @@ export class BudgetLedger extends DurableObject<Env> {
   }
 }
 
-/** Worst-case cost of one attempt at the configured token ceilings and prices. */
-export function worstCaseUsd(env: Env): number {
-  const inputPerM = Number(env.INPUT_USD_PER_M ?? 0.3);
-  const outputPerM = Number(env.OUTPUT_USD_PER_M ?? 2.5);
-  return (1000 * inputPerM + 512 * outputPerM) / 1_000_000;
+/** Worst-case cost of one live attempt and the daily cap, or null when either is missing or
+ *  malformed. A null result refuses the call: the budget fails closed, never open. */
+export function liveBudget(env: Env): { costUsd: number; capUsd: number } | null {
+  const inputPerM = Number(env.INPUT_USD_PER_M);
+  const outputPerM = Number(env.OUTPUT_USD_PER_M);
+  const capUsd = Number(env.DAILY_BUDGET_USD);
+  const costUsd = (1000 * inputPerM + 512 * outputPerM) / 1_000_000;
+  const valid = [inputPerM, outputPerM, capUsd, costUsd].every((v) => Number.isFinite(v) && v > 0);
+  return valid ? { costUsd, capUsd } : null;
 }

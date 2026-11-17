@@ -2,7 +2,7 @@
 // Each session sees only its own history. Sessions expire after 30 minutes of inactivity.
 
 import { Agent } from "agents";
-import { worstCaseUsd } from "./budget";
+import { liveBudget } from "./budget";
 import { buildPrompt } from "./prompt";
 import { ProviderNotConfigured, makeProvider } from "./providers";
 import {
@@ -81,7 +81,7 @@ export class RivalSession extends Agent<Env, SessionState> {
       status: "ok",
       tactic_id: null,
       evidence_ids: [],
-      source: provider?.source ?? "live",
+      source: provider?.source ?? "none",
       requested_model: provider?.requestedModel ?? String(this.env.MODEL ?? "unset"),
       resolved_model: null,
       latency_ms: 0,
@@ -114,13 +114,14 @@ export class RivalSession extends Agent<Env, SessionState> {
     if (configError || !provider) {
       return { ...counted, status: "provider_not_configured", latency_ms: Date.now() - started };
     }
-    const cost = provider.source === "live" ? worstCaseUsd(this.env) : 0;
-    if (cost > 0) {
+    let cost = 0;
+    if (provider.source === "live") {
+      const budget = liveBudget(this.env);
       const ledger = this.env.BUDGET.get(this.env.BUDGET.idFromName("global"));
-      const cap = Number(this.env.DAILY_BUDGET_USD ?? 0);
-      if (!(await ledger.reserve(cost, cap))) {
+      if (!budget || !(await ledger.reserve(budget.costUsd, budget.capUsd))) {
         return { ...counted, status: "budget", latency_ms: Date.now() - started };
       }
+      cost = budget.costUsd;
     }
 
     const prompt = buildPrompt(request.summary, state.history);

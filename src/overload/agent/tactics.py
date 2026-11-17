@@ -52,6 +52,9 @@ class Decision:
     evidence_ids: tuple[str, ...] = ()
     latency_ms: int | None = None
     model: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: float | None = None
 
 
 def fallback(
@@ -74,6 +77,8 @@ def validate(
     """Accept a reply only if every field checks out. Otherwise the neutral tactic."""
     if reply is None:
         return fallback(encounter, "no_reply", request_id, latency_ms)
+    if not isinstance(reply, Mapping):
+        return fallback(encounter, "malformed_reply", request_id, latency_ms)
     status = reply.get("status")
     if status != "ok":
         return fallback(encounter, f"service_{status}", request_id, latency_ms)
@@ -88,8 +93,12 @@ def validate(
         if not ok:
             return fallback(encounter, reason, request_id, latency_ms)
     evidence = reply.get("evidence_ids")
-    if not isinstance(evidence, list) or not set(evidence) <= supplied_ids:
+    if not isinstance(evidence, list) or not all(isinstance(e, str) for e in evidence):
+        return fallback(encounter, "malformed_evidence", request_id, latency_ms)
+    if not set(evidence) <= supplied_ids:
         return fallback(encounter, "unknown_evidence", request_id, latency_ms)
+    usage = reply.get("usage") if isinstance(reply.get("usage"), Mapping) else {}
+    cost = reply.get("cost_usd_estimate")
     return Decision(
         encounter=encounter,
         tactic=reply["tactic_id"],
@@ -98,4 +107,7 @@ def validate(
         evidence_ids=tuple(evidence),
         latency_ms=latency_ms,
         model=reply.get("resolved_model"),
+        input_tokens=usage.get("input_tokens"),
+        output_tokens=usage.get("output_tokens"),
+        cost_usd=cost if isinstance(cost, int | float) else None,
     )

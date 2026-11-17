@@ -1,7 +1,14 @@
 // Builds the model input from the tactic catalogue and the filtered summary only.
-// Nothing else is available here: the request schema has already rejected any other field.
+// Nothing else is available here: the request schema has already rejected any other field,
+// and labels come from config/evidence.json rather than from the client.
 
-import { CATALOGUE, NEUTRAL_TACTIC, type Summary } from "./schema";
+import { CATALOGUE, EVIDENCE_LABELS, NEUTRAL_TACTIC, type EvidenceItem, type Summary } from "./schema";
+
+/** The label comes from the server's own table, never from the client. */
+function line(item: EvidenceItem): string {
+  const kind = item.id.slice(item.id.indexOf(".") + 1);
+  return `- ${item.id}: ${EVIDENCE_LABELS[kind]} = ${item.value}`;
+}
 
 export const SYSTEM_INSTRUCTIONS =
   "Select one allowed next-encounter tactic from the supplied catalogue using only observed " +
@@ -20,12 +27,12 @@ export function buildPrompt(summary: Summary, history: Summary[]): PromptInput {
     "",
     `Previous accepted tactic: ${summary.previous_tactic}`,
     "Observed in the last encounter (id: description = value):",
-    ...summary.items.map((item) => `- ${item.id}: ${item.label} = ${item.value}`),
+    ...summary.items.map(line),
   ];
   if (history.length > 0) {
     lines.push("", "Earlier encounters in this session:");
     for (const earlier of history) {
-      for (const item of earlier.items) lines.push(`- ${item.id}: ${item.label} = ${item.value}`);
+      for (const item of earlier.items) lines.push(line(item));
     }
   }
   lines.push(

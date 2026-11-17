@@ -62,9 +62,11 @@ class TacticClient:
         """Blocking, called once before play starts. None means live mode is unavailable."""
         try:
             status, body = self.transport("POST", f"{self.base_url}/sessions", None, self.deadline)
-        except (OSError, ValueError):
+        except Exception:  # unreachable, malformed or anything else: live mode is unavailable
             return None
-        session_id = body.get("session_id") if status == 201 else None
+        if status != 201 or not isinstance(body, dict):
+            return None
+        session_id = body.get("session_id")
         return session_id if isinstance(session_id, str) else None
 
     def submit(self, session_id: str, encounter: int, request_id: str, summary: dict) -> Pending:

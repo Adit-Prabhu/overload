@@ -3,11 +3,15 @@
 // (positions, health, inventory, RNG) even by mistake. That is the knowledge boundary.
 
 import { z } from "zod";
+import evidence from "../../config/evidence.json";
 import catalogue from "../../config/tactics.json";
 
 export const TACTIC_IDS = catalogue.tactics.map((t) => t.id) as [string, ...string[]];
 export const NEUTRAL_TACTIC = catalogue.neutral;
 export const CATALOGUE = catalogue;
+/** Observation kinds and the labels the server writes into prompts. */
+export const EVIDENCE_LABELS: Record<string, string> = evidence.kinds;
+const KIND_PATTERN = Object.keys(evidence.kinds).join("|");
 
 export const MAX_ATTEMPTS_PER_SESSION = 2;
 export const MAX_SUMMARY_ITEMS = 12;
@@ -17,7 +21,7 @@ export const PROVIDER_DEADLINE_MS = 4500; // the client's hard deadline is 5 s
 
 export const EvidenceItem = z
   .object({
-    id: z.string().regex(/^e[0-9]\.[a-z_]{1,32}$/),
+    id: z.string().regex(new RegExp(`^e[0-9]\\.(${KIND_PATTERN})$`)),
     label: z.string().min(1).max(80),
     value: z.number().finite(),
   })
@@ -61,6 +65,9 @@ export type Status =
   | "encounter_order"
   | "budget";
 
+/** "none" means no provider answered (for example, none is configured). */
+export type Source = "fixture" | "live" | "none";
+
 export interface TacticResponse {
   session_id: string;
   request_id: string;
@@ -68,7 +75,7 @@ export interface TacticResponse {
   status: Status;
   tactic_id: string | null;
   evidence_ids: string[];
-  source: "fixture" | "live";
+  source: Source;
   requested_model: string;
   resolved_model: string | null;
   latency_ms: number;

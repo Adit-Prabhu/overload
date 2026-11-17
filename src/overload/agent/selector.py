@@ -101,7 +101,7 @@ class LiveSelector:
         if pending.future.done():
             try:
                 status, body, arrived = pending.future.result()
-            except (OSError, ValueError):
+            except Exception:  # any transport, parsing or cancellation failure means fallback
                 return fallback(pending.encounter, "transport_error", pending.request_id, latency)
             latency = round((arrived - pending.started) * 1000)
             if arrived - pending.started > self.client.deadline:
