@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "note": "The only observation kinds the rival may receive. Evidence IDs are e<encounter>.<kind>. The service writes these labels into the prompt itself, so no client text reaches the model.",
+  "kinds": {
+    "far_share": "share of the fight the Surge spent far away",
+    "mid_share": "share of the fight at middle range",
+    "near_share": "share of the fight the Surge spent close",
+    "shots_per_minute": "shots fired per minute",
+    "dodges": "dodges used"
+  }
+}

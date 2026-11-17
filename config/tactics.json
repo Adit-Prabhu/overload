@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "neutral": "lateral",
+  "tactics": [
+    {
+      "id": "pressure",
+      "protocol": "Clamp",
+      "description": "Close the distance with clearly signaled lunges, then recover."
+    },
+    {
+      "id": "spacing",
+      "protocol": "Insulate",
+      "description": "Back off and hold the player at range with hatched hazard tiles and slow orbs."
+    },
+    {
+      "id": "lateral",
+      "protocol": "Oscillate",
+      "description": "Strafe side to side and fire perpendicular volleys. The neutral default."
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "note": "Fixed-schedule baseline. Encounter 1 is always the neutral tactic in both conditions. Orders are counterbalanced across participants and never read observations.",
+  "schedules": {
+    "A": ["lateral", "pressure", "spacing"],
+    "B": ["lateral", "spacing", "pressure"]
+  }
+}

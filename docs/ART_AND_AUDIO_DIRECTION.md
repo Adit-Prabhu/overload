@@ -180,7 +180,7 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | UI-02 | Q and E power sockets with cooldown shade, bottom right | P0 | Done |
 | UI-03 | Regulator bar with protocol icon, top center | P0 | Done |
 | UI-04 | Pixel reticle | P0 | Done |
-| UI-05 | Banners (going down, room clear) with the build stamp | P0 | Done, labels pending Adit's approval |
+| UI-05 | Banners ("SHORT CIRCUIT", "SECTOR CLEAR") with the build stamp | P0 | Done, labels approved |
 | UI-06 | Fuse Box link status message | P0 | Task 5 |
 | UI-07 | Title screen and wordmark | P1 | Not started |
 | UI-08 | Settings (volume, screen shake, flash reduction) | P1 | Not started |

@@ -1,12 +1,45 @@
-// Overload rival service. Scaffold: only GET /health exists.
-// Sessions and POST /sessions/:id/tactic arrive in implementation plan task 4.
+// Overload rival service.
+//   GET  /health                         liveness and configured provider
+//   POST /sessions                       start a session, returns an opaque session_id
+//   POST /sessions/:id/tactic            propose the Regulator's next protocol
+// The game validates every response again and falls back to the neutral tactic itself.
+
+import { getAgentByName } from "agents";
+import { TacticRequest } from "./schema";
+
+export { BudgetLedger } from "./budget";
+export { RivalSession } from "./session";
+
+const TACTIC_PATH = /^\/sessions\/([0-9a-f-]{36})\/tactic$/;
+
+function json(body: unknown, status = 200): Response {
+  return Response.json(body, { status });
+}
 
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health") {
-      return Response.json({ ok: true, service: "overload-rival", stage: "scaffold" });
+      return json({ ok: true, service: "overload-rival", provider: env.PROVIDER ?? "fixture" });
     }
-    return Response.json({ error: "not_found" }, { status: 404 });
+    if (request.method === "POST" && url.pathname === "/sessions") {
+      const sessionId = crypto.randomUUID();
+      const session = await getAgentByName(env.RIVAL_SESSION, sessionId);
+      await session.begin();
+      return json({ session_id: sessionId }, 201);
+    }
+    const match = TACTIC_PATH.exec(url.pathname);
+    if (request.method === "POST" && match) {
+      const body = await request.json().catch(() => null);
+      const parsed = TacticRequest.safeParse(body);
+      if (!parsed.success) {
+        const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`);
+        return json({ error: "invalid_request", issues }, 400);
+      }
+      const session = await getAgentByName(env.RIVAL_SESSION, match[1]);
+      if (!(await session.isStarted())) return json({ error: "unknown_session" }, 404);
+      return json(await session.propose(parsed.data, match[1]));
+    }
+    return json({ error: "not_found" }, 404);
   },
-} satisfies ExportedHandler;
+} satisfies ExportedHandler<Env>;

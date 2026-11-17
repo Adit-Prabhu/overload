@@ -29,11 +29,14 @@ GDF v2.1 Sections 5.1/5.2 and Gate 1 read. Required live deployed model behavior
 | Nov 16, 2026 | D8: art direction changes from neon vector to original pixel art in a 3/4 top-down view, in the spirit of Soul Knight. Substation setting kept, the Surge becomes a lineworker, the camera follows the player | Adit, after playing the vector build |
 | Nov 16, 2026 | Asset source: original code-authored pixel art, with free CC0 packs as the fallback if it did not look good. CC0 packs were evaluated (0x72 Robot Tileset is side-view, Kenney roguelike packs are fantasy and village themed) and none fit a top-down industrial setting | Adit chose the rule, the assistant ran the comparison |
 | Nov 16, 2026 | Pixel style frame round 2 approved ("much much better"). Make it playable | Adit |
+| Nov 16, 2026 | D6: the rival service calls Gemini on Vertex AI with the course credits, through a service account key held as a Cloudflare Worker secret. Resolves OQ2 pending deployment | Adit |
+| Nov 16, 2026 | D4 code-composed synth soundtrack. D5 protocol shown by pose, sound sting and icon at encounter start, no text. D7 fallback line "Grid link unstable. Regulator running default protocol." Banner labels "SHORT CIRCUIT" and "SECTOR CLEAR" kept | Adit |
 
 ## Differences from the Initial documents
 | Initial document says | Implementation uses | Reason |
 | --- | --- | --- |
-| Rival service artifact `worker/src/rival.ts` | Entry point `worker/src/index.ts`, with rival logic planned in `worker/src/rival.ts` | Workers need one entry module. The rival logic file keeps its planned name |
+| Rival service artifact `worker/src/rival.ts` | `worker/src/index.ts` (routes) and `session.ts` (RivalSession, a Cloudflare Agents SDK agent), with `schema.ts`, `prompt.ts`, `providers.ts`, `google.ts` and `budget.ts` | Workers need one entry module, the Agents SDK gives each session its own isolated state and scheduled expiry, and small files keep validation, prompt and provider separately testable |
+| Evidence labels written by the client | Labels come from `config/evidence.json` on the server, and only the listed observation kinds are accepted | A modified client could otherwise put arbitrary text into the prompt |
 | Context source `src/overload/observations.py:summary` | `src/overload/agent/observations.py:summary` | The knowledge boundary code is grouped under `agent/` |
 
 ## Pinned dependencies (OQ4, partly resolved)

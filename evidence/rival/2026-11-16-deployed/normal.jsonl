@@ -1,0 +1,5 @@
+{"case": "far", "encounter": 2, "tactic": "spacing", "source": "live", "reason": null, "request_id": "af84cc87-573b-4076-bd41-ede35ad6042c", "evidence_ids": ["e1.far_share"], "latency_ms": 1388, "model": "gemini-3.5-flash-lite", "input_tokens": 350, "output_tokens": 35, "cost_usd": 0.00158}
+{"case": "near", "encounter": 2, "tactic": "pressure", "source": "live", "reason": null, "request_id": "e722be73-4014-45b6-ad79-aab7936aaeab", "evidence_ids": ["e1.near_share", "e1.dodges"], "latency_ms": 1461, "model": "gemini-3.5-flash-lite", "input_tokens": 350, "output_tokens": 44, "cost_usd": 0.00158}
+{"case": "far_3", "encounter": 3, "tactic": "spacing", "source": "live", "reason": null, "request_id": "f924d1e0-b80c-4736-8f0c-c8182fd8b40d", "evidence_ids": ["e1.far_share"], "latency_ms": 1151, "model": "gemini-3.5-flash-lite", "input_tokens": 451, "output_tokens": 35, "cost_usd": 0.00158}
+{"case": "far_4", "encounter": 4, "tactic": "lateral", "source": "fallback", "reason": "request_cap", "request_id": null, "evidence_ids": [], "latency_ms": null, "model": null, "input_tokens": null, "output_tokens": null, "cost_usd": null}
+smoke passed
