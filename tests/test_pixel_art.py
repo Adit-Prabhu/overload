@@ -109,7 +109,7 @@ def _confusable_pairs():
     groups = {
         "protocol pose parts": [actors.clamp_arm(), actors.insulate_plate(), actors.fin()],
         "protocol icons": [effects.protocol_icon(p) for p in ("clamp", "insulate", "oscillate")],
-        "charges": [effects.charge_icon(p) for p in ("spark", "blink", "burst")],
+        "charges": [effects.charge_icon(p) for p in ("spark", "blink", "arc_trail", "burst")],
         "characters": [
             actors.surge_frames()["idle"][0],
             actors.arc_mite_frames()[0],
@@ -126,6 +126,17 @@ def _confusable_pairs():
     yield pytest.param(effects.hostile_bolt(), shot, id="hostile bolt vs player shot")
     yield pytest.param(
         effects.hostile_bolt(), effects.charge_icon("burst"), id="hostile bolt vs Burst charge"
+    )
+
+    def spark(surface, c):
+        effects.spark_shot(surface, pygame.Surface(surface.get_size()), c, 0.0)
+
+    yield pytest.param(effects.hostile_bolt(), spark, id="hostile bolt vs Spark shot")
+    yield pytest.param(shot, spark, id="player shot vs Spark shot")
+    yield pytest.param(
+        effects.charge_icon("arc_trail"),
+        effects.protocol_icon("oscillate"),
+        id="Arc Trail charge vs Oscillate icon",
     )
 
 

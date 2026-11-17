@@ -103,6 +103,7 @@ def items() -> list[tuple[str, Draw]]:
         entries.append((f"relay {i + 1}", centered(image)))
     for protocol in ("clamp", "insulate", "oscillate"):
         entries.append((f"reg {protocol}", centered(actors.regulator(protocol, False, -2.4))))
+    entries.append(("reg volley tell", centered(actors.regulator("oscillate", False, -2.4, True))))
     for name, image in (
         ("transformer", tiles.transformer()),
         ("cabinet", tiles.cabinet()),

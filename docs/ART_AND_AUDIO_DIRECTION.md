@@ -135,9 +135,9 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | CH-02 | Regulator | Orange machine with a big gauge face, ceramic insulator shoulders, vents, status lights, hazard-striped hip, treads. The needle tracks the Surge | Pose per protocol, protocol boot cue | P0 | Done (poses and boot cue: shield ring, protocol icon and sting) |
 | CH-02a | Clamp protocol | Pincers forward | Lunge with a filling tell, then recovery | P0 | Done |
 | CH-02b | Insulate protocol | Hatched shield plates on both sides | Backs off, lays hatched hazard tiles, slow orbs | P0 | Done |
-| CH-02c | Oscillate protocol | Side thruster fins | Strafes, fins flash before a volley | P0 | Done (the volley tell is the aim line and ring, fins do not flash yet) |
+| CH-02c | Oscillate protocol | Side thruster fins | Strafes, fins flash before a volley | P0 | Done (fins flash during the volley tell, with the aim line and ring) |
 | CH-03 | Arc Mite | Beetle machine with a shiny shell, a glowing bolt core, a sparking antenna, one eye, jointed legs | Legs cycle, faster while charging. Dotted aim line and filling ring for 0.45 s, then a spiked bolt | P0 | Done |
-| CH-04 | Relay | Boxy machine with a lever switch, visor eyes, a diamond core window, a status light, treads | Lever flips. A hatched landing diamond shows 0.5 s before it blinks | P0 | Done (the lever does not flip yet) |
+| CH-04 | Relay | Boxy machine with a lever switch, visor eyes, a diamond core window, a status light, treads | Lever flips. A hatched landing diamond shows 0.5 s before it blinks | P0 | Done (the lever flips down while the landing diamond shows) |
 | CH-05 | Coil | Coil-spring machine with a ring core | Coils tighten, then a shockwave | P2 | Not started |
 
 ### Abilities
@@ -154,7 +154,7 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | ID | Asset | Pri | Status |
 | --- | --- | --- | --- |
 | PK-01 | Charges (bolt, diamond, ring) that float and glow | P0 | Done |
-| PK-02, PK-03 | Unlock and fusion flashes | P0 | Unlock flash and notice done. Fusion is shown in the Fuse Box menu, no flash yet |
+| PK-02, PK-03 | Unlock and fusion flashes | P0 | Done (unlock flash and STOLEN notice, fusion flash with Spark and Blink rings in the Fuse Box) |
 | TL-01 | Aim tell (dotted line, filling ring of dots) | P0 | Done |
 | TL-02 | Relay landing diamond (hatched) | P0 | Done |
 | TL-03 | Hazard tile (hatching fills over the tell) | P0 | Done |
