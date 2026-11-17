@@ -130,6 +130,18 @@ class Session:
         )
         return decision
 
+    def equip(self, slot: int, ability: str) -> bool:
+        ok = self.campaign.equip(slot, ability)
+        self._trace(
+            "equip", encounter=self.campaign.encounter + 1, slot=slot, ability=ability, ok=ok
+        )
+        return ok
+
+    def fuse(self, a: str, b: str) -> str:
+        result = self.campaign.fuse(a, b)
+        self._trace("fuse", encounter=self.campaign.encounter + 1, recipe=[a, b], result=result)
+        return result
+
     # Traces ------------------------------------------------------------------------------
 
     def _trace(self, event: str, **fields) -> None:
@@ -150,3 +162,41 @@ class Session:
         if self.trace is not None:
             sent = summary if self.selector.condition == "live" else None
             self.trace.decision(decision, self.session_id, sent)
+
+
+FUSE_NOTICES = {
+    "fused": "ARC TRAIL FUSED. EQUIP IT WITH Q OR E",
+    "already_fused": "ARC TRAIL IS ALREADY FUSED",
+    "missing": "ONLY SPARK + BLINK FUSE. STEAL BOTH",
+    "unsupported": "ONLY SPARK + BLINK FUSE",
+}
+
+
+class FuseBoxMenu:
+    """The loadout and fusion menu. Keys: up and down pick a power, q and e equip it to
+    that slot, fuse tries the one supported recipe. Returns each simulation-affecting action
+    so the caller can record it for the replay."""
+
+    def __init__(self) -> None:
+        self.selected = 0
+        self.notice: str | None = None
+
+    def reset(self) -> None:
+        self.selected = 0
+        self.notice = None
+
+    def press(self, session: Session, key: str) -> list | None:
+        rows = session.campaign.kit.unlocked
+        if key in ("up", "down") and rows:
+            step = -1 if key == "up" else 1
+            self.selected = (self.selected + step) % len(rows)
+        elif key in ("q", "e") and rows:
+            slot = 0 if key == "q" else 1
+            ability = rows[min(self.selected, len(rows) - 1)]
+            session.equip(slot, ability)
+            self.notice = None
+            return ["equip", slot, ability]
+        elif key == "fuse":
+            self.notice = FUSE_NOTICES[session.fuse("spark", "blink")]
+            return ["fuse", "spark", "blink"]
+        return None

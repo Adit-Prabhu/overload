@@ -7,7 +7,7 @@ import threading
 
 from overload.agent.client import TacticClient
 from overload.agent.selector import FixedSchedule, LiveSelector, NeutralSelector
-from overload.game.flow import FALLBACK_LINE, MIN_FUSE_TICKS, Session
+from overload.game.flow import FALLBACK_LINE, FUSE_NOTICES, MIN_FUSE_TICKS, FuseBoxMenu, Session
 from overload.session.trace import TraceWriter
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import IDLE, InputFrame
@@ -174,3 +174,52 @@ def test_baseline_traces_never_claim_a_summary_was_sent(tmp_path) -> None:
     rows = [json.loads(line) for line in (tmp_path / "t.jsonl").read_text().splitlines()]
     assert all(row.get("context_hash") is None for row in rows if row["event"] == "decision")
     assert rows[-1]["event"] == "session_end"
+
+
+def fuse_box_with(*abilities: str) -> Session:
+    session = Session(Campaign(1), NeutralSelector())
+    clear_encounter(session)
+    session.campaign.kit.unlocked = list(abilities)
+    return session
+
+
+def test_menu_equips_the_picked_power_and_reports_the_action() -> None:
+    session = fuse_box_with("spark", "blink")
+    menu = FuseBoxMenu()
+    assert menu.press(session, "down") is None
+    assert menu.press(session, "q") == ["equip", 0, "blink"]
+    assert session.campaign.kit.slots == ["blink", ""]
+    menu.press(session, "down")  # wraps back to spark
+    assert menu.press(session, "e") == ["equip", 1, "spark"]
+    assert session.campaign.kit.slots == ["blink", "spark"]
+
+
+def test_menu_fusion_shows_the_supported_recipe_when_it_fails() -> None:
+    session = fuse_box_with("spark")
+    menu = FuseBoxMenu()
+    assert menu.press(session, "fuse") == ["fuse", "spark", "blink"]
+    assert menu.notice == FUSE_NOTICES["missing"] and "SPARK + BLINK" in menu.notice
+    assert session.campaign.kit.unlocked == ["spark"]
+    session.campaign.kit.unlocked.append("blink")
+    menu.press(session, "fuse")
+    assert session.campaign.kit.unlocked == ["spark", "blink", "arc_trail"]
+    assert menu.notice == FUSE_NOTICES["fused"]
+
+
+def test_menu_with_nothing_stolen_ignores_equip_keys() -> None:
+    session = fuse_box_with()
+    menu = FuseBoxMenu()
+    for key in ("up", "down", "q", "e"):
+        assert menu.press(session, key) is None
+
+
+def test_menu_actions_are_traced(tmp_path) -> None:
+    trace = TraceWriter(tmp_path / "t.jsonl", condition="off", tuning_id="t", arena_id="a")
+    session = Session(Campaign(1), NeutralSelector(), trace, "anon")
+    clear_encounter(session)
+    session.campaign.kit.unlocked = ["spark"]
+    session.equip(0, "spark")
+    session.fuse("spark", "blink")
+    rows = [json.loads(line) for line in (tmp_path / "t.jsonl").read_text().splitlines()]
+    assert [r["event"] for r in rows][-2:] == ["equip", "fuse"]
+    assert rows[-1]["result"] == "missing" and rows[-2]["ok"] is True

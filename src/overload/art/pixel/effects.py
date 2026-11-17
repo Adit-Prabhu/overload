@@ -59,6 +59,15 @@ _CHARGE = {
         "..kKk..",
         "...k...",
     ],
+    "arc_trail": [
+        "kK......",
+        "KkY.....",
+        "..YY....",
+        "...yY...",
+        "....YY..",
+        ".....YkK",
+        "......Kk",
+    ],
     "burst": [
         "..UUU..",
         ".U...U.",
@@ -148,6 +157,16 @@ def player_shot(target: pygame.Surface, light: pygame.Surface, pos: Point, angle
     for surface in (target, light):
         pygame.draw.line(surface, rgb("player.halo"), tail, pos, 2)
         pygame.draw.rect(surface, rgb("player.core"), (round(x) - 1, round(y) - 1, 2, 2))
+
+
+def spark_shot(target: pygame.Surface, light: pygame.Surface, pos: Point, angle: float):
+    """Spark: a short yellow bolt with a hot white core, brighter than a gun shot."""
+    dx, dy = math.cos(angle), math.sin(angle)
+    head = (round(pos[0]), round(pos[1]))
+    tail = (round(pos[0] - dx * 6), round(pos[1] - dy * 6))
+    for surface in (target, light):
+        pygame.draw.line(surface, rgb("power.spark"), tail, head, 3)
+        pygame.draw.line(surface, rgb("px.spark.light"), tail, head, 1)
 
 
 def bolt(target: pygame.Surface, light: pygame.Surface, pos: Point) -> None:

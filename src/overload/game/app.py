@@ -6,7 +6,8 @@ tick reads exactly one InputFrame, either from the devices or from a replay. The
 the Surge. Rendering and cosmetic effects never feed back into the simulation.
 
 Controls: WASD or arrows move, mouse aims, hold left click to fire, Space dodges,
-R retries after going down, Enter continues from the Fuse Box, Esc quits.
+Q and E use powers, R retries after going down, Esc quits. In the Fuse Box,
+W and S pick, Q and E equip, F fuses, Enter continues.
 """
 
 from __future__ import annotations
@@ -22,10 +23,10 @@ import pygame
 from overload.agent.client import TacticClient
 from overload.agent.selector import FixedSchedule, LiveSelector, NeutralSelector, Selector
 from overload.art.pixel import hud, tiles
-from overload.game.flow import Session
+from overload.game.flow import FuseBoxMenu, Session
 from overload.game.view import VIEW, PixelView
 from overload.paths import ROOT
-from overload.session.replay import Recording, check_campaign
+from overload.session.replay import Recording, apply_menu, check_campaign, menu_by_frame
 from overload.session.trace import TraceWriter
 from overload.sim.arena import arena_id
 from overload.sim.campaign import Campaign
@@ -62,6 +63,9 @@ class InputReader:
         self._dodge = False
         self._restart = False
         self._confirm = False
+        self._power_q = False
+        self._power_e = False
+        self._menu: list[str] = []
 
     def handle(self, event: pygame.event.Event) -> None:
         if event.type == pygame.QUIT:
@@ -75,11 +79,23 @@ class InputReader:
                 self._restart = True
             elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self._confirm = True
+            if event.key == pygame.K_q:
+                self._power_q = True
+            elif event.key == pygame.K_e:
+                self._power_e = True
+            key = MENU_KEYS.get(event.key)
+            if key:
+                self._menu.append(key)
 
     def take_confirm(self) -> bool:
         """Enter in the Fuse Box. A UI action, not simulation input."""
         pressed, self._confirm = self._confirm, False
         return pressed
+
+    def take_menu(self) -> list[str]:
+        """Fuse Box keys pressed since the last call. Read every frame, used in the Fuse Box."""
+        keys, self._menu = self._menu, []
+        return keys
 
     def frame(self, camera: tuple[int, int]) -> InputFrame:
         keys = pygame.key.get_pressed()
@@ -98,9 +114,22 @@ class InputReader:
             fire=bool(pygame.mouse.get_pressed()[0]),
             dodge=self._dodge,
             restart=self._restart,
+            power_q=self._power_q,
+            power_e=self._power_e,
         )
-        self._dodge = self._restart = False
+        self._dodge = self._restart = self._power_q = self._power_e = False
         return frame
+
+
+MENU_KEYS = {
+    pygame.K_w: "up",
+    pygame.K_UP: "up",
+    pygame.K_s: "down",
+    pygame.K_DOWN: "down",
+    pygame.K_q: "q",
+    pygame.K_e: "e",
+    pygame.K_f: "fuse",
+}
 
 
 def _open_window(headless: bool) -> pygame.Surface:
@@ -144,6 +173,7 @@ def play(options: Options) -> int:
     seed = replay.seed if replay else options.seed
     session: Session | None = None
     starts: dict[int, str] = {}
+    replay_menu: dict[int, list[list]] = {}
     if practice:
         run: Run | Campaign = Run(seed)
     elif replay:
@@ -154,6 +184,7 @@ def play(options: Options) -> int:
             return 2
         run = Campaign(seed)
         starts = dict(zip(replay.starts, replay.protocols[1:], strict=True))
+        replay_menu = menu_by_frame(replay)
     else:
         selector, session_id, condition = build_selector(options)
         run = Campaign(seed)
@@ -195,6 +226,7 @@ def play(options: Options) -> int:
         pygame.display.set_caption("Overload")
         view = PixelView(run)
         reader = InputReader()
+        menu = FuseBoxMenu()
         clock = pygame.time.Clock()
         accumulated = 0.0
         frames = 0
@@ -214,6 +246,13 @@ def play(options: Options) -> int:
                 accumulated -= due * TICK_SECONDS
             for _ in range(due):
                 if scripted is not None:
+                    for action in replay_menu.get(len(recording.frames), []):
+                        try:
+                            apply_menu(run, action)
+                        except ValueError as error:
+                            print(f"Replay rejected: {error}")
+                            return 2
+                        recording.fuse_box(*action[1:])
                     if len(recording.frames) in starts:
                         if run.stage != "fuse_box":
                             print(
@@ -245,16 +284,25 @@ def play(options: Options) -> int:
                     cam = view.camera_offset()
                     cursor = (frame.aim_x - cam[0], frame.aim_y - cam[1])
                 view.update(run, cursor)
+            menu_keys = reader.take_menu()
+            if session is not None and run.stage == "fuse_box":
+                for key in menu_keys:
+                    action = menu.press(session, key)
+                    if action is not None:
+                        recording.fuse_box(*action)
             if session is not None and reader.take_confirm():
                 decision = session.confirm()
                 if decision is not None:
                     recording.begin_next(decision.tactic)
+                    menu.reset()
             view.draw(screen, run, cursor)
             stage = getattr(run, "stage", None)
             if stage == "fuse_box":
                 ready = session.ready() if session else False
                 message = session.fuse_message() if session else None
-                view.draw_fuse_box(screen, run.encounter + 1, ready, message)
+                view.draw_fuse_box(
+                    screen, run.encounter + 1, ready, message, run.kit, menu.selected, menu.notice
+                )
             elif stage == "ending":
                 view.draw_ending(
                     screen, stats["ticks"] / TICK_RATE, sum(run.retries.values()), stats["shots"]
