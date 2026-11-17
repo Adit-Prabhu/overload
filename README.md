@@ -21,7 +21,7 @@ npm test                                 # Worker tests run locally in workerd, 
 npm run typecheck
 ```
 
-Controls: WASD or arrow keys move, the mouse aims, hold left click to fire, Space dodges, R retries after going down, Esc quits. This is the practice build: two Arc Mites in the substation, no powers or Regulator yet.
+Controls: WASD or arrow keys move, the mouse aims, hold left click to fire, Space dodges, R retries after going down or clearing the room, Esc quits. This is the practice build: two Arc Mites in the substation, no powers or Regulator yet.
 
 Review renders of the art live in [`docs/art/`](docs/art/). Regenerate them with `uv run python tools/art/style_frame.py` and `uv run --group tools python tools/art/contact_sheet.py` (Python 3.12).
 

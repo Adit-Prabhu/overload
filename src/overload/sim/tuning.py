@@ -41,6 +41,19 @@ class Tuning:
     arc_mite_tell: int = 27
     arc_mite_recovery: int = 18
 
+    def __post_init__(self) -> None:
+        """Reject values that would break readability rules or the tell logic."""
+        if self.arc_mite_tell < 0.40 * TICK_RATE:
+            raise ValueError("Arc Mite tell must last at least 0.40 s")
+        if self.arc_mite_recovery < 0.25 * TICK_RATE:
+            raise ValueError("Arc Mite recovery must last at least 0.25 s")
+        if self.arc_mite_fire_interval - self.arc_mite_tell < self.arc_mite_recovery:
+            raise ValueError("Arc Mite fire interval leaves no room for recovery")
+        if self.arc_mite_fire_interval // 2 <= self.arc_mite_tell:
+            raise ValueError("Arc Mite first shot could start inside its tell window")
+        if self.dodge_speed >= self.player_radius:
+            raise ValueError("Dodge speed must stay below the player radius to avoid tunneling")
+
     def tuning_id(self) -> str:
         """Short stable hash of every value, for traces and the build stamp."""
         blob = json.dumps(asdict(self), sort_keys=True, separators=(",", ":"))
