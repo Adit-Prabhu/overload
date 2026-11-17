@@ -16,6 +16,10 @@ This repository currently holds the G1 concept package. It describes proposed wo
 - [Decisions and open questions](docs/DECISIONS_AND_OPEN_QUESTIONS.md)
 - [Historical first-round pitch](docs/history/FIRST_ROUND_PITCH.md)
 
+## Planning after G1
+- [Implementation plan](docs/IMPLEMENTATION_PLAN.md): architecture, schedule through the finals, tests and decisions
+- [Art and audio direction](docs/ART_AND_AUDIO_DIRECTION.md): theme, visual and sound rules, full asset list
+
 Files named "Initial" are the G1 gate proposal. They are preserved as submitted. Update (G2/G3) and Final (G4) versions will be added alongside them rather than overwriting them.
 
 ## Status
