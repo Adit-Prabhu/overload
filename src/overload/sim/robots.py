@@ -38,6 +38,16 @@ _COS15 = 0.9659258262890683
 _SIN15 = 0.25881904510252074
 
 
+def pace(robot: Hostile, speed: float, tuning: Tuning) -> float:
+    """Walking speed for the robot's tier (sim/spawns.py): Overcharged robots are faster."""
+    return speed * tuning.overcharged_speed if robot.tier == 3 else speed
+
+
+def rest(robot: Hostile, ticks: int, tuning: Tuning) -> int:
+    """Rest between attacks for the robot's tier. Tuning guards these against the tells."""
+    return max(1, round(ticks * tuning.overcharged_rest)) if robot.tier == 3 else ticks
+
+
 def tick(world: World, tuning: Tuning, arena) -> None:
     for robot in world.hostiles:
         if robot.health <= 0:
@@ -132,8 +142,8 @@ def _drone(world: World, drone: Hostile, tuning: Tuning, arena) -> None:
         drone.x, drone.y = move_body(
             drone.x,
             drone.y,
-            vx * tuning.drone_speed,
-            vy * tuning.drone_speed,
+            vx * pace(drone, tuning.drone_speed, tuning),
+            vy * pace(drone, tuning.drone_speed, tuning),
             drone.radius,
             arena,
             world,
@@ -154,7 +164,7 @@ def _drone(world: World, drone: Hostile, tuning: Tuning, arena) -> None:
             "bolt",
             tuning,
         )
-        drone.fire_timer = tuning.drone_fire_interval
+        drone.fire_timer = rest(drone, tuning.drone_fire_interval, tuning)
         world.events.append(Event("bolt", drone.x, drone.y, drone.id))
 
 
@@ -216,7 +226,7 @@ def _relay(world: World, relay: Hostile, tuning: Tuning, arena) -> None:
                 "shard",
                 tuning,
             )
-        relay.phase, relay.fire_timer = "", tuning.relay_idle
+        relay.phase, relay.fire_timer = "", rest(relay, tuning.relay_idle, tuning)
         world.events.append(Event("shards", relay.x, relay.y, relay.id))
 
 
@@ -248,8 +258,8 @@ def _breaker(world: World, breaker: Hostile, tuning: Tuning, arena) -> None:
     breaker.x, breaker.y = move_body(
         breaker.x,
         breaker.y,
-        nx * tuning.breaker_speed,
-        ny * tuning.breaker_speed,
+        nx * pace(breaker, tuning.breaker_speed, tuning),
+        ny * pace(breaker, tuning.breaker_speed, tuning),
         breaker.radius,
         arena,
         world,
@@ -317,8 +327,8 @@ def _sweeper(world: World, sweeper: Hostile, tuning: Tuning, arena) -> None:
     sweeper.x, sweeper.y = move_body(
         sweeper.x,
         sweeper.y,
-        nx * tuning.sweeper_speed,
-        ny * tuning.sweeper_speed,
+        nx * pace(sweeper, tuning.sweeper_speed, tuning),
+        ny * pace(sweeper, tuning.sweeper_speed, tuning),
         sweeper.radius,
         arena,
         world,
@@ -343,5 +353,5 @@ def _sentry(world: World, sentry: Hostile, tuning: Tuning) -> None:
             "shell",
             tuning,
         )
-        sentry.fire_timer = tuning.sentry_interval
+        sentry.fire_timer = rest(sentry, tuning.sentry_interval, tuning)
         world.events.append(Event("shell", sentry.x, sentry.y, sentry.id))

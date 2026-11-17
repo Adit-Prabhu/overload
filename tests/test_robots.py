@@ -137,3 +137,55 @@ def test_a_sentry_never_starts_inside_its_tell() -> None:
 
     with pytest.raises(ValueError):
         dataclasses.replace(DEFAULT, sentry_interval=90, sentry_tell=48)
+
+
+def test_robots_are_built_for_their_sector() -> None:
+    """Sector 3 fields Overcharged variants: more health (integer math, rounded up), faster
+    walking and shorter rests. Sector 2's Cooled variants keep stock stats (only their colors
+    change). Tells and punish windows never change."""
+    world = encounter_world(1, 1, "lateral")
+    expected = {"drone": 7, "relay": 9, "breaker": 18, "sweeper": 5, "sentry": 11}
+    for kind, health in expected.items():
+        stock = spawn_robot(world, kind, 100, 100)
+        assert spawn_robot(world, kind, 100, 100, tier=2).max_health == stock.max_health
+        assert spawn_robot(world, kind, 100, 100, tier=3).max_health == health
+    assert DEFAULT.overcharged_rest < 1.0 < DEFAULT.overcharged_speed
+
+
+def test_overcharged_tuning_is_guarded() -> None:
+    import pytest
+
+    from overload.sim.tuning import Tuning
+
+    with pytest.raises(ValueError):
+        Tuning(overcharged_rest=0.6, drone_fire_interval=60)  # no room left for recovery
+    with pytest.raises(ValueError):
+        Tuning(overcharged_health_pct=90)
+    from overload.sim.spawns import tier_health
+
+    assert tier_health(50, 3) == 55, "no float rounding can add a point"
+
+
+def test_warped_robots_take_the_tier_of_their_room() -> None:
+    from floorbot import enter
+
+    from overload.sim.campaign import Campaign
+
+    for room, tier in (("s1_hall", 1), ("s2_yard", 2), ("s3_core", 3)):
+        campaign = Campaign(1)
+        enter(campaign, room)
+        for _ in range(DEFAULT.warp_tell + 2):
+            campaign.world.player.invulnerable = 10**9
+            campaign.step(IDLE)
+        assert campaign.world.hostiles
+        assert {h.tier for h in campaign.world.hostiles} == {tier}, room
+
+
+def test_a_tougher_robot_keeps_its_tell_length() -> None:
+    world = encounter_world(1, 1, "lateral")
+    world.hostiles.clear()
+    drone = spawn_robot(world, "drone", world.player.x + 60, world.player.y, tier=3)
+    drone.fire_timer = 3
+    for _ in range(4):
+        step(world, IDLE)
+    assert drone.fire_timer > DEFAULT.drone_tell, "a shorter rest, but never a shorter tell"

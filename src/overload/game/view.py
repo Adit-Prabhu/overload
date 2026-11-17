@@ -79,17 +79,48 @@ SHOT_ART = {
 def robot_image(
     robot, tick: int, left: bool, charging: bool, recover: int = DEFAULT.breaker_recover
 ) -> pygame.Surface:
-    """The approved roster art (art/pixel/robots.py) for a robot in its current state."""
+    """The approved roster art (art/pixel/robots.py) for a robot in its current state, in
+    its sector's colors: stock orange, Cooled teal (sector 2) or Overcharged violet (sector 3).
+    Only the shell ramp changes. The danger red of its eyes never changes, though the bright
+    rim around some eyes shares the shell's highlight and takes the sector color."""
     if robot.kind == "relay":
-        return robots_art.relay_bot(left, arming=robot.phase == "blink")
-    if robot.kind == "breaker":
+        image = robots_art.relay_bot(False, arming=robot.phase == "blink")
+    elif robot.kind == "breaker":
         slamming = robot.phase == "recover" and robot.fire_timer > recover - 14
-        return robots_art.breaker(left, raising=robot.phase == "raise", slamming=slamming)
-    if robot.kind == "sweeper":
-        return robots_art.sweeper(tick, left, revving=robot.phase in ("rev", "rush"))
-    if robot.kind == "sentry":
-        return robots_art.sentry(left)
-    return robots_art.drone(tick, left)
+        image = robots_art.breaker(False, raising=robot.phase == "raise", slamming=slamming)
+    elif robot.kind == "sweeper":
+        image = robots_art.sweeper(tick, False, revving=robot.phase in ("rev", "rush"))
+    elif robot.kind == "sentry":
+        image = robots_art.sentry(False)
+    else:
+        image = robots_art.drone(tick, False)
+    image = tier_colors(image, robot.tier)
+    return robots_art.flipped(image) if left else image
+
+
+_HOSTILE_RAMP = ("px.hostile.0", "px.hostile.1", "px.hostile.2", "px.hostile.3")
+TIER_RAMPS = {
+    2: ("px.conduit.0", "px.conduit.1", "px.jacket.1", "px.jacket.2"),  # not Blink cyan
+    3: ("px.core.0", "px.core.1", "px.core.2", "px.core.3"),
+}
+_TIERED: dict[tuple[int, int], tuple[pygame.Surface, pygame.Surface]] = {}
+
+
+def tier_colors(image: pygame.Surface, tier: int) -> pygame.Surface:
+    """Swap the orange shell ramp for the tier's ramp. Cached per source frame (frames are
+    cached surfaces, so the identity check keeps a stale entry from being reused)."""
+    if tier == 1:
+        return image
+    key = (id(image), tier)
+    hit = _TIERED.get(key)
+    if hit is None or hit[0] is not image:
+        swapped = image.copy()
+        pixels = pygame.PixelArray(swapped)
+        for source, target in zip(_HOSTILE_RAMP, TIER_RAMPS[tier], strict=True):
+            pixels.replace(rgb(source), rgb(target))
+        pixels.close()
+        hit = _TIERED[key] = (image, swapped)
+    return hit[1]
 
 
 FUSION_TICKS = 30
@@ -176,6 +207,8 @@ class PixelView:
         self.blinks: list[tuple[float, float, int]] = []
         self.bursts: list[tuple] = []
         self.seen: set[str] = set()  # rooms the minimap has revealed (cosmetic only)
+        self.sector = 1
+        self.tint = [255.0, 255.0, 255.0]
         self.chains: list[tuple] = []
         self.notice: tuple[str, int] | None = None
         self.unlock_flash = 0
@@ -246,6 +279,10 @@ class PixelView:
             room = floorplay.room_of(floor, run.world.player.x, run.world.player.y)
             if room is not None:
                 self.seen.add(room.id)
+                self.sector = room.sector
+            # Each sector has its own light, eased in as the Surge walks into it.
+            target = rgb(f"px.tint.{self.sector}")
+            self.tint = [c + (t - c) * 0.04 for c, t in zip(self.tint, target, strict=True)]
 
     def follow(self, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         """Ease toward the player, nudged a little toward where they are aiming. In a fight
@@ -552,9 +589,13 @@ class PixelView:
             )
         for hostile in world.hostiles:
             if hostile.kind == "relay" and hostile.phase == "blink":
-                effects.relay_destination(
-                    screen, v(hostile.dest_x, hostile.dest_y), rules.tell_progress(hostile, tuning)
-                )
+                # On the glow layer too, so the sector light never dims this tell.
+                for surface in (screen, self.glow.layer):
+                    effects.relay_destination(
+                        surface,
+                        v(hostile.dest_x, hostile.dest_y),
+                        rules.tell_progress(hostile, tuning),
+                    )
         for gx, gy, _life in self.blinks:
             effects.blink_ghost(screen, self.glow.layer, v(gx, gy))
 
@@ -763,6 +804,9 @@ class PixelView:
         if rival is not None and rival.health > 0:
             self.lighting.add(v(rival.x, rival.y), 40, "px.hostile.2", 25)
         self.lighting.apply(screen)
+        tint = tuple(round(c) for c in self.tint)
+        if tint != (255, 255, 255):
+            screen.fill(tint, special_flags=pygame.BLEND_RGB_MULT)
         self.glow.apply(screen)
 
         dodge_total = tuning.dodge_ticks + tuning.dodge_cooldown

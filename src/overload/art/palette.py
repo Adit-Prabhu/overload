@@ -74,6 +74,11 @@ TOKENS = MappingProxyType(
         "px.core.1": "#4A2A73",
         "px.core.2": "#7E48C2",
         "px.core.3": "#B58CF0",
+        # Sector light (multiplied over the scene): sector 1 is untinted, the cooling plant
+        # runs cold, the grid core runs hot.
+        "px.tint.1": "#FFFFFF",
+        "px.tint.2": "#CCE6F2",
+        "px.tint.3": "#F5CFDC",
         "px.dial.0": "#C9CED8",
         "px.dial.1": "#F2F4F8",
         "px.spark.light": "#FFF3A6",

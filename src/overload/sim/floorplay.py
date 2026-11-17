@@ -50,7 +50,7 @@ def tick(world: World, tuning: Tuning, arena) -> None:
     floor = arena.floor
     if floor is None or world.mode != "floor":
         return
-    _warps(world, tuning)
+    _warps(world, tuning, floor)
     if world.active_room:
         _hold(world, tuning, floor)
         return
@@ -82,14 +82,17 @@ def _queue_wave(world: World, tuning: Tuning, room: FloorRoom) -> None:
         world.events.append(Event("warp", x, y))
 
 
-def _warps(world: World, tuning: Tuning) -> None:
+def _warps(world: World, tuning: Tuning, floor: Floor) -> None:
+    """Robots appear once their marker has shown, built for the sector of the room they
+    warp into."""
+    tier = floor.get(world.active_room).sector if world.active_room else 1
     waiting = []
     for warp in world.warps:
         warp.timer -= 1
         if warp.timer > 0:
             waiting.append(warp)
             continue
-        spawn_robot(world, warp.kind, warp.x, warp.y, tuning)
+        spawn_robot(world, warp.kind, warp.x, warp.y, tuning, tier=tier)
         world.events.append(Event("warp_in", warp.x, warp.y))
     world.warps = waiting
 

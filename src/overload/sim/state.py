@@ -67,6 +67,7 @@ class Hostile:
     phase: str = ""  # Relay Bot: blink or aim. Breaker: raise or recover. Sweeper: rev, rush, rest
     dest_x: float = 0.0
     dest_y: float = 0.0
+    tier: int = 1  # the sector it was built for: 2 Cooled, 3 Overcharged (sim/robots.py)
 
 
 @dataclass(slots=True)

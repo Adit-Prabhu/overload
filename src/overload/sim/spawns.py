@@ -41,8 +41,34 @@ def spawn_relay(world: World, x: float, y: float, tuning: Tuning = DEFAULT) -> H
     return hostile
 
 
-def spawn_robot(world: World, kind: str, x: float, y: float, tuning: Tuning = DEFAULT) -> Hostile:
-    """Any robot of the roster by kind (overhaul)."""
+# Sector variants (overhaul, Nov 17): the same robots, built for deeper in the station. Tier
+# 1 is the stock robot. Tier 2 (Cooled, sector 2) has stock stats in the cooling plant's colors,
+# so sector 2 stays as tuned. Tier 3 (Overcharged, sector 3) takes Tuning's overcharged_*
+# values: more health (rounded up), a little faster walking, shorter rests. Tells and punish
+# windows (a Breaker's recovery, a Sweeper's rest) never shrink. Health is the strong lever:
+# 25 percent more made the test bot go down about 4 times a run in sector 3, so it stays
+# small (numbers in the PR).
+
+
+def tier_health(health: int, tier: int, tuning: Tuning = DEFAULT) -> int:
+    """Integer math, rounded up, so no float edge case can add a point."""
+    if tier != 3:
+        return health
+    return -(-health * tuning.overcharged_health_pct // 100)
+
+
+def spawn_robot(
+    world: World, kind: str, x: float, y: float, tuning: Tuning = DEFAULT, tier: int = 1
+) -> Hostile:
+    """Any robot of the roster by kind (overhaul), built for a sector's tier."""
+    robot = _build_robot(world, kind, x, y, tuning)
+    if tier != 1:
+        robot.tier = tier
+        robot.health = robot.max_health = tier_health(robot.max_health, tier, tuning)
+    return robot
+
+
+def _build_robot(world: World, kind: str, x: float, y: float, tuning: Tuning) -> Hostile:
     if kind == "drone":
         return spawn_drone(world, x, y, tuning)
     if kind == "relay":

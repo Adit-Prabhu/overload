@@ -287,3 +287,21 @@ def test_the_slam_shake_never_moves_the_aim(headless_pygame) -> None:
     view.shake = 10
     assert view.camera_offset() == still, "aiming converts the cursor with this"
     assert view.jolt() != (0, 0) and max(map(abs, view.jolt())) <= 2
+
+
+def test_sector_variants_recolor_the_shell_but_not_the_danger_red(headless_pygame) -> None:
+    from overload.art.pixel import robots
+    from overload.game.view import tier_colors
+
+    stock = robots.drone(0, False)
+    for tier in (2, 3):
+        variant = tier_colors(stock, tier)
+        assert variant is tier_colors(stock, tier), "cached per frame"
+        colors = {
+            tuple(variant.get_at((x, y)))[:3]
+            for x in range(variant.get_width())
+            for y in range(variant.get_height())
+        }
+        assert rgb("px.hostile.2") not in colors
+        assert rgb("hostile.danger") in colors
+    assert tier_colors(stock, 1) is stock
