@@ -1,6 +1,6 @@
 """Test helpers for the floor (overhaul): a scripted player that really walks the floor and
-fights, and shortcuts that jump the campaign forward by editing state (for unit tests only;
-anything replayed must use real inputs)."""
+fights, and shortcuts that jump the campaign forward by editing state. The shortcuts are for
+unit tests only. Anything replayed must use real inputs."""
 
 from __future__ import annotations
 

@@ -115,6 +115,9 @@ class Campaign:
         if self.stage == "ending":
             self.world.events.clear()
             return
+        if self.stage == "fuse_box":
+            # The menu is open: the Surge stands still and only the aim follows the cursor.
+            inp = InputFrame(aim_x=inp.aim_x, aim_y=inp.aim_y)
         if inp.restart and self.world.outcome == "down":
             self.world = copy.deepcopy(self.checkpoint)
             self.world.events.clear()
@@ -125,6 +128,8 @@ class Campaign:
             return
         step(self.world, inp, self.tuning, self.arena)
         self._count(self.world.events)
+        if self.world.outcome != "playing":
+            return  # going down takes precedence over anything cleared in the same tick
         if self.stage == "encounter" and f"s{self.encounter}_chamber" in self.world.cleared:
             if self.encounter == ENCOUNTERS:
                 self.stage = "ending"

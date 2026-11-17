@@ -29,12 +29,13 @@ def room_of(floor: Floor, x: float, y: float, margin: int = 0) -> FloorRoom | No
 
 
 def same_room(arena, a: tuple[float, float], b: tuple[float, float]) -> bool:
-    """On the floor, both points are in the same room (or the same corridor stretch). Always
-    true in a single-room arena."""
+    """On the floor, both points are inside the same room (a corridor counts as no room).
+    Always true in a single-room arena."""
     floor = arena.floor
     if floor is None:
         return True
-    return room_of(floor, *a) == room_of(floor, *b)
+    room = room_of(floor, *a)
+    return room is not None and room == room_of(floor, *b)
 
 
 def lock(world: World, door_ids) -> None:
@@ -54,7 +55,10 @@ def tick(world: World, tuning: Tuning, arena) -> None:
         _hold(world, tuning, floor)
         return
     player = world.player
-    room = room_of(floor, player.x, player.y, margin=1)
+    # Any interior tile counts (door gaps are wall tiles, never interior), so no path along
+    # the walls can slip past a room. A body still overlapping the gap is pushed into the
+    # room when the doors shut.
+    room = room_of(floor, player.x, player.y)
     if room is not None and room.kind in ("combat", "chamber") and room.id not in world.cleared:
         _activate(world, tuning, floor, room)
 
@@ -107,6 +111,9 @@ def _hold(world: World, tuning: Tuning, floor: Floor) -> None:
     else:
         world.rival = None
     absorb_charges(world, tuning, everything=True)  # nothing stolen is ever left behind
+    # The fight is over: hostile shots and hazard tiles still in the air go with it.
+    world.projectiles = [shot for shot in world.projectiles if not shot.hostile]
+    world.hazards = []
     world.cleared = [*world.cleared, room.id]
     world.active_room = ""
     unlock(world, [door.id for door in floor.doors_of(room.id)])

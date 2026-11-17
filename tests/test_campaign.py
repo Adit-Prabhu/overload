@@ -335,4 +335,38 @@ def test_pinned_campaign_hash_matches_across_python_versions() -> None:
     campaign = Campaign(9)
     play_campaign(campaign)
     assert (campaign.stage, campaign.encounter) == ("ending", 3)
-    assert campaign.state_hash() == "27eae1a5c4297eb1"
+    assert campaign.state_hash() == "4b3c2d235d6fbbb1"
+
+
+def test_no_path_along_the_walls_skips_a_room() -> None:
+    """Every interior tile of every combat room and chamber locks it, including the ring of
+    tiles along the walls, so no route can slip past a fight."""
+    from overload.sim import floorplay
+
+    floor = FLOOR_ARENA.floor
+    for room in floor.rooms:
+        if room.kind not in ("combat", "chamber"):
+            continue
+        x, y, w, h = room.interior
+        ring = [(tx, y) for tx in range(x, x + w)] + [(tx, y + h - 1) for tx in range(x, x + w)]
+        ring += [(x, ty) for ty in range(y, y + h)] + [(x + w - 1, ty) for ty in range(y, y + h)]
+        for tile in ring:
+            if floor.room.decor[tile[1]][tile[0]] in "TCRIKB":
+                continue
+            campaign = Campaign(1)
+            campaign.world.player.x, campaign.world.player.y = floorplay.tile_center(tile)
+            campaign.step(IDLE)
+            assert campaign.world.active_room == room.id, (room.id, tile)
+
+
+def test_going_down_as_the_last_regulator_falls_is_still_down() -> None:
+    campaign = Campaign(4)
+    skip_sector(campaign)
+    campaign.begin_next("pressure")
+    skip_sector(campaign)
+    campaign.begin_next("spacing")
+    enter(campaign, "s3_chamber")
+    campaign.world.rival.health = 0
+    campaign.world.player.charge = 0
+    campaign.step(IDLE)
+    assert campaign.world.outcome == "down" and campaign.stage == "encounter"

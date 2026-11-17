@@ -1,7 +1,7 @@
 """What the Regulator saw: the only game data that ever reaches the model.
 
 ObservationLog never receives the World. The caller hands it visible facts only: where the
-Surge and the Regulator stand, and the Surge's visible actions. Hidden state (charge,
+Surge and the nearest fighting hostile stand, and the Surge's visible actions. Hidden state (charge,
 cooldowns, inventory, RNG, other entities) cannot reach the summary by construction.
 """
 

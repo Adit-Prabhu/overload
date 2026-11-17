@@ -77,13 +77,15 @@ def test_summary_goes_to_the_selector_when_an_encounter_ends() -> None:
 
 def test_retry_restarts_the_observation_record() -> None:
     session = Session(Campaign(1), NeutralSelector())
-    for _ in range(40):
+    enter(session.campaign, "s1_hall", session.tick)
+    for _ in range(DEFAULT.warp_tell + 20):  # robots arrive and the fight is observed
         session.tick(IDLE)
+    assert session.log.ticks > 0
     session.campaign.world.player.charge = 0
     session.tick(IDLE)
     assert session.campaign.world.outcome == "down"
     session.tick(InputFrame(restart=True))
-    assert session.log.ticks == 0
+    assert session.log.ticks == 0, "the retry rolls the record back to the sector start"
     assert session.campaign.retries[1] == 1
 
 
@@ -315,3 +317,15 @@ def test_a_live_fuse_box_session_replays_exactly() -> None:
         session.tick(frame)
         recording.frames.append(frame)
     assert play(recording).state_hash() == campaign.state_hash()
+
+
+def test_the_fuse_box_holds_the_surge_still_and_ignores_restart() -> None:
+    session = Session(Campaign(1), NeutralSelector())
+    clear_encounter(session)
+    campaign = session.campaign
+    player = campaign.world.player
+    where = (player.x, player.y)
+    for _ in range(30):
+        session.tick(InputFrame(move_x=1, fire=True, restart=True, power_q=True, dodge=True))
+    assert (player.x, player.y) == where and not campaign.world.projectiles
+    assert campaign.stage == "fuse_box" and campaign.retries == {1: 0}

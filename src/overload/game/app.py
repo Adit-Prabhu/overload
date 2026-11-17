@@ -315,9 +315,6 @@ def play(options: Options) -> int:
                     # the frame will be drawn with: the reticle and the aim point agree.
                     view.follow(run, cursor)
                     frame = reader.frame(view.camera_offset()) if not options.headless else IDLE
-                    if getattr(run, "stage", None) == "fuse_box":
-                        # The Fuse Box menu is open: the Surge stands still while choosing.
-                        frame = InputFrame(aim_x=frame.aim_x, aim_y=frame.aim_y)
                 if session is not None:
                     session.tick(frame)
                 else:

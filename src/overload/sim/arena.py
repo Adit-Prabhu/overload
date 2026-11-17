@@ -11,7 +11,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 
-from overload.floor import FLOOR, Floor, tile_rect_px
+from overload.floor import FLOOR, WAVES, Floor, tile_rect_px
 from overload.rooms import PROPS, SUBSTATION_HALL, TILE, Room, footprint_tiles
 from overload.sim.collision import build_index
 from overload.sim.geometry import Point, Rect, circle_hits_rect
@@ -141,6 +141,15 @@ def arena_id(arena: Arena) -> str:
             "practice": arena.practice_spawns,
             "rival": arena.rival_spawn,
             **({"doors": arena.doors} if arena.doors else {}),
+            **(
+                {
+                    "rooms": [(r.id, r.kind, r.rect, r.spawns) for r in arena.floor.rooms],
+                    "secret": [d.id for d in arena.floor.doors if d.secret],
+                    "waves": WAVES,
+                }
+                if arena.floor
+                else {}
+            ),
         },
         sort_keys=True,
         separators=(",", ":"),
