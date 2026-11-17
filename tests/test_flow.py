@@ -13,6 +13,7 @@ from overload.game.flow import FALLBACK_LINE, FUSE_NOTICES, MIN_FUSE_TICKS, Fuse
 from overload.session.trace import TraceWriter
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import IDLE, InputFrame
+from overload.sim.powers import fused_name
 from overload.sim.tuning import DEFAULT
 
 
@@ -213,8 +214,10 @@ def test_menu_fusion_shows_the_supported_recipe_when_it_fails() -> None:
     assert session.campaign.kit.unlocked == ["spark"]
     session.campaign.world.unlocked.append("blink")
     menu.press(session, "fuse")
-    assert session.campaign.world.unlocked == ["spark", "blink", "arc_trail"]
-    assert menu.notice == "ARC TRAIL FUSED"
+    world = session.campaign.world
+    assert world.unlocked == ["spark", "blink", "arc_trail"]
+    rarity = world.rarity["arc_trail"]
+    assert menu.notice == f"{fused_name('arc_trail', rarity)} {rarity.upper()}"
 
 
 def test_menu_with_nothing_stolen_ignores_equip_keys() -> None:

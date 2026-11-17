@@ -1,10 +1,14 @@
-"""Stolen powers: Spark, Blink and their fusion, Arc Trail.
+"""Stolen powers: the base powers, their evolutions and chance fusion.
 
 Destroying a machine breaks its charge loose. Absorbing the first charge of a power unlocks
-it and fills an empty slot (Q, then E). In the Fuse Box the player equips abilities to the
-two slots and fuses two base powers into a recipe. Fusing never consumes its ingredients.
-The kit (unlocked abilities, absorbed charges, slots) carries from one encounter to the
-next. A retry restores the kit the encounter started with.
+it and fills an empty slot (Q, then E). Every later charge goes into that power's bank and
+counts toward its evolution. In the loadout menu the player equips abilities to the two
+slots and fuses two base powers. Each fusion rolls a rarity (rare, epic or legendary) from a
+stream fed only by the run seed and the number of fusions so far. The first fusion of a pair
+is free, a reroll spends banked charges. Fusing never removes its ingredients
+(docs/POWERS_AND_FUSION.md). The kit (unlocked abilities, absorbed and banked charges,
+rarities, slots) carries from one encounter to the next. A retry restores the kit the
+encounter started with, fusion count included, so the same rolls come back.
 
 Every rule here is deterministic and lives in the simulation. Nothing here is visible to the
 rival model except, later, counts of power uses.
@@ -12,10 +16,12 @@ rival model except, later, counts of power uses.
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
 
 from overload.sim.aiming import launch_point
 from overload.sim.arena import Arena
+from overload.sim.bosses import RING
 from overload.sim.collision import blocked, move_body
 from overload.sim.damage import damage_rival
 from overload.sim.geometry import (
@@ -27,7 +33,7 @@ from overload.sim.geometry import (
 )
 from overload.sim.inputs import InputFrame
 from overload.sim.state import Charge, Event, Projectile, Trail, World
-from overload.sim.tuning import Tuning
+from overload.sim.tuning import DEFAULT, Tuning
 
 BASE_POWERS = ("spark", "blink", "burst")
 # The recipe order is the order F tries them in the Fuse Box. Blink + Burst stays unsupported.
@@ -36,6 +42,7 @@ RECIPES = {
     frozenset(("spark", "blink")): "arc_trail",
     frozenset(("spark", "burst")): "shock_cone",
 }
+INGREDIENTS = {RECIPES[frozenset(pair)]: pair for pair in RECIPE_ORDER}
 ABILITIES = ("spark", "blink", "burst", "arc_trail", "shock_cone")
 DROPS = {"drone": "spark", "relay": "blink", "breaker": "burst"}
 SLOTS = 2
@@ -50,6 +57,17 @@ COOLDOWN_KEYS = {
 }
 # One evolution per base power, unlocked by two more charges after the first (GDD).
 EVOLUTIONS = {"spark": "CHAIN", "blink": "OVERDRIVE", "burst": "WIDE"}
+# Every fusion rolls one of these. Each rarity of a pair is its own named power.
+RARITIES = ("rare", "epic", "legendary")
+FUSION_NAMES = {
+    "arc_trail": ("ARC TRAIL", "STORM STEP", "THUNDERHEAD"),
+    "shock_cone": ("SHOCK CONE", "SHOCK FAN", "OVERCURRENT"),
+}
+
+
+def fused_name(ability: str, rarity: str) -> str:
+    """The name of a fused power at a rarity, e.g. STORM STEP for an epic Arc Trail."""
+    return FUSION_NAMES[ability][RARITIES.index(rarity)]
 
 
 def evolved(fragments: dict[str, int], power: str, tuning: Tuning) -> bool:
@@ -61,25 +79,44 @@ class Kit:
     """What the Surge carries between encounters."""
 
     unlocked: list[str] = field(default_factory=list)
-    fragments: dict[str, int] = field(default_factory=dict)
+    fragments: dict[str, int] = field(default_factory=dict)  # every charge absorbed
     slots: list[str] = field(default_factory=lambda: [""] * SLOTS)
+    bank: dict[str, int] = field(default_factory=dict)  # spare charges, spent on rerolls
+    rarity: dict[str, str] = field(default_factory=dict)  # each fused power's rarity
+    fusions: int = 0  # fusions so far this run: the roll stream's index
+    streak: int = 0  # rares in a row, for the guarantee
 
     @classmethod
     def from_world(cls, world: World) -> Kit:
-        return cls(list(world.unlocked), dict(world.fragments), list(world.player.slots))
+        return cls(
+            list(world.unlocked),
+            dict(world.fragments),
+            list(world.player.slots),
+            dict(world.bank),
+            dict(world.rarity),
+            world.fusions,
+            world.streak,
+        )
 
     def apply(self, world: World) -> None:
         world.unlocked = list(self.unlocked)
         world.fragments = dict(self.fragments)
         world.player.slots = list(self.slots)
+        world.bank = dict(self.bank)
+        world.rarity = dict(self.rarity)
+        world.fusions = self.fusions
+        world.streak = self.streak
 
 
 # Fuse Box ------------------------------------------------------------------------------------
 
 
-def fuse(kit: Kit, a: str, b: str) -> str:
-    """Fuse two base powers. Returns "fused", "already_fused", "missing" (an ingredient is
-    not unlocked) or "unsupported" (no such recipe). Only "fused" changes the kit, and it
+def fuse(kit: Kit, a: str, b: str, seed: int, tuning: Tuning = DEFAULT) -> str:
+    """Fuse two base powers and roll the result's rarity. The first fusion of a pair is
+    free. Fusing it again is a reroll: it spends `reroll_cost` banked charges of each
+    ingredient and the new rarity replaces the old one, better or worse. Returns "fused",
+    "missing" (an ingredient is not unlocked), "unsupported" (no such recipe) or
+    "no_charges" (a reroll the bank cannot pay for). Only "fused" changes the kit, and it
     never removes the ingredients."""
     recipe = RECIPES.get(frozenset((a, b)))
     if recipe is None or a == b:
@@ -87,9 +124,41 @@ def fuse(kit: Kit, a: str, b: str) -> str:
     if a not in kit.unlocked or b not in kit.unlocked:
         return "missing"
     if recipe in kit.unlocked:
-        return "already_fused"
-    kit.unlocked.append(recipe)
+        cost = tuning.reroll_cost
+        if kit.bank.get(a, 0) < cost or kit.bank.get(b, 0) < cost:
+            return "no_charges"
+        kit.bank[a] -= cost
+        kit.bank[b] -= cost
+    else:
+        kit.unlocked.append(recipe)
+    rarity = roll_rarity(seed, kit.fusions, kit.streak >= tuning.fuse_guarantee_after, tuning)
+    kit.rarity[recipe] = rarity
+    kit.fusions += 1
+    kit.streak = kit.streak + 1 if rarity == "rare" else 0
     return "fused"
+
+
+def rarity_of(world: World, ability: str) -> str:
+    """A fused power's rarity ("rare" until rolled otherwise), "" for a base power."""
+    if ability not in FUSION_NAMES:
+        return ""
+    return world.rarity.get(ability, "rare")
+
+
+def roll_rarity(seed: int, n: int, guaranteed: bool, tuning: Tuning = DEFAULT) -> str:
+    """The rarity of fusion n of a run. Its own stream, fed only by the run seed and n,
+    never the world's RNG, so a fusion cannot shift any combat roll and the nth fusion rolls
+    the same in both conditions. Guaranteed (after enough rares in a row), rare is out and
+    epic and legendary keep their ratio."""
+    weights = list(tuning.fuse_odds)
+    if guaranteed:
+        weights[0] = 0
+    pick = random.Random(f"overload-fusion:{seed}:{n}").randrange(sum(weights))
+    for rarity, weight in zip(RARITIES, weights, strict=True):
+        if pick < weight:
+            return rarity
+        pick -= weight
+    raise AssertionError("unreachable: pick is below the sum of the weights")
 
 
 def equip(kit: Kit, slot: int, ability: str) -> bool:
@@ -123,11 +192,11 @@ def use_powers(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> N
                 continue  # fizzled against a wall at point blank: no cost, not a use
             player.cooldowns[key] = tuning.spark_cooldown
         elif ability in ("burst", "shock_cone"):
-            _burst(world, tuning, arena, shock=ability == "shock_cone")
+            _burst(world, tuning, arena, rarity_of(world, ability))
             player.cooldowns[key] = (
                 tuning.shock_cone_cooldown if ability == "shock_cone" else tuning.burst_cooldown
             )
-        elif _blink(world, inp, tuning, arena, trail=ability == "arc_trail"):
+        elif _blink(world, inp, tuning, arena, rarity_of(world, ability)):
             cooldown = (
                 tuning.arc_trail_cooldown if ability == "arc_trail" else tuning.blink_cooldown
             )
@@ -137,12 +206,17 @@ def use_powers(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> N
         world.events.append(Event(f"power_{ability}", player.x, player.y, slot))
 
 
-def _spark(world: World, tuning: Tuning, arena: Arena, direction=None) -> bool:
+def _spark(world: World, tuning: Tuning, arena: Arena, direction=None, arc="", damage=None) -> bool:
     player = world.player
     start = launch_point(world, tuning, arena)
     if start is None:
         return False
-    ax, ay = direction or (player.aim_x, player.aim_y)
+    _add_spark(world, tuning, start, direction or (player.aim_x, player.aim_y), arc, damage)
+    return True
+
+
+def _add_spark(world: World, tuning: Tuning, start, direction, arc: str = "", damage=None) -> None:
+    ax, ay = direction
     world.projectiles.append(
         Projectile(
             id=world.new_id(),
@@ -151,25 +225,53 @@ def _spark(world: World, tuning: Tuning, arena: Arena, direction=None) -> bool:
             vx=ax * tuning.spark_speed,
             vy=ay * tuning.spark_speed,
             radius=tuning.spark_radius,
-            damage=tuning.spark_damage,
+            damage=tuning.spark_damage if damage is None else damage,
             hostile=False,
             ttl=tuning.spark_ttl,
             kind="spark",
+            arc=arc,
         )
     )
-    return True
 
 
-# The Shock Cone's spark fan: rotation by 20 degrees as exact constants (no runtime trig).
+def _spark_ring(world: World, tuning: Tuning, arena: Arena, x: float, y: float) -> None:
+    """Thunderhead: eight light sparks out from a point, the boss ring's exact vectors. They
+    never chain. A spark whose start is inside a prop, outside the room or behind a wall is
+    not fired."""
+    offset = tuning.player_radius + tuning.spark_radius + 1.0
+    for dx, dy in RING:
+        start = (x + dx * offset, y + dy * offset)
+        if _free(world, start, tuning.spark_radius, arena) and _clear_path(
+            world, (x, y), start, arena
+        ):
+            _add_spark(world, tuning, start, (dx, dy), "none", tuning.thunder_spark_damage)
+
+
+# The Shock Cone's spark fans: rotations by 20 and 40 degrees as exact constants (no runtime
+# trig). Rare fires three sparks, epic and legendary five.
 _COS20 = 0.9396926207859084
 _SIN20 = 0.3420201433256687
+_COS40 = 0.766044443118978
+_SIN40 = 0.6427876096865393
 
 
-def _burst(world: World, tuning: Tuning, arena: Arena, shock: bool) -> None:
+def _fan(ax: float, ay: float, wide: bool) -> list[tuple[float, float]]:
+    turns = [(_COS20, _SIN20)] + ([(_COS40, _SIN40)] if wide else [])
+    directions = [(ax, ay)]
+    for c, s in turns:
+        directions.append((ax * c - ay * s, ax * s + ay * c))
+        directions.append((ax * c + ay * s, -ax * s + ay * c))
+    return directions
+
+
+def _burst(world: World, tuning: Tuning, arena: Arena, rarity: str = "") -> None:
     """A short discharge cone along the aim: damages and knocks back every robot in it,
     clears hostile shots in it and dents the Regulator (too heavy to push). Evolved, the
-    cone is wider and longer. Shock Cone adds a fan of three sparks. A robot counts when its
-    center is in the cone (its body may poke out), and the pulse passes over props."""
+    cone is wider and longer. A robot counts when its center is in the cone (its body may
+    poke out), and the pulse passes over props. With a rarity it is a Shock Cone and adds a
+    fan of sparks: three for Shock Cone (rare), five for Shock Fan (epic), five for
+    Overcurrent (legendary), whose inner three chain twice."""
+    shock = bool(rarity)
     player = world.player
     wide = evolved(world.fragments, "burst", tuning)
     reach = tuning.burst_wide_range if wide else tuning.burst_range
@@ -211,32 +313,42 @@ def _burst(world: World, tuning: Tuning, arena: Arena, shock: bool) -> None:
         Event("burst", player.x, player.y, 1 if wide else 0, "shock_cone" if shock else "burst")
     )
     if shock:
-        for dx, dy in (
-            (ax, ay),
-            (ax * _COS20 - ay * _SIN20, ax * _SIN20 + ay * _COS20),
-            (ax * _COS20 + ay * _SIN20, -ax * _SIN20 + ay * _COS20),
-        ):
-            _spark(world, tuning, arena, (dx, dy))
+        # The outer pair of a five-spark fan (the 40 degree ones) hits lighter, and only the
+        # inner three of Overcurrent's chain.
+        for i, direction in enumerate(_fan(ax, ay, wide=rarity != "rare")):
+            damage = tuning.fan_spark_damage if i >= 3 else None
+            arc = "overcurrent" if rarity == "legendary" and i < 3 else ""
+            _spark(world, tuning, arena, direction, arc, damage)
 
 
-def spark_chain(world: World, tuning: Tuning, hit) -> None:
-    """Evolved Spark: a spark that hits a robot arcs on to the nearest other robot."""
-    if not evolved(world.fragments, "spark", tuning):
+def spark_chain(world: World, tuning: Tuning, hit, overcurrent: bool = False) -> None:
+    """Evolved Spark: a spark that hits a robot arcs on to the nearest other robot.
+    An Overcurrent spark chains evolved or not (lighter if not), then arcs on once more
+    from that robot to the next, so it always reaches one robot further than an evolved
+    Spark's."""
+    chained = evolved(world.fragments, "spark", tuning)
+    if not (overcurrent or chained):
         return
-    others = [
-        r
-        for r in world.hostiles
-        if r.health > 0
-        and r.id != hit.id
-        and length(r.x - hit.x, r.y - hit.y) <= tuning.spark_chain_range
-    ]
-    if not others:
-        return
-    target = min(others, key=lambda r: (length(r.x - hit.x, r.y - hit.y), r.id))
-    target.health -= tuning.spark_chain_damage
-    world.events.append(Event("chain_from", hit.x, hit.y, hit.id))
-    world.events.append(Event("chain", target.x, target.y, target.id))
-    world.events.append(Event("hostile_hit", target.x, target.y, target.id))
+    damage = tuning.spark_chain_damage if chained else tuning.overcurrent_chain_damage
+    struck = {hit.id}
+    source = hit
+    for jump in range(2 if overcurrent else 1):
+        others = [
+            r
+            for r in world.hostiles
+            if r.health > 0
+            and r.id not in struck
+            and length(r.x - source.x, r.y - source.y) <= tuning.spark_chain_range
+        ]
+        if not others:
+            return
+        target = min(others, key=lambda r: (length(r.x - source.x, r.y - source.y), r.id))
+        target.health -= damage if jump == 0 else tuning.overcurrent_chain_damage
+        world.events.append(Event("chain_from", source.x, source.y, source.id))
+        world.events.append(Event("chain", target.x, target.y, target.id))
+        world.events.append(Event("hostile_hit", target.x, target.y, target.id))
+        struck.add(target.id)
+        source = target
 
 
 def blink_destination(
@@ -282,7 +394,9 @@ def _clear_path(
     return True
 
 
-def _blink(world: World, inp: InputFrame, tuning: Tuning, arena: Arena, trail: bool) -> bool:
+def _blink(world: World, inp: InputFrame, tuning: Tuning, arena: Arena, rarity: str) -> bool:
+    """A Blink, or with a rarity an Arc Trail: the trail is Arc Trail's (rare), longer and
+    wider for Storm Step (epic), and Thunderhead (legendary) adds a ring of sparks."""
     player = world.player
     spot = blink_destination(world, inp, tuning, arena)
     if spot is None:
@@ -292,10 +406,21 @@ def _blink(world: World, inp: InputFrame, tuning: Tuning, arena: Arena, trail: b
     world.events.append(Event("blink_from", *start))
     player.x, player.y = spot
     world.events.append(Event("blink_to", *spot))
-    if trail:
+    if rarity:
+        storm = rarity != "rare"
         world.trails.append(
-            Trail(world.new_id(), start[0], start[1], spot[0], spot[1], tuning.trail_ttl)
+            Trail(
+                world.new_id(),
+                start[0],
+                start[1],
+                spot[0],
+                spot[1],
+                tuning.storm_trail_ttl if storm else tuning.trail_ttl,
+                tuning.storm_trail_width if storm else tuning.trail_width,
+            )
         )
+        if rarity == "legendary":
+            _spark_ring(world, tuning, arena, *spot)
     if evolved(world.fragments, "blink", tuning):
         player.boost = tuning.boost_ticks  # Overdrive: a burst of speed on arrival
     return True
@@ -310,7 +435,7 @@ def tick_trails(world: World, tuning: Tuning) -> None:
         if trail.ttl % tuning.trail_interval == 0:
             a, b = (trail.x1, trail.y1), (trail.x2, trail.y2)
             for hostile in world.hostiles:
-                reach = hostile.radius + tuning.trail_width
+                reach = hostile.radius + trail.width
                 if hostile.health > 0 and segment_distance_sq((hostile.x, hostile.y), a, b) < (
                     reach * reach
                 ):
@@ -318,7 +443,7 @@ def tick_trails(world: World, tuning: Tuning) -> None:
                     world.events.append(Event("hostile_hit", hostile.x, hostile.y, hostile.id))
             rival = world.rival
             if rival is not None and rival.health > 0:
-                reach = rival.radius + tuning.trail_width
+                reach = rival.radius + trail.width
                 if segment_distance_sq((rival.x, rival.y), a, b) < reach * reach:
                     damage_rival(world, tuning.trail_damage, rival.x, rival.y)
         if trail.ttl > 0:
@@ -349,6 +474,7 @@ def absorb_charges(world: World, tuning: Tuning, everything: bool = False) -> No
 def _absorb(world: World, charge: Charge, tuning: Tuning) -> None:
     world.fragments[charge.kind] = world.fragments.get(charge.kind, 0) + 1
     if charge.kind in world.unlocked:
+        world.bank[charge.kind] = world.bank.get(charge.kind, 0) + 1  # spare, for rerolls
         count = world.fragments[charge.kind]
         if count == tuning.evolve_at:
             event = Event("evolve", charge.x, charge.y, charge.id, charge.kind)

@@ -56,6 +56,30 @@ SHORT = {
     "arc_trail": "TRAIL",
     "shock_cone": "CONE",
 }
+# Short names of the epic and legendary fused powers, for the loadout cards.
+RARITY_SHORT = {
+    ("arc_trail", "epic"): "STORM",
+    ("arc_trail", "legendary"): "RING",
+    ("shock_cone", "epic"): "FAN",
+    ("shock_cone", "legendary"): "CHAIN",
+}
+
+
+def short_name(ability: str, rarity: str = "") -> str:
+    return RARITY_SHORT.get((ability, rarity), SHORT[ability])
+
+
+def rarity_marks(target: pygame.Surface, rarity: str, x: int, y: int) -> None:
+    """1, 2 or 3 small crosses in the rarity's color, left to right from (x, y), the top
+    left of the first one's 3 x 3 box. Crosses, so they never read as the square evolution
+    pips."""
+    token = f"px.rarity.{rarity}"
+    for p in range(("rare", "epic", "legendary").index(rarity) + 1):
+        left = x + p * 4
+        target.fill(rgb(token), (left + 1, y, 1, 3))
+        target.fill(rgb(token), (left, y + 1, 3, 1))
+
+
 # 3 x 5 key letters drawn inside a slot's corner (the 8 px font is too big for that).
 _KEYS = {
     "Q": (".#.", "#.#", "#.#", ".#.", "..#"),

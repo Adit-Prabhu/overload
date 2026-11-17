@@ -204,8 +204,8 @@ def _hits(world: World, tuning: Tuning) -> None:
             if target is not None:
                 target.health -= shot.damage
                 world.events.append(Event("hostile_hit", target.x, target.y, target.id))
-                if shot.kind == "spark":
-                    spark_chain(world, tuning, target)
+                if shot.kind == "spark" and shot.arc != "none":
+                    spark_chain(world, tuning, target, shot.arc == "overcurrent")
                 continue
         survivors.append(shot)
     world.projectiles = survivors

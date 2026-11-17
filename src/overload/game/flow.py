@@ -21,7 +21,7 @@ from overload.agent.tactics import Decision
 from overload.session.trace import TraceWriter
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import InputFrame
-from overload.sim.powers import RECIPE_ORDER, RECIPES, Kit
+from overload.sim.powers import RECIPE_ORDER, RECIPES, Kit, fused_name
 from overload.sim.tuning import TICK_RATE
 
 MIN_FUSE_TICKS = round(DEADLINE_SECONDS * TICK_RATE)
@@ -49,7 +49,10 @@ class Session:
             raise ValueError("encounter 1 must start on the neutral protocol in every condition")
         self.decisions[1] = first
         self._trace_decision(first, None)
-        self._trace("encounter_start", encounter=1, protocol=campaign.protocols[1])
+        # The run seed fixes every fusion roll, so analysis can line rolls up across sessions.
+        self._trace(
+            "encounter_start", encounter=1, protocol=campaign.protocols[1], seed=campaign.seed
+        )
 
     # Simulation ticks ---------------------------------------------------------------------
 
@@ -140,8 +143,24 @@ class Session:
         return ok
 
     def fuse(self, a: str, b: str) -> str:
-        result = self.campaign.fuse(a, b)
-        self._trace("fuse", encounter=self._menu_encounter(), recipe=[a, b], result=result)
+        """Fuse or reroll a pair. The trace logs every roll (which fusion of the run it was,
+        the rarity, the charges spent, whether the guarantee applied) so analysis can account
+        for luck. The rival never sees any of it."""
+        campaign = self.campaign
+        world, tuning = campaign.world, campaign.tuning
+        recipe = RECIPES.get(frozenset((a, b)))
+        n, streak, reroll = world.fusions, world.streak, recipe in world.unlocked
+        result = campaign.fuse(a, b)
+        fields: dict = {"encounter": self._menu_encounter(), "recipe": [a, b], "result": result}
+        if result == "fused":
+            fields.update(
+                power=recipe,
+                rarity=campaign.world.rarity[recipe],
+                n=n,
+                cost=tuning.reroll_cost if reroll else 0,
+                guaranteed=streak >= tuning.fuse_guarantee_after,
+            )
+        self._trace("fuse", **fields)
         return result
 
     # Traces ------------------------------------------------------------------------------
@@ -168,28 +187,35 @@ class Session:
 
 FUSE_NOTICES = {
     "fused": "FUSED. Q OR E EQUIPS IT",
-    "already_fused": "EVERY RECIPE IS FUSED",
     "missing": "STEAL BOTH POWERS FIRST",
     "unsupported": "STEAL BOTH POWERS FIRST",
+    "no_charges": "NO SPARE CHARGES",
+    "pick": "PICK A FUSION TO REROLL",
 }
 
 
-def next_recipe(kit) -> tuple[str, str]:
+def next_recipe(kit, selected: str = "") -> tuple[str, str] | None:
     """The recipe F tries: the first one not fused yet whose ingredients are both stolen,
-    else the first one not fused yet (it will report what is missing), else the last."""
+    else a reroll of the selected power if it is a fusion, else the first one not fused yet
+    (it will report what is missing). None when every recipe is fused and no fusion is
+    selected, so F never spends charges on a power the player did not pick."""
     open_recipes = [
         (a, b) for a, b in RECIPE_ORDER if RECIPES[frozenset((a, b))] not in kit.unlocked
     ]
     for a, b in open_recipes:
         if a in kit.unlocked and b in kit.unlocked:
             return a, b
-    return open_recipes[0] if open_recipes else RECIPE_ORDER[-1]
+    for a, b in RECIPE_ORDER:
+        if RECIPES[frozenset((a, b))] == selected:
+            return a, b
+    return open_recipes[0] if open_recipes else None
 
 
 class FuseBoxMenu:
     """The loadout and fusion menu. Keys: up and down pick a power, q and e equip it to
-    that slot, fuse tries the next open recipe. Returns each simulation-affecting action
-    so the caller can record it for the replay."""
+    that slot, fuse tries the next open recipe, or rerolls the selected fusion once every
+    open recipe is fused. Returns each simulation-affecting action so the caller can record
+    it for the replay."""
 
     def __init__(self) -> None:
         self.selected = 0
@@ -213,12 +239,21 @@ class FuseBoxMenu:
             self.notice = None
             return ["equip", slot, ability]
         elif key == "fuse":
-            a, b = next_recipe(Kit.from_world(session.campaign.world))
+            world = session.campaign.world
+            selected = rows[min(self.selected, len(rows) - 1)] if rows else ""
+            pair = next_recipe(Kit.from_world(world), selected)
+            if pair is None:
+                self.last_result = "pick"
+                self.notice = FUSE_NOTICES["pick"]
+                return None
+            a, b = pair
             result = session.fuse(a, b)
             self.last_result = result
             self.notice = FUSE_NOTICES[result]
             if result == "fused":
-                name = RECIPES[frozenset((a, b))].replace("_", " ").upper()
-                self.notice = f"{name} FUSED"  # short: it shares the footer line
+                recipe = RECIPES[frozenset((a, b))]
+                rarity = world.rarity[recipe]
+                # short: it shares the footer line
+                self.notice = f"{fused_name(recipe, rarity)} {rarity.upper()}"
             return ["fuse", a, b]
         return None

@@ -199,15 +199,15 @@ def test_blink_and_arc_trail_share_one_cooldown() -> None:
 
 def test_fusion_needs_both_ingredients_and_keeps_them() -> None:
     kit = kit_with("spark")
-    assert fuse(kit, "spark", "blink") == "missing"
+    assert fuse(kit, "spark", "blink", seed=1) == "missing"
     assert kit.unlocked == ["spark"], "a failed fusion changes nothing"
     kit.unlocked.append("blink")
-    assert fuse(kit, "spark", "spark") == "unsupported"
-    assert fuse(kit, "blink", "spark") == "fused"
+    assert fuse(kit, "spark", "spark", seed=1) == "unsupported"
+    assert fuse(kit, "blink", "spark", seed=1) == "fused"
     assert kit.unlocked == ["spark", "blink", "arc_trail"]
     assert kit.fragments == {"spark": 1}, "fusing consumes nothing"
-    assert fuse(kit, "spark", "blink") == "already_fused"
-    assert fuse(kit, "arc_trail", "spark") == "unsupported", "no recursive fusion"
+    assert fuse(kit, "spark", "blink", seed=1) == "no_charges", "a reroll needs spare charges"
+    assert fuse(kit, "arc_trail", "spark", seed=1) == "unsupported", "no recursive fusion"
 
 
 def test_equip_swaps_and_rejects_what_is_not_unlocked() -> None:
@@ -327,7 +327,7 @@ def test_full_loop_collect_equip_fuse_use(tmp_path) -> None:
     path = tmp_path / "loop.json"
     recording.save(path)
     assert play(Recording.load(path)).state_hash() == recording.final_hash
-    assert recording.final_hash == "8886a8e6c9df7025", "pinned on Python 3.11 and 3.12"
+    assert recording.final_hash == "ceebf7c189b94046", "pinned on Python 3.11 and 3.12"
 
 
 @pytest.mark.parametrize(
