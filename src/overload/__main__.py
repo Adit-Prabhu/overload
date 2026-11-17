@@ -1,7 +1,7 @@
 """Entry point: `uv run overload`.
 
 Controls: WASD or arrows move, mouse aims, hold left click to fire, Space dodges,
-R retries after going down, Esc quits.
+R retries after going down or clearing, Esc quits.
 """
 
 from __future__ import annotations

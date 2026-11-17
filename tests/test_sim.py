@@ -17,7 +17,7 @@ from overload.sim.geometry import circle_hits_rect
 from overload.sim.inputs import IDLE, InputFrame
 from overload.sim.run import Run
 from overload.sim.state import Projectile, state_hash
-from overload.sim.tuning import DEFAULT, TICK_RATE
+from overload.sim.tuning import DEFAULT, TICK_RATE, Tuning
 
 
 def scripted_inputs(seed: int, ticks: int) -> list[InputFrame]:
@@ -88,9 +88,29 @@ def test_corrupt_replay_file_is_rejected(tmp_path) -> None:
         Recording.load(path)
 
 
-def test_tuning_id_is_stable() -> None:
-    assert DEFAULT.tuning_id() == DEFAULT.tuning_id()
-    assert len(DEFAULT.tuning_id()) == 8
+def test_pinned_hashes_match_across_python_versions() -> None:
+    """Known results for fixed seeds and inputs, checked on every CI Python version.
+
+    If a deliberate rule or tuning change moves these, update them in the same PR and say so
+    in its description. An unexplained change means determinism broke.
+    """
+    assert DEFAULT.tuning_id() == "c971599c"
+    assert run_all(21, scripted_inputs(21, 5000)).state_hash() == "8ae29e6f17c48b9a"
+    assert run_all(3, scripted_inputs(9, 1200)).state_hash() == "dc971dfe67445e55"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"arc_mite_tell": 12},
+        {"arc_mite_recovery": 5},
+        {"arc_mite_fire_interval": 40},
+        {"dodge_speed": 14.0},
+    ],
+)
+def test_unreadable_or_unsafe_tuning_is_rejected(change: dict) -> None:
+    with pytest.raises(ValueError):
+        Tuning(**change)
 
 
 def test_simulation_does_not_import_pygame() -> None:
@@ -151,7 +171,7 @@ def test_every_shot_is_preceded_by_a_full_tell() -> None:
 def test_holding_fire_respects_the_cooldown() -> None:
     run = Run(1)
     run.world.hostiles.clear()
-    run.world.hostiles.append(rules.spawn_arc_mite(run.world, 1200, 680))
+    rules.spawn_arc_mite(run.world, 1200, 680)
     run.world.hostiles[0].fire_timer = 10_000
     shots = 0
     for _ in range(100):

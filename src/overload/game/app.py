@@ -243,11 +243,12 @@ def play(options: Options) -> int:
         accumulated = 0.0
         frames = 0
         finished = False
+        cursor: p.Point = (0.0, 0.0)
         while not reader.quit and not finished:
             for event in pygame.event.get():
                 reader.handle(event)
             elapsed = clock.tick(240) / 1000.0
-            if options.headless or scripted is not None:
+            if options.headless:
                 due = 1
             else:
                 accumulated = min(accumulated + elapsed, MAX_TICKS_PER_FRAME * TICK_SECONDS)
@@ -264,7 +265,11 @@ def play(options: Options) -> int:
                 run.step(frame)
                 recording.frames.append(frame)
                 renderer.consume(run.world.events)
-            renderer.draw(screen, run, run.world.tick / TICK_RATE, pygame.mouse.get_pos())
+                if scripted is not None:
+                    cursor = (frame.aim_x, frame.aim_y)
+            if scripted is None:
+                cursor = pygame.mouse.get_pos()
+            renderer.draw(screen, run, run.world.tick / TICK_RATE, cursor)
             pygame.display.flip()
             frames += 1
             if options.frames and frames >= options.frames:
@@ -278,6 +283,12 @@ def play(options: Options) -> int:
         recording.save(options.record)
         print(f"Recorded {len(recording.frames)} ticks to {options.record}")
     if replay is not None:
+        if not finished:
+            print(
+                f"Replay stopped early after {len(recording.frames)} of {len(replay.frames)} "
+                "ticks. Not verified."
+            )
+            return 3
         if replay.final_hash and replay.final_hash != recording.final_hash:
             print(f"Replay mismatch: expected {replay.final_hash}, got {recording.final_hash}")
             return 1
