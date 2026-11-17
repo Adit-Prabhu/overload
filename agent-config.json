@@ -1,8 +1,8 @@
 {
   "schema_version": "course-1",
-  "status": "Scaffold. The in-game rival service is planned (implementation plan task 4). Fields describe the approved design from docs/INITIAL_CONFIGURATION.md, not running behavior.",
+  "status": "Rival service implemented and tested locally with a deterministic fixture provider (worker/src). Not deployed. No live model provider yet: decision D6 picks the provider and credential path. Game-side boundary, validation, deadline and fallback are in src/overload/agent/.",
   "purpose": "Choose the Regulator's protocol for the next encounter from the player's observed habits.",
-  "native_artifact": "worker/src/index.ts (planned routes POST /sessions and POST /sessions/:id/tactic, structured JSON function-calling equivalent)",
+  "native_artifact": "worker/src/index.ts routes POST /sessions and POST /sessions/:id/tactic, worker/src/session.ts (RivalSession, a Cloudflare Agents SDK agent), structured JSON with strict schemas in worker/src/schema.ts",
   "tools_available": [
     "select_tactic(tactic_id, evidence_ids)"
   ],
@@ -17,9 +17,9 @@
   ],
   "memory_policy": "Last two encounter summaries for the current session only, each at most 300 tokens. Reset on a new session. Server state expires after 30 minutes of inactivity. No cross-session retrieval or shared memory.",
   "context_sources": [
-    "src/overload/agent/observations.py:summary (planned)",
-    "config/tactics.json (planned)",
-    "previous accepted tactic and visible event IDs for this session"
+    "src/overload/agent/observations.py:ObservationLog.summary",
+    "config/tactics.json",
+    "previous accepted tactic and the last two summaries for this session only"
   ],
   "retrieval": "None. No RAG or external knowledge.",
   "model_choice": {
@@ -28,7 +28,7 @@
     "settings": "temperature 0, structured JSON output, no automatic continuation, no retry",
     "resolved_model": "Logged per request when the API returns it"
   },
-  "prompts_or_system_instructions": "Select one allowed next-encounter tactic from the supplied catalogue using only observed history. Return tactic_id and evidence_ids as JSON. Do not invent evidence or change game rules. With insufficient evidence select lateral.",
+  "prompts_or_system_instructions": "worker/src/prompt.ts:SYSTEM_INSTRUCTIONS",
   "named_failure_modes": [
     "timeout",
     "provider refusal or error",
@@ -62,7 +62,8 @@
   "fallback": "Any invalid, late, unavailable, disabled or over-budget proposal becomes lateral (Oscillate protocol), labeled as fallback in the trace. Combat never waits on the model.",
   "knowledge_boundary": "Only the observation-filter summary and the tactic catalogue cross to the model. Game code owns all state and validates every proposal.",
   "limitations": [
-    "Nothing in the service is implemented or deployed yet.",
+    "The service is not deployed and has no live model provider yet (decision D6).",
+    "Fixture results are a deterministic rule and are labeled source fixture. They are never model evidence.",
     "A fixed-schedule baseline tests history dependence, not whether an LLM beats a simple adaptive rule.",
     "Valid JSON and real evidence IDs do not prove the chosen tactic was a good one."
   ],
@@ -71,7 +72,11 @@
       "role": "Producer",
       "native_artifact": ".agents/producer.md",
       "purpose": "Scope, dependencies, schedule and risks.",
-      "context": ["docs/IMPLEMENTATION_PLAN.md", "docs/INITIAL_RISK_REGISTER.md", "Asana export"],
+      "context": [
+        "docs/IMPLEMENTATION_PLAN.md",
+        "docs/INITIAL_RISK_REGISTER.md",
+        "Asana export"
+      ],
       "tools_and_permissions": "Read docs, propose task and risk updates. Cannot change deadlines, scope or gate status.",
       "outputs": "Prioritized task list and risk updates.",
       "handoff": "To Adit, then to the Tech Lead.",
@@ -82,7 +87,11 @@
       "role": "Design Lead",
       "native_artifact": ".agents/design.md",
       "purpose": "Rules, powers, fusion, tell timings and playtest questions.",
-      "context": ["docs/INITIAL_GDD.md", "docs/ART_AND_AUDIO_DIRECTION.md", "playtest observations"],
+      "context": [
+        "docs/INITIAL_GDD.md",
+        "docs/ART_AND_AUDIO_DIRECTION.md",
+        "playtest observations"
+      ],
       "tools_and_permissions": "Edit design drafts and test cases. No silent scope expansion.",
       "outputs": "Rule specs and test cases.",
       "handoff": "To Tech, Art and QA.",
@@ -93,7 +102,11 @@
       "role": "Tech Lead",
       "native_artifact": ".agents/tech.md",
       "purpose": "Client, simulation, Worker and deployment.",
-      "context": ["AGENTS.md", "docs/IMPLEMENTATION_PLAN.md", "approved tasks"],
+      "context": [
+        "AGENTS.md",
+        "docs/IMPLEMENTATION_PLAN.md",
+        "approved tasks"
+      ],
       "tools_and_permissions": "Branch-local code and tests. No merges, tags, deployments or paid calls without Adit's authorization.",
       "outputs": "Runnable change with tests and traces.",
       "handoff": "To the QA reviewer.",
@@ -104,7 +117,11 @@
       "role": "Art Lead",
       "native_artifact": ".agents/art.md",
       "purpose": "Palette, shapes, sprites, VFX, HUD and showcase art.",
-      "context": ["docs/ART_AND_AUDIO_DIRECTION.md", "approved style frame", "assets/ASSET_MANIFEST.json"],
+      "context": [
+        "docs/ART_AND_AUDIO_DIRECTION.md",
+        "approved style frame",
+        "assets/ASSET_MANIFEST.json"
+      ],
       "tools_and_permissions": "Create original code-drawn assets and contact sheets. No downloads or generated images without a manifest entry Adit approved.",
       "outputs": "Drawing code, contact sheets, manifest entries.",
       "handoff": "To Tech and QA.",
@@ -115,7 +132,10 @@
       "role": "Narrative",
       "native_artifact": ".agents/narrative.md",
       "purpose": "Glossary, labels and the premise line.",
-      "context": ["docs/ART_AND_AUDIO_DIRECTION.md glossary", "public game facts only"],
+      "context": [
+        "docs/ART_AND_AUDIO_DIRECTION.md glossary",
+        "public game facts only"
+      ],
       "tools_and_permissions": "Edit bounded UI text. No gameplay promises, no hidden-state disclosure.",
       "outputs": "Label set and premise line.",
       "handoff": "To Design and Tech.",
@@ -126,7 +146,11 @@
       "role": "Audio",
       "native_artifact": ".agents/audio.md",
       "purpose": "Synth, music stems, sound effects and mix.",
-      "context": ["docs/ART_AND_AUDIO_DIRECTION.md", "audio event list", "assets/ASSET_MANIFEST.json"],
+      "context": [
+        "docs/ART_AND_AUDIO_DIRECTION.md",
+        "audio event list",
+        "assets/ASSET_MANIFEST.json"
+      ],
       "tools_and_permissions": "Write synth code and render original audio. No external samples without recorded terms.",
       "outputs": "Rendered OGG files, source, preview file, manifest entries.",
       "handoff": "To Tech and QA.",
@@ -137,7 +161,11 @@
       "role": "QA reviewer",
       "native_artifact": ".agents/qa.md",
       "purpose": "Independent read-only review and failure reproduction.",
-      "context": ["the diff and change summary", "AGENTS.md", "tests/"],
+      "context": [
+        "the diff and change summary",
+        "AGENTS.md",
+        "tests/"
+      ],
       "tools_and_permissions": "Read files and run tests. No edits during review. Never reviews its own work.",
       "outputs": "Findings labeled blocking, should fix or note, with file:line.",
       "handoff": "To Adit, who decides each finding.",
@@ -148,7 +176,11 @@
       "role": "BI",
       "native_artifact": ".agents/bi.md",
       "purpose": "Latency, cost and player evidence analysis.",
-      "context": ["anonymized traces", "eval results", "playtest logs"],
+      "context": [
+        "anonymized traces",
+        "eval results",
+        "playtest logs"
+      ],
       "tools_and_permissions": "Read logs and write analysis. Cannot reclassify failed or unavailable runs.",
       "outputs": "Bounded comparison reports.",
       "handoff": "To Design and Producer.",
@@ -159,7 +191,11 @@
       "role": "Publishing and Release",
       "native_artifact": ".agents/release.md",
       "purpose": "Reproducible builds, release instructions and archive.",
-      "context": ["approved build", "README", "release checklist"],
+      "context": [
+        "approved build",
+        "README",
+        "release checklist"
+      ],
       "tools_and_permissions": "Prepare packaging and instructions. No tags, releases or publishing without Adit's decision.",
       "outputs": "Release checklist and package.",
       "handoff": "To Adit.",

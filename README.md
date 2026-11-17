@@ -19,7 +19,12 @@ cd worker
 npm ci
 npm test                                 # Worker tests run locally in workerd, no deployment
 npm run typecheck
+npx wrangler dev --port 8787             # run the rival service locally (fixture provider)
+cd ..
+uv run python tools/rival/smoke.py http://127.0.0.1:8787   # drive it from the game's client
 ```
+
+The rival service (`worker/`) gives each player session its own Cloudflare Agent, accepts only a strict observation summary, allows two requests per session and validates every proposal. The game validates again and falls back to the neutral protocol on anything invalid, late or missing (`src/overload/agent/`). Until decision D6 picks a live provider, the service uses a deterministic fixture rule that labels every answer as `fixture`.
 
 Controls: WASD or arrow keys move, the mouse aims, hold left click to fire, Space dodges, R retries after going down or clearing the room, Esc quits. This is the practice build: two Arc Mites in the substation hall, no powers or Regulator fight yet. The window scales the 256 x 144 view by whole numbers.
 
