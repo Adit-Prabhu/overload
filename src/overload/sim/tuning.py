@@ -165,6 +165,11 @@ class Tuning:
     spiral_ticks: int = 60
     spiral_gap: int = 5
     overload_shield: int = 60
+    # Sector 3's Overcharged robots (sim/spawns.py tiers). Sector 2's Cooled ones are stock.
+    overcharged_health_pct: int = 110  # rounded up, so a 4-health Sweeper gets 5
+    overcharged_speed: float = 1.05
+    overcharged_rest: float = 0.9
+
     signature_quiet: int = 66  # the protocol rests this long after a signature (a quake's run)
 
     # Rooms (overhaul): robots warp in after a visible marker, secret walls crack open.
@@ -197,6 +202,18 @@ class Tuning:
             raise ValueError("Relay tells are below the readability minimums")
         if self.warp_tell < 0.50 * TICK_RATE:
             raise ValueError("Robots must show their warp marker for at least 0.50 s")
+        if not (self.overcharged_health_pct >= 100 and 0.5 <= self.overcharged_rest <= 1.0):
+            raise ValueError("Overcharged robots must be at least stock health, rest at most stock")
+        rest = self.overcharged_rest
+        if round(self.drone_fire_interval * rest) - self.drone_tell < self.drone_recovery:
+            raise ValueError("An Overcharged Arc Drone's interval leaves no room for recovery")
+        if round(self.sentry_interval * rest) <= self.sentry_tell:
+            raise ValueError("An Overcharged Sentry's interval is shorter than its tell")
+        if (
+            max(self.drone_speed, self.breaker_speed, self.sweeper_speed) * (self.overcharged_speed)
+            >= THINNEST_OBSTACLE
+        ):
+            raise ValueError("Overcharged robots could walk through the thinnest obstacle")
         for name in ("ring_tell", "quake_tell", "summon_tell", "spiral_tell"):
             if getattr(self, name) < 0.50 * TICK_RATE:
                 raise ValueError(f"{name}: chassis signature tells must last at least 0.50 s")

@@ -184,10 +184,10 @@ Each sector should read as a different part of the station within a second of wa
 | Sector | Place | Rooms | Floor | Light | Robots |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Switchyard | Open halls with transformers and a conduit cross | Steel tiles, hazard keep-out paint | Untinted | Stock orange shells |
-| 2 | Cooling plant | Pipe walls that split the room into lanes, a hall of square pillars, drums and crates | Cracked concrete | Cold (`px.tint.2`, multiplied) | Cooled: blue shells (`px.conduit`, Blink cyan), stock stats |
+| 2 | Cooling plant | Pipe walls that split the room into lanes, a hall of square pillars, drums and crates | Cracked concrete | Cold (`px.tint.2`, multiplied) | Cooled: teal shells (`px.conduit`, `px.jacket`, kept off Blink cyan), stock stats |
 | 3 | Grid core | Bus bars on lit conduit lines, four pillars around a conduit square, grates | Grates and lit conduits | Hot (`px.tint.3`, multiplied) | Overcharged: violet shells (`px.core`), a little tougher and quicker |
 
-The light eases in over about half a second as the Surge walks into a sector's room. Glow (shots, tells, powers) is drawn after the tint, so danger red and the power colors never shift. Robot recolors swap only the shell ramp: eyes, tells and danger red stay the same in every sector.
+The light eases in as the Surge walks into a sector's room (half way in about 0.3 s, nearly all the way in about 1.2 s). Tells, shots and powers are also drawn on the glow layer after the tint, so their danger red and power colors never shift. Sprites themselves take the room's light. Robot recolors swap only the shell ramp: the danger red of eyes stays, and the bright rim around some eyes shares the shell highlight, so it takes the sector color.
 
 ### UI and HUD
 #### HUD layout (Nov 17 redesign)

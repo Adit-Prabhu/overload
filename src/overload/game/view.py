@@ -80,8 +80,9 @@ def robot_image(
     robot, tick: int, left: bool, charging: bool, recover: int = DEFAULT.breaker_recover
 ) -> pygame.Surface:
     """The approved roster art (art/pixel/robots.py) for a robot in its current state, in
-    its sector's colors: stock orange, Cooled blue (sector 2) or Overcharged violet (sector 3).
-    The danger red of its eyes and tells never changes."""
+    its sector's colors: stock orange, Cooled teal (sector 2) or Overcharged violet (sector 3).
+    Only the shell ramp changes. The danger red of its eyes never changes, though the bright
+    rim around some eyes shares the shell's highlight and takes the sector color."""
     if robot.kind == "relay":
         image = robots_art.relay_bot(False, arming=robot.phase == "blink")
     elif robot.kind == "breaker":
@@ -99,7 +100,7 @@ def robot_image(
 
 _HOSTILE_RAMP = ("px.hostile.0", "px.hostile.1", "px.hostile.2", "px.hostile.3")
 TIER_RAMPS = {
-    2: ("px.conduit.0", "px.conduit.1", "power.blink", "px.blink.light"),
+    2: ("px.conduit.0", "px.conduit.1", "px.jacket.1", "px.jacket.2"),  # not Blink cyan
     3: ("px.core.0", "px.core.1", "px.core.2", "px.core.3"),
 }
 _TIERED: dict[tuple[int, int], tuple[pygame.Surface, pygame.Surface]] = {}
@@ -588,9 +589,13 @@ class PixelView:
             )
         for hostile in world.hostiles:
             if hostile.kind == "relay" and hostile.phase == "blink":
-                effects.relay_destination(
-                    screen, v(hostile.dest_x, hostile.dest_y), rules.tell_progress(hostile, tuning)
-                )
+                # On the glow layer too, so the sector light never dims this tell.
+                for surface in (screen, self.glow.layer):
+                    effects.relay_destination(
+                        surface,
+                        v(hostile.dest_x, hostile.dest_y),
+                        rules.tell_progress(hostile, tuning),
+                    )
         for gx, gy, _life in self.blinks:
             effects.blink_ghost(screen, self.glow.layer, v(gx, gy))
 

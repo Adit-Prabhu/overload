@@ -140,23 +140,30 @@ def test_a_sentry_never_starts_inside_its_tell() -> None:
 
 
 def test_robots_are_built_for_their_sector() -> None:
-    """Sector 3 fields Overcharged variants: more health, faster walking and shorter rests.
-    Sector 2's Cooled variants keep stock stats (only their colors change). Tells and punish
-    windows never change."""
-    import math
-
-    from overload.sim.spawns import TIER_HEALTH, TIER_REST
-
+    """Sector 3 fields Overcharged variants: more health (integer math, rounded up), faster
+    walking and shorter rests. Sector 2's Cooled variants keep stock stats (only their colors
+    change). Tells and punish windows never change."""
     world = encounter_world(1, 1, "lateral")
-    for kind in ATTACKS:
+    expected = {"drone": 7, "relay": 9, "breaker": 18, "sweeper": 5, "sentry": 11}
+    for kind, health in expected.items():
         stock = spawn_robot(world, kind, 100, 100)
-        for tier in (2, 3):
-            tough = spawn_robot(world, kind, 100, 100, tier=tier)
-            assert tough.tier == tier
-            assert tough.max_health == math.ceil(stock.max_health * TIER_HEALTH[tier])
-            assert tough.max_health >= stock.max_health
-    assert TIER_REST[3] < TIER_REST[2] == TIER_REST[1] == 1.0
-    assert TIER_HEALTH[3] > TIER_HEALTH[2] == 1.0
+        assert spawn_robot(world, kind, 100, 100, tier=2).max_health == stock.max_health
+        assert spawn_robot(world, kind, 100, 100, tier=3).max_health == health
+    assert DEFAULT.overcharged_rest < 1.0 < DEFAULT.overcharged_speed
+
+
+def test_overcharged_tuning_is_guarded() -> None:
+    import pytest
+
+    from overload.sim.tuning import Tuning
+
+    with pytest.raises(ValueError):
+        Tuning(overcharged_rest=0.6, drone_fire_interval=60)  # no room left for recovery
+    with pytest.raises(ValueError):
+        Tuning(overcharged_health_pct=90)
+    from overload.sim.spawns import tier_health
+
+    assert tier_health(50, 3) == 55, "no float rounding can add a point"
 
 
 def test_warped_robots_take_the_tier_of_their_room() -> None:
