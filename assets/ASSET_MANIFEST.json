@@ -1,43 +1,7 @@
 {
   "schema_version": 1,
-  "notes": "Every file under assets/ needs an entry. Code-drawn art lives in src/overload/art/ and is original work, so it has no file entries. See docs/ART_AND_AUDIO_DIRECTION.md section 4.",
+  "notes": "Every file under assets/ needs an entry. Pixel art is authored as grids and code in src/overload/art/pixel/ and is original work, so it has no file entries. See docs/ART_AND_AUDIO_DIRECTION.md.",
   "assets": [
-    {
-      "id": "UI-10.medium",
-      "path": "assets/fonts/ChakraPetch-Medium.ttf",
-      "kind": "font",
-      "creator": "Cadson Demak, the Chakra Petch Project Authors",
-      "source": "https://github.com/google/fonts/blob/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/chakrapetch/ChakraPetch-Medium.ttf",
-      "license": "OFL-1.1",
-      "license_file": "assets/fonts/OFL.txt",
-      "sha256": "d480f4f97405fac3600652e2e14fd0b14339031c0af4da11582994878f04d919",
-      "added": "2026-11-16",
-      "approval": "Pending Adit's review of the style frame PR"
-    },
-    {
-      "id": "UI-10.bold",
-      "path": "assets/fonts/ChakraPetch-Bold.ttf",
-      "kind": "font",
-      "creator": "Cadson Demak, the Chakra Petch Project Authors",
-      "source": "https://github.com/google/fonts/blob/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/chakrapetch/ChakraPetch-Bold.ttf",
-      "license": "OFL-1.1",
-      "license_file": "assets/fonts/OFL.txt",
-      "sha256": "65fbf76d95651697275e19db4d717c0e95a789ddd3476478b05292104db278a0",
-      "added": "2026-11-16",
-      "approval": "Pending Adit's review of the style frame PR"
-    },
-    {
-      "id": "UI-10.license",
-      "path": "assets/fonts/OFL.txt",
-      "kind": "license",
-      "creator": "SIL International (license text), the Chakra Petch Project Authors (copyright line)",
-      "source": "https://github.com/google/fonts/blob/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/chakrapetch/OFL.txt",
-      "license": "OFL-1.1",
-      "license_file": "assets/fonts/OFL.txt",
-      "sha256": "13831d02389d917d22fcfa6c79f98f8acbf61d230add0e73a4d4dc5f3bfb9e56",
-      "added": "2026-11-16",
-      "approval": "Required by the font license"
-    },
     {
       "id": "UI-10.pixel",
       "path": "assets/fonts/silkscreen/Silkscreen-Regular.ttf",

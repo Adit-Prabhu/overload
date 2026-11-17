@@ -2,7 +2,7 @@
 
 Overload is a top-down shooter where you steal and fuse enemy powers to feel inventive and capable of surprising a rival that learns how you fight. COMS E6998 section 014 (AI in Practice: Game Design and Development), Columbia University, individual final project.
 
-G1 was approved. The repository holds a playable practice build (move, aim, shoot, dodge, retry and replay against two Arc Mites), the code-drawn art, a placeholder rival service with a health route, CI and the agent team configuration. There are no powers, Regulator, deployed service, paid model call or playtest yet.
+G1 was approved. The repository holds a playable practice build in original pixel art: a lineworker (the Surge) in a blacked-out substation hall, with movement, aiming, shooting, dodging, retry and replay against two Arc Mites. It also holds a placeholder rival service with a health route, CI and the agent team configuration. There are no powers, Regulator fight, deployed service, paid model call or playtest yet.
 
 ## Run and test
 Requirements: [uv](https://docs.astral.sh/uv/) and Python 3.11 or 3.12 for the game, Node.js 22 for the rival service.
@@ -21,9 +21,9 @@ npm test                                 # Worker tests run locally in workerd, 
 npm run typecheck
 ```
 
-Controls: WASD or arrow keys move, the mouse aims, hold left click to fire, Space dodges, R retries after going down or clearing the room, Esc quits. This is the practice build: two Arc Mites in the substation, no powers or Regulator yet.
+Controls: WASD or arrow keys move, the mouse aims, hold left click to fire, Space dodges, R retries after going down or clearing the room, Esc quits. This is the practice build: two Arc Mites in the substation hall, no powers or Regulator fight yet. The window scales the 256 x 144 view by whole numbers.
 
-Review renders of the art live in [`docs/art/`](docs/art/). Regenerate them with `uv run python tools/art/style_frame.py` and `uv run --group tools python tools/art/contact_sheet.py` (Python 3.12).
+Review renders of the art live in [`docs/art/`](docs/art/): the style frame, the whole room, and the contact sheet with color-vision simulations. Regenerate them with `uv run python tools/art/pixel_style_frame.py` and `uv run --group tools python tools/art/contact_sheet.py` (Python 3.12).
 
 CI runs the same checks on every pull request ([`.github/workflows/overload-checks.yml`](.github/workflows/overload-checks.yml)). Development agent roles live in [`.agents/`](.agents/) and the common manifest is [`agent-config.json`](agent-config.json).
 

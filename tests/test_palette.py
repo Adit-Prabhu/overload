@@ -112,7 +112,7 @@ def test_tokens_are_valid_hex() -> None:
 
 def test_rgb_converts_tokens() -> None:
     assert palette.rgb("fx.flash") == (255, 255, 255)
-    assert palette.rgb("bg.void") == (10, 14, 23)
+    assert palette.rgb("px.void") == (7, 9, 14)
 
 
 def test_unknown_token_is_rejected() -> None:
