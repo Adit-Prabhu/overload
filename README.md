@@ -15,6 +15,8 @@ uv run overload --practice               # practice arena: two Arc Mites, no Reg
 uv run overload --record logs/run.json   # play and save a replay on exit
 uv run overload --replay logs/run.json   # watch it back and verify the final state hash
 uv run pytest                            # deterministic client tests
+uv run --group tools python -m tools.audio.render    # re-render assets/audio/ from tools/audio/ (Python 3.12)
+uv run --group tools python -m tools.audio.preview   # one listen-through file in logs/
 uv run ruff check . && uv run ruff format --check .
 
 cd worker
