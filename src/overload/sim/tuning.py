@@ -51,9 +51,10 @@ class Tuning:
     rival_speed: float = 0.8
     rival_contact_damage: int = 1
 
-    clamp_range: float = 72.0
+    clamp_speed: float = 1.2  # closes faster than it backs off, still below the Surge's speed
+    clamp_range: float = 88.0
     clamp_tell: int = 30
-    clamp_dash_ticks: int = 12
+    clamp_dash_ticks: int = 20
     clamp_dash_speed: float = 3.6
     clamp_recovery: int = 36
     clamp_rest: int = 24
@@ -73,6 +74,7 @@ class Tuning:
     oscillate_turn: int = 90
     oscillate_interval: int = 84
     oscillate_tell: int = 30
+    hazard_damage: int = 1
 
     def __post_init__(self) -> None:
         """Reject values that would break readability rules or the tell logic."""
@@ -89,6 +91,9 @@ class Tuning:
                 raise ValueError(f"{name}: Regulator tells must last at least 0.50 s")
         if self.clamp_recovery < 0.60 * TICK_RATE:
             raise ValueError("Clamp lunges need at least 0.60 s of recovery")
+        reach = self.clamp_dash_speed * self.clamp_dash_ticks + self.rival_radius
+        if self.clamp_range > reach + self.player_radius:
+            raise ValueError("Clamp would start lunges it cannot finish")
         if self.clamp_dash_speed >= THINNEST_OBSTACLE:
             raise ValueError("Clamp dashes could tunnel through the thinnest obstacle")
         if self.shot_speed + 2 * self.shot_radius >= THINNEST_OBSTACLE:

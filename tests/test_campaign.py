@@ -7,6 +7,9 @@ tells meet the readability minimums, and retries restore the entry state exactly
 
 from __future__ import annotations
 
+import dataclasses
+import math
+
 import pytest
 
 from overload.session.replay import Recording, play
@@ -20,19 +23,19 @@ from overload.sim.world import PROTOCOLS, step
 ATTACKS = {"rival_lunge", "rival_orb", "rival_volley"}
 
 
-def scripted_player(world, tick: int) -> InputFrame:
-    """A plain but competent player: aim at the Regulator, hold the middle distance while
+def scripted_player(world, tick: int, near: float = 90, far: float = 135) -> InputFrame:
+    """A plain but competent player: aim at the Regulator, hold a distance band while
     strafing, dodge as a tell finishes, step out of armed hazard tiles."""
     player, rival = world.player, world.rival
     if rival is None or rival.health <= 0:
         return IDLE
     dx, dy = rival.x - player.x, rival.y - player.y
-    distance = (dx * dx + dy * dy) ** 0.5 or 1.0
+    distance = math.sqrt(dx * dx + dy * dy) or 1.0
     ux, uy = dx / distance, dy / distance
     side = 1 if (tick // 150) % 2 == 0 else -1
-    if distance < 90:
+    if distance < near:
         mx, my = -ux, -uy
-    elif distance > 135:
+    elif distance > far:
         mx, my = ux, uy
     else:
         mx, my = -uy * side, ux * side
@@ -46,13 +49,16 @@ def scripted_player(world, tick: int) -> InputFrame:
     return InputFrame(sx, sy, int(rival.x), int(rival.y), fire=True, dodge=dodge)
 
 
-def fight(protocol: str, seed: int, limit: int = 3600) -> Campaign:
-    campaign = Campaign(seed, protocol)
+def fight(protocol: str, band: tuple[float, float], limit: int = 3600):
+    """One encounter against `protocol`. Returns the world and how many attacks it made."""
+    world = encounter_world(1, 2, protocol)
+    attacks = 0
     for tick in range(limit):
-        campaign.step(scripted_player(campaign.world, tick))
-        if campaign.world.outcome != "playing":
+        step(world, scripted_player(world, tick, *band))
+        attacks += sum(1 for event in world.events if event.kind in ATTACKS)
+        if world.outcome != "playing":
             break
-    return campaign
+    return world, attacks
 
 
 def beat_encounter(campaign: Campaign) -> None:
@@ -64,11 +70,23 @@ def beat_encounter(campaign: Campaign) -> None:
 
 
 @pytest.mark.parametrize("protocol", PROTOCOLS)
-@pytest.mark.parametrize("seed", [1, 2, 3])
-def test_every_protocol_is_beatable_with_the_starting_loadout(protocol: str, seed: int) -> None:
-    campaign = fight(protocol, seed)
-    assert campaign.world.outcome == "clear", (protocol, seed, campaign.world.player.charge)
-    assert campaign.stage == "fuse_box"
+@pytest.mark.parametrize("band", [(90, 135), (60, 100)], ids=["mid", "close"])
+def test_every_protocol_is_beatable_with_the_starting_loadout(
+    protocol: str, band: tuple[float, float]
+) -> None:
+    world, attacks = fight(protocol, band)
+    assert world.outcome == "clear", (protocol, band, world.player.charge)
+    assert attacks >= 2, "the Regulator must actually fight back for this to mean anything"
+
+
+def test_a_clamp_lunge_reaches_a_player_who_stands_still() -> None:
+    world = encounter_world(1, 2, "pressure")
+    world.hostiles.clear()
+    for _ in range(600):
+        step(world, IDLE)
+        if world.player.charge < DEFAULT.player_max_charge:
+            return
+    pytest.fail("Clamp never landed a lunge on a still target")
 
 
 @pytest.mark.parametrize("protocol", PROTOCOLS)
@@ -161,9 +179,14 @@ def test_stats_are_identical_across_protocols() -> None:
     assert len({(r.health, r.radius, r.boot) for r in rivals}) == 1
 
 
-def test_unknown_protocol_is_rejected() -> None:
+def test_clamp_never_starts_a_lunge_it_cannot_finish() -> None:
     with pytest.raises(ValueError):
-        Campaign(1, "berserk")
+        dataclasses.replace(DEFAULT, clamp_range=200.0)
+
+
+def test_encounter_one_is_always_neutral() -> None:
+    assert Campaign(1).protocols == {1: "lateral"}
+    assert Campaign(1).world.rival.protocol == "lateral"
 
 
 # Campaign ------------------------------------------------------------------------------------
@@ -222,7 +245,7 @@ def test_retry_restores_the_entry_state_and_keeps_the_protocol() -> None:
 
 
 def test_campaign_replay_reproduces_the_run(tmp_path) -> None:
-    campaign = Campaign(9, "lateral")
+    campaign = Campaign(9)
     recording = Recording(
         seed=9,
         tuning_id=DEFAULT.tuning_id(),
@@ -248,30 +271,38 @@ def test_campaign_replay_reproduces_the_run(tmp_path) -> None:
     assert replayed.protocols == campaign.protocols
 
 
-def test_campaign_replay_with_other_protocols_differs() -> None:
-    recording = Recording(
+def campaign_recording(protocols: list[str], starts: list[int], frames: int) -> Recording:
+    return Recording(
         seed=9,
         tuning_id=DEFAULT.tuning_id(),
         arena_id=arena_id(SUBSTATION),
         mode="campaign",
-        protocols=["lateral"],
-        frames=[IDLE] * 200,
+        protocols=protocols,
+        starts=starts,
+        frames=[IDLE] * frames,
     )
-    other = Recording(
-        seed=9,
-        tuning_id=DEFAULT.tuning_id(),
-        arena_id=arena_id(SUBSTATION),
-        mode="campaign",
-        protocols=["pressure"],
-        frames=[IDLE] * 200,
-    )
-    assert play(recording).state_hash() != play(other).state_hash()
+
+
+@pytest.mark.parametrize(
+    ("protocols", "starts", "frames"),
+    [
+        (["pressure"], [], 10),  # encounter 1 must be neutral
+        (["lateral", "pressure"], [999], 10),  # start beyond the frames
+        (["lateral", "pressure", "spacing"], [5, 5], 10),  # not strictly increasing
+        (["lateral", "pressure"], [0], 10),  # before anything was cleared
+        (["lateral", "pressure"], [5], 10),  # encounter 1 not cleared at tick 5
+        (["lateral", "pressure"], [], 10),  # protocol without a start
+    ],
+)
+def test_malformed_campaign_replays_are_rejected(protocols, starts, frames) -> None:
+    with pytest.raises(ValueError):
+        play(campaign_recording(protocols, starts, frames))
 
 
 def test_pinned_campaign_hash_matches_across_python_versions() -> None:
     """A full scripted campaign (three encounters, two protocol changes) has a known result on
     every CI Python version. Update deliberately, with a note in the PR, if rules change."""
-    campaign = Campaign(9, "lateral")
+    campaign = Campaign(9)
     for tick in range(4000):
         if campaign.stage == "fuse_box":
             campaign.begin_next("pressure" if campaign.encounter == 1 else "spacing")
@@ -279,4 +310,4 @@ def test_pinned_campaign_hash_matches_across_python_versions() -> None:
             break
         campaign.step(scripted_player(campaign.world, tick))
     assert (campaign.stage, campaign.encounter) == ("ending", 3)
-    assert campaign.state_hash() == "b48b1a7c03bb5239"
+    assert campaign.state_hash() == "d58bc891775a008b"

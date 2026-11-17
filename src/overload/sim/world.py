@@ -2,8 +2,9 @@
 
 Order inside a tick (fixed, so outcomes are deterministic):
 1. aim, 2. dodge start, 3. player movement, 4. firing, 5. hostiles (tells and bolts),
-6. projectile movement, 7. hits, 8. timers, 9. outcome (player down takes precedence over
-clearing the room in the same tick), 10. tick counter.
+6. the Regulator (boot, protocol behavior), 7. hazard tiles, 8. projectile movement,
+9. hits, 10. timers, 11. outcome (player down takes precedence over clearing the room in the
+same tick), 12. tick counter.
 """
 
 from __future__ import annotations
@@ -363,8 +364,8 @@ def _clamp(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Ar
             rival.x, rival.y = move_body(
                 rival.x,
                 rival.y,
-                nx * tuning.rival_speed,
-                ny * tuning.rival_speed,
+                nx * tuning.clamp_speed,
+                ny * tuning.clamp_speed,
                 rival.radius,
                 arena,
             )
@@ -507,7 +508,7 @@ def _hazards(world: World, tuning: Tuning) -> None:
         else:
             rect = (hazard.x, hazard.y, hazard.size, hazard.size)
             if circle_hits_rect((player.x, player.y), tuning.player_radius, rect):
-                hurt_player(world, 1, tuning)
+                hurt_player(world, tuning.hazard_damage, tuning)
             hazard.active -= 1
         if hazard.arming > 0 or hazard.active > 0:
             survivors.append(hazard)

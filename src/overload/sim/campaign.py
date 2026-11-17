@@ -2,8 +2,9 @@
 
 Each encounter's protocol comes from outside (the live selector, the fixed schedule or the
 neutral default) through `begin_next`, the one door the rival model's choice can use to enter
-the game. It is frozen at entry. Retrying after going down restores the entry snapshot
-exactly, protocol included, so a retry never makes another request or changes the fight.
+the game. Encounter 1 always starts neutral. Each protocol is frozen at entry. Retrying after
+going down restores the entry snapshot exactly, protocol included, so a retry never makes
+another request or changes the fight.
 """
 
 from __future__ import annotations
@@ -45,23 +46,15 @@ def encounter_world(
 
 
 class Campaign:
-    def __init__(
-        self,
-        seed: int,
-        first_protocol: str = NEUTRAL,
-        tuning: Tuning = DEFAULT,
-        arena: Arena = SUBSTATION,
-    ) -> None:
-        if first_protocol not in PROTOCOLS:
-            raise ValueError(f"unknown protocol {first_protocol!r}")
+    def __init__(self, seed: int, tuning: Tuning = DEFAULT, arena: Arena = SUBSTATION) -> None:
         self.seed = seed
         self.tuning = tuning
         self.arena = arena
         self.encounter = 1
         self.stage: Stage = "encounter"
-        self.protocols: dict[int, str] = {1: first_protocol}
+        self.protocols: dict[int, str] = {1: NEUTRAL}
         self.retries: dict[int, int] = {1: 0}
-        self.world = encounter_world(seed, 1, first_protocol, tuning, arena)
+        self.world = encounter_world(seed, 1, NEUTRAL, tuning, arena)
         self.checkpoint = copy.deepcopy(self.world)
 
     def step(self, inp: InputFrame) -> None:
