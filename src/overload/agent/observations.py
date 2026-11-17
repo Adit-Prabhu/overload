@@ -55,7 +55,7 @@ class ObservationLog:
                 self.actions[action] += 1
 
     def summary(self, previous_tactic: str) -> dict:
-        """The request summary: evidence items with stable IDs, at most a few hundred bytes."""
+        """The request summary: eight evidence items with stable IDs, under 1 KB."""
         e = f"e{self.encounter}"
         total = max(1, self.ticks)
         minutes = max(total / TICKS_PER_MINUTE, 1 / 60)

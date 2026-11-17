@@ -374,7 +374,6 @@ def test_power_uses_are_counted_only_when_seen() -> None:
     world = encounter_world(1, 2, "lateral", kit=kit)
     log = ObservationLog(2)
     rival = (world.rival.x, world.rival.y)
-    world.player.x, world.player.y = world.player.x, world.player.y
     step(
         world,
         InputFrame(
@@ -389,6 +388,32 @@ def test_power_uses_are_counted_only_when_seen() -> None:
     values = {item["id"]: item["value"] for item in log.summary("lateral")["items"]}
     assert values["e2.spark_uses"] == 1 and values["e2.blink_uses"] == 1
     assert values["e2.arc_trail_uses"] == 0
+
+
+def test_powers_that_do_not_happen_are_never_observed() -> None:
+    """Pressing Q or E with an empty slot, a power that is not unlocked, or while dodging
+    does nothing on screen, so nothing reaches the summary."""
+    from overload.sim.campaign import encounter_world
+    from overload.sim.powers import Kit
+    from overload.sim.world import step
+
+    cases = {
+        "empty slot": Kit(["spark"], {"spark": 1}, ["", ""]),
+        "locked power": Kit([], {}, ["spark", "blink"]),
+        "dodging": Kit(["spark", "blink"], {"spark": 1, "blink": 1}, ["spark", "blink"]),
+    }
+    for case, kit in cases.items():
+        world = encounter_world(1, 2, "lateral", kit=kit)
+        log = ObservationLog(2)
+        rival = (world.rival.x, world.rival.y)
+        aim = (int(world.player.x) + 40, int(world.player.y))
+        if case == "dodging":
+            step(world, InputFrame(aim_x=aim[0], aim_y=aim[1], dodge=True))
+        step(world, InputFrame(aim_x=aim[0], aim_y=aim[1], power_q=True, power_e=True))
+        observe_world(log, world, rival)
+        values = {item["id"]: item["value"] for item in log.summary("lateral")["items"]}
+        uses = [values[f"e2.{kind}_uses"] for kind in ("spark", "blink", "arc_trail")]
+        assert uses == [0, 0, 0], case
 
 
 def test_a_rejected_blink_is_not_observed() -> None:
