@@ -21,7 +21,7 @@ from overload.art.pixel.lighting import Lighting, pool, quantize
 from overload.sim import world as rules
 from overload.sim.arena import arena_id
 from overload.sim.campaign import Campaign
-from overload.sim.powers import Kit
+from overload.sim.powers import COOLDOWN_KEYS, Kit
 from overload.sim.run import Run
 from overload.sim.state import Event
 
@@ -480,7 +480,11 @@ class PixelView:
                 dodge_ready=1.0 - player.dodge_cooldown / dodge_total,
                 sockets=tuple(slot or None for slot in player.slots),
                 cooldowns=tuple(
-                    player.cooldowns.get(slot, 0) / getattr(tuning, COOLDOWNS[slot])
+                    min(
+                        1.0,
+                        player.cooldowns.get(COOLDOWN_KEYS[slot], 0)
+                        / getattr(tuning, COOLDOWNS[slot]),
+                    )
                     if slot
                     else 0.0
                     for slot in player.slots
