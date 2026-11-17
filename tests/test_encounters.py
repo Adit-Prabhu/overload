@@ -68,14 +68,11 @@ def test_a_complete_win_path() -> None:
 
 def test_a_loss_and_retry_path_then_the_win() -> None:
     campaign = Campaign(5)
-    for _ in range(200):  # stand still and take the hits until short circuit
+    for _ in range(2000):  # stand still and take every hit until the short circuit
         campaign.step(InputFrame(aim_x=0, aim_y=0))
         if campaign.world.outcome == "down":
             break
-    else:
-        campaign.world.player.charge = 0
-        campaign.step(IDLE)
-    assert campaign.world.outcome == "down"
+    assert campaign.world.outcome == "down", "the loss comes from real hits, not a forced value"
     ticks_when_down = campaign.stats["ticks"]
     for _ in range(30):
         campaign.step(IDLE)  # waiting on the retry: no fighting time counted
@@ -97,5 +94,9 @@ def test_stats_count_shots_and_powers_across_retries() -> None:
     assert campaign.stats["shots"] == 1 and campaign.stats["powers"] == {"spark": 1}
     campaign.world.player.charge = 0
     campaign.step(IDLE)
+    before = dict(campaign.stats, powers=dict(campaign.stats["powers"]))
     campaign.step(InputFrame(restart=True))
-    assert campaign.stats["shots"] == 1, "a retry never erases what the player tried"
+    assert campaign.stats == before, "a retry never erases what the player tried"
+    campaign.step(IDLE)
+    assert campaign.stats["ticks"] == before["ticks"] + 1
+    assert campaign.stats["powers"] == {"spark": 1}

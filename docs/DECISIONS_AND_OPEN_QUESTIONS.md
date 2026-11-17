@@ -38,6 +38,11 @@ GDF v2.1 Sections 5.1/5.2 and Gate 1 read. Required live deployed model behavior
 | Rival service artifact `worker/src/rival.ts` | `worker/src/index.ts` (routes) and `session.ts` (RivalSession, a Cloudflare Agents SDK agent), with `schema.ts`, `prompt.ts`, `providers.ts`, `google.ts` and `budget.ts` | Workers need one entry module, the Agents SDK gives each session its own isolated state and scheduled expiry, and small files keep validation, prompt and provider separately testable |
 | Evidence labels written by the client | Labels come from `config/evidence.json` on the server, and only the listed observation kinds are accepted | A modified client could otherwise put arbitrary text into the prompt |
 | Context source `src/overload/observations.py:summary` | `src/overload/agent/observations.py:summary` | The knowledge boundary code is grouped under `agent/` |
+| The Relay arrives with task 9 | The Relay arrives with task 8 | Blink needs a carrier, so the full collect, equip, fuse, use loop could not be tested without it |
+| The GDD does not say whether Blink and Arc Trail can be chained | They share one teleport cooldown | Two slots could otherwise jump twice the Blink range in one tick and double the teleport rate |
+| Fixed mode uses "the same minimum transition time as live mode" | The Fuse Box holds for 5 s, the request deadline, in every condition | A shorter hold let a slow live reply make the live gap visibly longer, which would reveal the condition |
+| Bodies not specified | The Surge cannot stand inside the Regulator or a machine. A dodge slips through. Pinned between a body and a wall it may still overlap a little, because walls always win | Standard top-down convention, and dodge stays useful against Clamp |
+| Balance not specified | Health 40 for every protocol. A scripted player beats Clamp and Insulate in about 10 s and Oscillate in about 40 s. Solid bodies made Insulate harder for a player who only walks, since a hazard can pin them against the Regulator, so the test player now dodges out of armed tiles | Left for the Nov 25 playtest to judge before any retune |
 
 ## Pinned dependencies (OQ4, partly resolved)
 Pinned in task 1 (November 16, 2026). Versions published before November 2, 2026 were chosen on purpose, so nothing is days old.

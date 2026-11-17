@@ -585,7 +585,7 @@ class PixelView:
             hud.text(screen, label, (w // 2 - 6, y), "ui.dim", "topright")
             hud.text(screen, value, (w // 2 + 6, y), "ui.text")
         hud.text(screen, "POWERS TRIED", (w // 2, 82), "ui.dim", "midtop")
-        tried = [(name, count) for name, count in (powers or {}).items() if count]
+        tried = [(name, n) for name, n in (powers or {}).items() if n and name in NAMES]
         if not tried:
             hud.text(screen, "GUN AND DODGE ONLY", (w // 2, 94), "px.floor.3", "midtop")
         for i, (name, count) in enumerate(tried):

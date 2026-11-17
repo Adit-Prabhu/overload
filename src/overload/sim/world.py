@@ -364,16 +364,23 @@ def _separate(world: World, tuning: Tuning, arena: Arena) -> None:
     rival = world.rival
     if rival is not None and rival.health > 0:
         bodies.append((rival.x, rival.y, rival.radius))
-    for bx, by, radius in bodies:
-        dx, dy = player.x - bx, player.y - by
-        reach = radius + tuning.player_radius
-        if dx * dx + dy * dy >= reach * reach:
-            continue
-        nx, ny = normalize(dx, dy)
-        if not (nx or ny):
-            nx, ny = -player.aim_x, -player.aim_y
-        player.x, player.y = bx + nx * reach, by + ny * reach
-    player.x, player.y = move_body(player.x, player.y, 0.0, 0.0, tuning.player_radius, arena)
+    # A few passes settle a Surge squeezed between two bodies. Pinned between a body and a
+    # wall it may still overlap a little: walls always win, so it never ends up inside one.
+    for _ in range(3):
+        moved = False
+        for bx, by, radius in bodies:
+            dx, dy = player.x - bx, player.y - by
+            reach = radius + tuning.player_radius
+            if dx * dx + dy * dy >= reach * reach:
+                continue
+            nx, ny = normalize(dx, dy)
+            if not (nx or ny):
+                nx, ny = -player.aim_x, -player.aim_y
+            player.x, player.y = bx + nx * reach, by + ny * reach
+            moved = True
+        player.x, player.y = move_body(player.x, player.y, 0.0, 0.0, tuning.player_radius, arena)
+        if not moved:
+            break
 
 
 def hurt_player(world: World, damage: int, tuning: Tuning) -> None:
