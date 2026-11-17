@@ -6,9 +6,10 @@ import dataclasses
 import math
 
 import pytest
+from floorbot import enter, play_campaign, skip_sector
 
 from overload.session.replay import Recording, play
-from overload.sim.arena import SUBSTATION, Arena, arena_id
+from overload.sim.arena import FLOOR_ARENA, SUBSTATION, Arena, arena_id
 from overload.sim.campaign import Campaign, encounter_world
 from overload.sim.inputs import IDLE, InputFrame
 from overload.sim.powers import Kit, blink_destination, equip, fuse
@@ -74,15 +75,16 @@ def test_first_charge_unlocks_and_equips_later_ones_only_count() -> None:
     assert "absorb" in {e.kind for e in world.events}
 
 
-def test_winning_absorbs_every_charge_left() -> None:
+def test_clearing_a_room_absorbs_every_charge_left() -> None:
     campaign = Campaign(1)
     world = campaign.world
-    for hostile in world.hostiles:
-        hostile.health = 0
-    world.rival.health = 0
-    campaign.step(IDLE)
-    assert campaign.stage == "fuse_box"
-    assert campaign.kit.unlocked == ["spark"] and campaign.kit.fragments == {"spark": 2}
+    enter(campaign, "s1_hall")
+    while world.active_room == "s1_hall":
+        for hostile in world.hostiles:
+            hostile.health = 0
+        campaign.step(IDLE)
+    assert world.unlocked == ["spark"] and world.fragments == {"spark": 5}
+    assert world.charges == []
 
 
 # Use -----------------------------------------------------------------------------------------
@@ -255,10 +257,10 @@ def test_relay_marks_its_landing_before_blinking_and_aims_before_firing() -> Non
 
 def test_the_kit_carries_over_and_a_retry_restores_the_entry_kit() -> None:
     campaign = Campaign(1)
-    campaign.world.hostiles[0].health = 0
-    campaign.step(IDLE)  # the charge drops and stays on the floor
-    campaign.world.rival.health = 0
+    world = campaign.world
+    world.charges.append(Charge(400, "spark", world.player.x, world.player.y))
     campaign.step(IDLE)
+    skip_sector(campaign)
     assert campaign.kit.unlocked == ["spark"]
     assert campaign.fuse("spark", "blink") == "missing"
     campaign.begin_next("pressure")
@@ -276,79 +278,38 @@ def test_the_kit_carries_over_and_a_retry_restores_the_entry_kit() -> None:
     assert campaign.world.unlocked == ["spark"], "a retry restores the entry loadout"
 
 
-def target_of(world):
-    """Shoot the nearest machine first (to steal its power), then the Regulator."""
-    player = world.player
-    living = [h for h in world.hostiles if h.health > 0]
-    if living:
-        return min(living, key=lambda h: (h.x - player.x) ** 2 + (h.y - player.y) ** 2)
-    return world.rival
-
-
-def looting_player(world, tick: int) -> InputFrame:
-    player, target = world.player, target_of(world)
-    if target is None or target.health <= 0:
-        return IDLE
-    dx, dy = target.x - player.x, target.y - player.y
-    distance = math.sqrt(dx * dx + dy * dy) or 1.0
-    ux, uy = dx / distance, dy / distance
-    side = 1 if (tick // 150) % 2 == 0 else -1
-    if distance < 70:
-        mx, my = -ux, -uy
-    elif distance > 120:
-        mx, my = ux, uy
-    else:
-        mx, my = -uy * side, ux * side
-    for hazard in world.hazards:
-        cx, cy = hazard.x + hazard.size / 2, hazard.y + hazard.size / 2
-        if abs(player.x - cx) < 16 and abs(player.y - cy) < 16:
-            mx, my = player.x - cx, player.y - cy
-    sx = 0 if abs(mx) < 0.3 else (1 if mx > 0 else -1)
-    sy = 0 if abs(my) < 0.3 else (1 if my > 0 else -1)
-    rival = world.rival
-    dodge = rival is not None and rival.action == "tell" and rival.timer <= 4
-    return InputFrame(
-        sx,
-        sy,
-        int(target.x),
-        int(target.y),
-        fire=True,
-        dodge=dodge,
-        power_q=tick % 7 == 0,
-        power_e=tick % 11 == 0,
-    )
-
-
 def full_loop(seed: int) -> tuple[Campaign, Recording, set[str]]:
-    """Collect in encounters 1 and 2, fuse and equip in the Fuse Box, use in encounter 3."""
+    """Steal Spark in sector 1 and Blink in sector 2, fuse and equip in the second Fuse Box,
+    use both in sector 3. Real inputs throughout, so the recording replays exactly."""
     campaign = Campaign(seed)
     recording = Recording(
         seed=seed,
         tuning_id=DEFAULT.tuning_id(),
-        arena_id=arena_id(SUBSTATION),
+        arena_id=arena_id(FLOOR_ARENA),
         mode="campaign",
         protocols=["lateral"],
     )
     used: set[str] = set()
-    for tick in range(12_000):
-        if campaign.stage == "fuse_box":
-            if campaign.encounter == 2:
-                assert campaign.fuse("spark", "blink") == "fused"
-                recording.fuse_box("fuse", "spark", "blink")
-                assert campaign.equip(0, "arc_trail")
-                recording.fuse_box("equip", 0, "arc_trail")
-                assert campaign.equip(1, "spark")
-                recording.fuse_box("equip", 1, "spark")
-            protocol = "pressure" if campaign.encounter == 1 else "spacing"
-            campaign.begin_next(protocol)
-            recording.begin_next(protocol)
-        if campaign.stage == "ending":
-            break
-        frame = looting_player(campaign.world, tick)
-        campaign.step(frame)
-        recording.frames.append(frame)
+
+    def fuse_box(campaign: Campaign, recording: Recording) -> None:
+        if campaign.encounter == 2:
+            assert campaign.fuse("spark", "blink") == "fused"
+            recording.fuse_box("fuse", "spark", "blink")
+            assert campaign.equip(0, "arc_trail")
+            recording.fuse_box("equip", 0, "arc_trail")
+            assert campaign.equip(1, "spark")
+            recording.fuse_box("equip", 1, "spark")
+
+    original_step = campaign.step
+
+    def step(frame: InputFrame) -> None:
+        original_step(frame)
         if campaign.encounter == 3:
-            used |= {e.kind for e in campaign.world.events if e.kind.startswith("power_")}
+            used.update(e.kind for e in campaign.world.events if e.kind.startswith("power_"))
+
+    campaign.step = step
+    play_campaign(campaign, recording=recording, on_fuse_box=fuse_box)
+    campaign.step = original_step
     recording.final_hash = campaign.state_hash()
     return campaign, recording, used
 
@@ -361,7 +322,7 @@ def test_full_loop_collect_equip_fuse_use(tmp_path) -> None:
     path = tmp_path / "loop.json"
     recording.save(path)
     assert play(Recording.load(path)).state_hash() == recording.final_hash
-    assert recording.final_hash == "a435dfff657dfe2b", "pinned on Python 3.11 and 3.12"
+    assert recording.final_hash == "d2f597e9cc73e80f", "pinned on Python 3.11 and 3.12"
 
 
 @pytest.mark.parametrize(
@@ -384,7 +345,7 @@ def test_malformed_fuse_box_actions_are_rejected(menu) -> None:
     recording = Recording(
         seed=1,
         tuning_id=DEFAULT.tuning_id(),
-        arena_id=arena_id(SUBSTATION),
+        arena_id=arena_id(FLOOR_ARENA),
         mode="campaign",
         protocols=["lateral"],
         frames=[IDLE] * 10,
@@ -407,7 +368,7 @@ def test_a_saved_file_with_a_malformed_menu_is_rejected(tmp_path) -> None:
     recording = Recording(
         seed=1,
         tuning_id=DEFAULT.tuning_id(),
-        arena_id=arena_id(SUBSTATION),
+        arena_id=arena_id(FLOOR_ARENA),
         mode="campaign",
         protocols=["lateral"],
         frames=[IDLE] * 10,

@@ -62,13 +62,11 @@ class Session:
                 self.log = ObservationLog(encounter)
                 self._trace("retry", encounter=encounter, retries=campaign.retries[encounter])
                 return
-            rival = campaign.world.rival
-            if rival is not None:
-                observe_world(self.log, campaign.world, (rival.x, rival.y))
+            observe_world(self.log, campaign.world)
             if campaign.stage != "encounter":
                 self._encounter_cleared(encounter)
         else:
-            campaign.step(frame)  # nothing moves, stale events are cleared
+            campaign.step(frame)  # the Surge stands still in the Fuse Box while the menu is open
             if campaign.stage == "fuse_box":
                 self.fuse_ticks += 1
                 self.pending_decision()

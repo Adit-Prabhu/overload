@@ -4,19 +4,21 @@ Order inside a tick (fixed, so outcomes are deterministic):
 1. aim, 2. dodge start, 3. player movement, 4. firing, 5. powers (Q then E), 6. hostiles
 (tells, Relay blinks, bolts), 7. the Regulator (boot, protocol behavior), 8. hazard tiles,
 9. body collision (the Surge is pushed out of the Regulator and machines unless dodging),
-10. projectile movement, 11. Arc Trail pulses, 12. hits (destroyed machines drop charges),
-13. absorbing charges, 14. timers and cooldowns, 15. outcome (player down takes precedence
-over clearing the room in the same tick, and a win absorbs every charge left), 16. tick
-counter.
+10. projectile movement (a shot stopped by a secret wall cracks it), 11. Arc Trail pulses,
+12. hits (destroyed machines drop charges), 13. absorbing charges, 14. floor rooms (warps,
+locking, waves, clearing), 15. timers and cooldowns, 16. outcome (player down takes
+precedence over clearing the room in the same tick, and a win absorbs every charge left),
+17. tick counter.
 """
 
 from __future__ import annotations
 
 import random
 
+from overload.sim import floorplay
 from overload.sim.aiming import aim, launch_point
 from overload.sim.arena import SUBSTATION, Arena
-from overload.sim.collision import blocked, solids
+from overload.sim.collision import blocked, line_clear, solids
 from overload.sim.damage import damage_rival
 from overload.sim.geometry import (
     circle_hits_rect,
@@ -36,6 +38,12 @@ from overload.sim.powers import (
     tick_trails,
     use_powers,
 )
+from overload.sim.spawns import (  # noqa: F401 (re-exported for callers of the rules)
+    PROTOCOLS,
+    spawn_arc_mite,
+    spawn_relay,
+    spawn_rival,
+)
 from overload.sim.state import Event, Hazard, Hostile, Player, Projectile, Rival, World
 from overload.sim.tuning import DEFAULT, Tuning
 
@@ -53,37 +61,6 @@ def new_world(seed: int, tuning: Tuning = DEFAULT, arena: Arena = SUBSTATION) ->
     return world
 
 
-def spawn_arc_mite(world: World, x: float, y: float, tuning: Tuning = DEFAULT) -> Hostile:
-    interval = tuning.arc_mite_fire_interval
-    hostile = Hostile(
-        id=world.new_id(),
-        kind="arc_mite",
-        x=x,
-        y=y,
-        radius=tuning.arc_mite_radius,
-        health=tuning.arc_mite_health,
-        max_health=tuning.arc_mite_health,
-        fire_timer=interval // 2 + world.rng.randrange(interval // 2),
-    )
-    world.hostiles.append(hostile)
-    return hostile
-
-
-def spawn_relay(world: World, x: float, y: float, tuning: Tuning = DEFAULT) -> Hostile:
-    hostile = Hostile(
-        id=world.new_id(),
-        kind="relay",
-        x=x,
-        y=y,
-        radius=tuning.relay_radius,
-        health=tuning.relay_health,
-        max_health=tuning.relay_health,
-        fire_timer=tuning.relay_idle + world.rng.randrange(tuning.relay_idle),
-    )
-    world.hostiles.append(hostile)
-    return hostile
-
-
 def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena = SUBSTATION):
     """Advance one tick. A finished world (down or clear) does not change."""
     world.events.clear()
@@ -98,10 +75,11 @@ def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena =
     _rival(world, tuning, arena)
     _hazards(world, tuning)
     _separate(world, tuning, arena)
-    _move_projectiles(world, arena)
+    _move_projectiles(world, tuning, arena)
     tick_trails(world, tuning)
     _hits(world, tuning)
     absorb_charges(world, tuning)
+    floorplay.tick(world, tuning, arena)
     _timers(world.player)
     tick_cooldowns(world)
     _outcome(world, tuning)
@@ -243,6 +221,8 @@ def _relay(world: World, relay: Hostile, tuning: Tuning, arena: Arena) -> None:
                 not on_player
                 and not outside_bounds(spot, relay.radius, arena.bounds)
                 and not blocked(world, arena, spot, relay.radius)
+                and line_clear(world, arena, (relay.x, relay.y), spot)
+                and floorplay.same_room(arena, (relay.x, relay.y), spot)
             ):
                 relay.dest_x, relay.dest_y = spot
                 break
@@ -276,7 +256,7 @@ def _relay(world: World, relay: Hostile, tuning: Tuning, arena: Arena) -> None:
         world.events.append(Event("bolt", relay.x, relay.y, relay.id))
 
 
-def _move_projectiles(world: World, arena: Arena) -> None:
+def _move_projectiles(world: World, tuning: Tuning, arena: Arena) -> None:
     survivors = []
     for shot in world.projectiles:
         shot.x += shot.vx
@@ -287,6 +267,8 @@ def _move_projectiles(world: World, arena: Arena) -> None:
             world, arena, center, shot.radius
         )
         if shot.ttl <= 0 or hit_wall:
+            if hit_wall and not shot.hostile:
+                floorplay.shot_hits_wall(world, tuning, arena, center, shot.radius)
             world.events.append(Event("fizzle", shot.x, shot.y, shot.id))
             continue
         survivors.append(shot)
@@ -356,6 +338,8 @@ def _outcome(world: World, tuning: Tuning) -> None:
     if world.player.charge <= 0:
         world.outcome = "down"
         world.events.append(Event("player_down", world.player.x, world.player.y))
+    elif world.mode == "floor":
+        return  # on the floor, rooms clear one by one and the campaign tracks progress
     elif rival_beaten or (world.rival is None and not world.hostiles):
         world.outcome = "clear"
         absorb_charges(world, tuning, everything=True)
@@ -419,28 +403,9 @@ def move_body(
 
 # The Regulator ----------------------------------------------------------------------------
 
-PROTOCOLS = ("pressure", "spacing", "lateral")
 # Volley fan for Oscillate: rotation by 15 degrees as exact constants (no runtime trig).
 _COS15 = 0.9659258262890683
 _SIN15 = 0.25881904510252074
-
-
-def spawn_rival(world: World, x: float, y: float, protocol: str, tuning: Tuning = DEFAULT):
-    if protocol not in PROTOCOLS:
-        raise ValueError(f"unknown protocol {protocol!r}")
-    world.rival = Rival(
-        x=x,
-        y=y,
-        radius=tuning.rival_radius,
-        health=tuning.rival_health,
-        max_health=tuning.rival_health,
-        protocol=protocol,
-        boot=tuning.rival_boot,
-        cooldown=tuning.clamp_rest,
-        timer=tuning.oscillate_interval if protocol == "lateral" else tuning.insulate_orb_interval,
-    )
-    world.events.append(Event("protocol_boot", x, y))
-    return world.rival
 
 
 def rival_telegraphing(rival: Rival) -> bool:

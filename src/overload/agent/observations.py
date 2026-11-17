@@ -1,7 +1,7 @@
 """What the Regulator saw: the only game data that ever reaches the model.
 
 ObservationLog never receives the World. The caller hands it visible facts only: where the
-Surge and the Regulator stand, and the Surge's visible actions. Hidden state (charge,
+Surge and the nearest fighting hostile stand, and the Surge's visible actions. Hidden state (charge,
 cooldowns, inventory, RNG, other entities) cannot reach the summary by construction.
 """
 
@@ -70,7 +70,21 @@ class ObservationLog:
         return {"items": items, "previous_tactic": previous_tactic}
 
 
-def observe_world(log: ObservationLog, world, rival: tuple[float, float]) -> None:
-    """The one place the World is read for the rival: the Surge's position and the kinds of
-    visible events this tick. Nothing else from the World is passed on."""
-    log.observe((world.player.x, world.player.y), rival, (event.kind for event in world.events))
+def nearest_threat(world) -> tuple[float, float] | None:
+    """The nearest visible hostile, robot or Regulator, that is fighting right now."""
+    player = world.player
+    threats = [(h.x, h.y) for h in world.hostiles if h.health > 0]
+    if world.rival is not None and world.rival.health > 0:
+        threats.append((world.rival.x, world.rival.y))
+    if not threats:
+        return None
+    return min(threats, key=lambda p: (p[0] - player.x) ** 2 + (p[1] - player.y) ** 2)
+
+
+def observe_world(log: ObservationLog, world) -> None:
+    """The one place the World is read for the rival: during a fight, the Surge's distance to
+    the nearest visible hostile and the kinds of visible events this tick. Walking between
+    rooms is not a fight and is not observed. Nothing else from the World is passed on."""
+    threat = nearest_threat(world)
+    if threat is not None:
+        log.observe((world.player.x, world.player.y), threat, (e.kind for e in world.events))

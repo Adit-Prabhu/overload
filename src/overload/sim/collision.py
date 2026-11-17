@@ -41,6 +41,17 @@ def solids(world, arena, center: Point, reach: float) -> list[Rect]:
     return found
 
 
+def line_clear(world, arena, start: Point, end: Point) -> bool:
+    """No wall, prop or locked door crosses the straight line (sampled every 4 px, well
+    under the thinnest obstacle)."""
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    steps = max(1, int(max(abs(dx), abs(dy)) / 4.0))
+    return not any(
+        blocked(world, arena, (start[0] + dx * i / steps, start[1] + dy * i / steps), 1.0)
+        for i in range(1, steps + 1)
+    )
+
+
 def blocked(world, arena, center: Point, radius: float) -> bool:
     return any(
         circle_hits_rect(center, radius, rect) for rect in solids(world, arena, center, radius)

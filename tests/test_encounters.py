@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import math
 
-from test_campaign import scripted_player
+from floorbot import enter, play_campaign
 
 from overload.sim.campaign import ROSTER, Campaign, encounter_world
 from overload.sim.inputs import IDLE, InputFrame
@@ -55,20 +55,20 @@ def test_every_encounter_brings_its_roster() -> None:
 
 
 def test_a_complete_win_path() -> None:
+    """A scripted player walks the whole floor, clears every combat room and beats the
+    Regulator in all three chambers."""
     campaign = Campaign(5)
-    for tick in range(12_000):
-        if campaign.stage == "fuse_box":
-            campaign.begin_next("pressure" if campaign.encounter == 1 else "spacing")
-        if campaign.stage == "ending":
-            break
-        campaign.step(scripted_player(campaign.world, tick))
+    play_campaign(campaign)
     assert campaign.stage == "ending" and campaign.encounter == 3
+    combat = [r.id for r in campaign.arena.floor.rooms if r.kind in ("combat", "chamber")]
+    assert set(combat) <= set(campaign.world.cleared)
     assert campaign.stats["ticks"] > 0 and campaign.stats["shots"] > 0
 
 
 def test_a_loss_and_retry_path_then_the_win() -> None:
     campaign = Campaign(5)
-    for _ in range(2000):  # stand still and take every hit until the short circuit
+    enter(campaign, "s1_hall")
+    for _ in range(4000):  # stand still in a fight and take every hit until the short circuit
         campaign.step(InputFrame(aim_x=0, aim_y=0))
         if campaign.world.outcome == "down":
             break
@@ -79,11 +79,9 @@ def test_a_loss_and_retry_path_then_the_win() -> None:
     assert campaign.stats["ticks"] == ticks_when_down
     campaign.step(InputFrame(restart=True))
     assert campaign.retries[1] == 1 and campaign.world.outcome == "playing"
-    for tick in range(4000):
-        campaign.step(scripted_player(campaign.world, tick))
-        if campaign.stage != "encounter":
-            break
-    assert campaign.stage == "fuse_box", "the retried encounter can still be won"
+    assert campaign.world.cleared == [] and campaign.world.active_room == ""
+    play_campaign(campaign)
+    assert campaign.stage == "ending", "after a retry the whole floor can still be won"
 
 
 def test_stats_count_shots_and_powers_across_retries() -> None:

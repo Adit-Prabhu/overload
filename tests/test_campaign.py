@@ -11,9 +11,10 @@ import dataclasses
 import math
 
 import pytest
+from floorbot import enter, play_campaign, skip_sector
 
 from overload.session.replay import Recording, play
-from overload.sim.arena import SUBSTATION, arena_id
+from overload.sim.arena import FLOOR_ARENA, arena_id
 from overload.sim.campaign import ENCOUNTERS, Campaign, encounter_world
 from overload.sim.inputs import IDLE, InputFrame
 from overload.sim.state import state_hash
@@ -61,11 +62,6 @@ def fight(protocol: str, band: tuple[float, float], limit: int = 3600):
         if world.outcome != "playing":
             break
     return world, attacks
-
-
-def beat_encounter(campaign: Campaign) -> None:
-    campaign.world.rival.health = 0
-    campaign.step(IDLE)
 
 
 # Protocols -----------------------------------------------------------------------------------
@@ -187,53 +183,77 @@ def test_clamp_never_starts_a_lunge_it_cannot_finish() -> None:
 
 
 def test_encounter_one_is_always_neutral() -> None:
-    assert Campaign(1).protocols == {1: "lateral"}
-    assert Campaign(1).world.rival.protocol == "lateral"
+    campaign = Campaign(1)
+    assert campaign.protocols == {1: "lateral"} and campaign.world.protocol == "lateral"
+    enter(campaign, "s1_chamber")
+    assert campaign.world.rival.protocol == "lateral"
 
 
-# Campaign ------------------------------------------------------------------------------------
+# Campaign on the floor -----------------------------------------------------------------------
 
 
-def test_three_encounters_then_the_ending() -> None:
+def test_three_sectors_then_the_ending() -> None:
     campaign = Campaign(4)
-    assert (campaign.stage, campaign.encounter, campaign.protocols) == (
-        "encounter",
-        1,
-        {1: "lateral"},
-    )
-    beat_encounter(campaign)
+    assert (campaign.stage, campaign.encounter) == ("encounter", 1)
+    skip_sector(campaign)
     assert campaign.stage == "fuse_box"
     campaign.begin_next("pressure")
-    assert campaign.world.rival.protocol == "pressure" and campaign.encounter == 2
-    beat_encounter(campaign)
+    assert campaign.encounter == 2 and campaign.world.protocol == "pressure"
+    enter(campaign, "s2_chamber")
+    assert campaign.world.rival.protocol == "pressure", "the frozen protocol boots there"
+    skip_sector(campaign)
     campaign.begin_next("spacing")
-    beat_encounter(campaign)
+    skip_sector(campaign)
     assert campaign.stage == "ending" and campaign.encounter == ENCOUNTERS
     assert campaign.protocols == {1: "lateral", 2: "pressure", 3: "spacing"}
 
 
-def test_nothing_moves_in_the_fuse_box() -> None:
+def test_the_fuse_box_heals_and_its_exit_opens_only_on_begin_next() -> None:
     campaign = Campaign(4)
-    beat_encounter(campaign)
-    before = campaign.state_hash()
-    campaign.step(InputFrame(move_x=1, fire=True))
-    assert campaign.state_hash() == before
+    campaign.world.player.charge = 2
+    skip_sector(campaign)
+    assert campaign.world.player.charge == DEFAULT.player_max_charge
+    exits = {"fuse_1>s2_entry", "s2_entry>fuse_1"}
+    assert exits <= set(campaign.world.locked)
+    campaign.begin_next("pressure")
+    assert not exits & set(campaign.world.locked)
+    assert {"fuse_2>s3_entry", "s3_entry>fuse_2"} <= set(campaign.world.locked)
+
+
+def test_combat_rooms_lock_send_waves_and_open_when_clear() -> None:
+    campaign = Campaign(4)
+    enter(campaign, "s1_hall")
+    world = campaign.world
+    doors = {"s1_hall>s1_entry", "s1_hall>s1_bay"}
+    assert world.active_room == "s1_hall" and doors <= set(world.locked)
+    assert len(world.warps) == 2 and not world.hostiles, "robots show a marker before they arrive"
+    for _ in range(DEFAULT.warp_tell):
+        campaign.step(IDLE)
+    assert len(world.hostiles) == 2 and not world.warps
+    for _wave in (0, 1):
+        for _ in range(DEFAULT.warp_tell + 1):
+            for hostile in world.hostiles:
+                hostile.health = 0
+            campaign.step(IDLE)
+    assert "s1_hall" in world.cleared and not doors & set(world.locked)
+    assert world.active_room == ""
 
 
 def test_begin_next_only_from_the_fuse_box() -> None:
     campaign = Campaign(4)
     with pytest.raises(RuntimeError):
         campaign.begin_next("pressure")
-    beat_encounter(campaign)
+    skip_sector(campaign)
     with pytest.raises(ValueError):
         campaign.begin_next("berserk")
 
 
-def test_retry_restores_the_entry_state_and_keeps_the_protocol() -> None:
+def test_retry_restores_the_sector_entry_and_keeps_the_protocol() -> None:
     campaign = Campaign(4)
-    beat_encounter(campaign)
+    skip_sector(campaign)
     campaign.begin_next("spacing")
     entry = state_hash(campaign.world)
+    enter(campaign, "s2_yard")
     for _ in range(50):
         campaign.step(IDLE)
     campaign.world.player.charge = 0
@@ -241,9 +261,26 @@ def test_retry_restores_the_entry_state_and_keeps_the_protocol() -> None:
     assert campaign.world.outcome == "down"
     campaign.step(InputFrame(restart=True))
     assert state_hash(campaign.world) == entry
-    assert campaign.world.rival.protocol == "spacing"
+    assert campaign.world.protocol == "spacing" and campaign.world.cleared[-1] == "s1_chamber"
     assert campaign.retries == {1: 0, 2: 1}
     assert campaign.protocols[2] == "spacing", "a retry never asks for a new protocol"
+
+
+def test_the_secret_wall_cracks_after_a_few_shots() -> None:
+    campaign = Campaign(4)
+    skip_sector(campaign)
+    campaign.begin_next("pressure")
+    world = campaign.world
+    floor = campaign.arena.floor
+    x, y, w, _ = next(d.rect for d in floor.doors if d.id == "s2_entry>hidden")
+    target = ((x + w / 2) * 16, (y + 1) * 16)
+    world.player.x, world.player.y = target[0], target[1] - 40
+    assert "s2_entry>hidden" in world.locked
+    for _ in range(200):
+        campaign.step(InputFrame(aim_x=int(target[0]), aim_y=int(target[1]) + 20, fire=True))
+        if "s2_entry>hidden" not in world.locked:
+            break
+    assert "s2_entry>hidden" not in world.locked and "hidden>s2_entry" not in world.locked
 
 
 def test_campaign_replay_reproduces_the_run(tmp_path) -> None:
@@ -251,20 +288,11 @@ def test_campaign_replay_reproduces_the_run(tmp_path) -> None:
     recording = Recording(
         seed=9,
         tuning_id=DEFAULT.tuning_id(),
-        arena_id=arena_id(SUBSTATION),
+        arena_id=arena_id(FLOOR_ARENA),
         mode="campaign",
         protocols=["lateral"],
     )
-    for tick in range(5000):
-        if campaign.stage == "fuse_box":
-            protocol = "pressure" if campaign.encounter == 1 else "spacing"
-            campaign.begin_next(protocol)
-            recording.begin_next(protocol)
-        if campaign.stage == "ending":
-            break
-        frame = scripted_player(campaign.world, tick)
-        campaign.step(frame)
-        recording.frames.append(frame)
+    play_campaign(campaign, recording=recording)
     recording.final_hash = campaign.state_hash()
     path = tmp_path / "campaign.json"
     recording.save(path)
@@ -277,7 +305,7 @@ def campaign_recording(protocols: list[str], starts: list[int], frames: int) -> 
     return Recording(
         seed=9,
         tuning_id=DEFAULT.tuning_id(),
-        arena_id=arena_id(SUBSTATION),
+        arena_id=arena_id(FLOOR_ARENA),
         mode="campaign",
         protocols=protocols,
         starts=starts,
@@ -292,7 +320,7 @@ def campaign_recording(protocols: list[str], starts: list[int], frames: int) -> 
         (["lateral", "pressure"], [999], 10),  # start beyond the frames
         (["lateral", "pressure", "spacing"], [5, 5], 10),  # not strictly increasing
         (["lateral", "pressure"], [0], 10),  # before anything was cleared
-        (["lateral", "pressure"], [5], 10),  # encounter 1 not cleared at tick 5
+        (["lateral", "pressure"], [5], 10),  # sector 1 not cleared at tick 5
         (["lateral", "pressure"], [], 10),  # protocol without a start
     ],
 )
@@ -302,14 +330,43 @@ def test_malformed_campaign_replays_are_rejected(protocols, starts, frames) -> N
 
 
 def test_pinned_campaign_hash_matches_across_python_versions() -> None:
-    """A full scripted campaign (three encounters, two protocol changes) has a known result on
-    every CI Python version. Update deliberately, with a note in the PR, if rules change."""
+    """A full scripted campaign on the floor (three sectors, two protocol changes) has a
+    known result on every CI Python version. Update deliberately if rules change."""
     campaign = Campaign(9)
-    for tick in range(4000):
-        if campaign.stage == "fuse_box":
-            campaign.begin_next("pressure" if campaign.encounter == 1 else "spacing")
-        if campaign.stage == "ending":
-            break
-        campaign.step(scripted_player(campaign.world, tick))
+    play_campaign(campaign)
     assert (campaign.stage, campaign.encounter) == ("ending", 3)
-    assert campaign.state_hash() == "c7ad9b6a72f9813f"
+    assert campaign.state_hash() == "4b3c2d235d6fbbb1"
+
+
+def test_no_path_along_the_walls_skips_a_room() -> None:
+    """Every interior tile of every combat room and chamber locks it, including the ring of
+    tiles along the walls, so no route can slip past a fight."""
+    from overload.sim import floorplay
+
+    floor = FLOOR_ARENA.floor
+    for room in floor.rooms:
+        if room.kind not in ("combat", "chamber"):
+            continue
+        x, y, w, h = room.interior
+        ring = [(tx, y) for tx in range(x, x + w)] + [(tx, y + h - 1) for tx in range(x, x + w)]
+        ring += [(x, ty) for ty in range(y, y + h)] + [(x + w - 1, ty) for ty in range(y, y + h)]
+        for tile in ring:
+            if floor.room.decor[tile[1]][tile[0]] in "TCRIKB":
+                continue
+            campaign = Campaign(1)
+            campaign.world.player.x, campaign.world.player.y = floorplay.tile_center(tile)
+            campaign.step(IDLE)
+            assert campaign.world.active_room == room.id, (room.id, tile)
+
+
+def test_going_down_as_the_last_regulator_falls_is_still_down() -> None:
+    campaign = Campaign(4)
+    skip_sector(campaign)
+    campaign.begin_next("pressure")
+    skip_sector(campaign)
+    campaign.begin_next("spacing")
+    enter(campaign, "s3_chamber")
+    campaign.world.rival.health = 0
+    campaign.world.player.charge = 0
+    campaign.step(IDLE)
+    assert campaign.world.outcome == "down" and campaign.stage == "encounter"

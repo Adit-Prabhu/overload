@@ -11,7 +11,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 
-from overload.floor import FLOOR, Floor, tile_rect_px
+from overload.floor import FLOOR, WAVES, Floor, tile_rect_px
 from overload.rooms import PROPS, SUBSTATION_HALL, TILE, Room, footprint_tiles
 from overload.sim.collision import build_index
 from overload.sim.geometry import Point, Rect, circle_hits_rect
@@ -29,6 +29,7 @@ class Arena:
     rival_spawn: Point
     doors: tuple[tuple[str, Rect], ...] = ()  # door id and its rectangle, solid when locked
     index: dict = field(default_factory=dict, compare=False, hash=False, repr=False)
+    floor: Floor | None = field(default=None, compare=False, hash=False, repr=False)
 
     def __post_init__(self) -> None:
         if not self.index:
@@ -122,6 +123,7 @@ def from_floor(floor: Floor) -> Arena:
         practice_spawns=(),
         rival_spawn=center(chamber.center),
         doors=tuple((door.id, tile_rect_px(door.rect)) for door in floor.doors),
+        floor=floor,
     )
 
 
@@ -139,6 +141,15 @@ def arena_id(arena: Arena) -> str:
             "practice": arena.practice_spawns,
             "rival": arena.rival_spawn,
             **({"doors": arena.doors} if arena.doors else {}),
+            **(
+                {
+                    "rooms": [(r.id, r.kind, r.rect, r.spawns) for r in arena.floor.rooms],
+                    "secret": [d.id for d in arena.floor.doors if d.secret],
+                    "waves": WAVES,
+                }
+                if arena.floor
+                else {}
+            ),
         },
         sort_keys=True,
         separators=(",", ":"),
