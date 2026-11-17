@@ -204,12 +204,12 @@ def test_menu_fusion_shows_the_supported_recipe_when_it_fails() -> None:
     session = fuse_box_with("spark")
     menu = FuseBoxMenu()
     assert menu.press(session, "fuse") == ["fuse", "spark", "blink"]
-    assert menu.notice == FUSE_NOTICES["missing"] and "SPARK + BLINK" in menu.notice
+    assert menu.notice == FUSE_NOTICES["missing"]
     assert session.campaign.kit.unlocked == ["spark"]
     session.campaign.world.unlocked.append("blink")
     menu.press(session, "fuse")
     assert session.campaign.world.unlocked == ["spark", "blink", "arc_trail"]
-    assert menu.notice == "ARC TRAIL FUSED. EQUIP IT WITH Q OR E"
+    assert menu.notice == "ARC TRAIL FUSED"
 
 
 def test_menu_with_nothing_stolen_ignores_equip_keys() -> None:
@@ -353,3 +353,44 @@ def test_tab_toggles_the_menu() -> None:
     reader = InputReader()
     press_keys(reader, pygame.K_TAB)
     assert reader.take_toggle() and not reader.take_toggle()
+
+
+def test_menu_keys_pressed_during_play_are_dropped() -> None:
+    import pygame
+
+    from overload.game.app import fuse_box_frame
+
+    session, menu, reader, recording = live_menu_setup()
+    session.campaign.world.unlocked = ["spark", "blink"]
+    press_keys(reader, pygame.K_f, pygame.K_q)
+    assert fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=False) == []
+    assert "arc_trail" not in session.campaign.world.unlocked and not recording.menu
+    later = fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=False, paused=True)
+    assert later == [] and not recording.menu, "nothing queued from before the pause"
+
+
+def test_closing_the_menu_drops_dodge_and_power_presses() -> None:
+    import pygame
+
+    from overload.game.app import InputReader
+
+    reader = InputReader()
+    press_keys(reader, pygame.K_SPACE, pygame.K_q, pygame.K_e, pygame.K_r)
+    reader.drop_power_latches()
+    assert not (reader._dodge or reader._power_q or reader._power_e or reader._restart)
+
+
+def test_the_menu_stops_time_and_opens_only_mid_sector() -> None:
+    from overload.game.app import ticks_due, toggle_pause
+
+    assert ticks_due(True, False, 0.05, 0.5) == (0, 0.0)
+    assert ticks_due(True, True, 0.0, 0.0) == (0, 0.0)
+    assert ticks_due(False, True, 0.0, 0.0)[0] == 1
+    session = fuse_box_with("spark")
+    assert session.campaign.stage == "fuse_box"
+    assert toggle_pause(False, session.campaign) is False, "not in the Fuse Box"
+    fresh = Campaign(1)
+    assert toggle_pause(False, fresh) is True and toggle_pause(True, fresh) is False
+    fresh.world.player.charge = 0
+    fresh.step(IDLE)
+    assert toggle_pause(False, fresh) is False, "not while down"

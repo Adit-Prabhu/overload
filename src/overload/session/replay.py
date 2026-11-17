@@ -123,8 +123,9 @@ def menu_by_frame(recording: Recording) -> dict[int, list[list]]:
 
 
 def apply_menu(campaign: Campaign, entry: list) -> None:
-    """Replay one Fuse Box action. Invalid choices replay as the same harmless no-op they
-    were when recorded. An action outside the Fuse Box means the recording is corrupt."""
+    """Replay one loadout action (Fuse Box or the paused menu). Invalid choices replay as the
+    same harmless no-op they were when recorded. An action while the Surge is down or after
+    the ending means the recording is corrupt."""
     if not _well_formed(entry):
         raise ValueError(f"malformed Fuse Box action {entry!r}")
     index, op, a, b = entry
@@ -134,7 +135,9 @@ def apply_menu(campaign: Campaign, entry: list) -> None:
         else:
             campaign.fuse(a, b)
     except RuntimeError as error:
-        raise ValueError(f"Fuse Box action at tick {index} outside the Fuse Box") from error
+        raise ValueError(
+            f"loadout action at tick {index} while the loadout cannot change"
+        ) from error
 
 
 def play(

@@ -58,7 +58,7 @@ SHORT = {
 }
 # 3 x 5 key letters drawn inside a slot's corner (the 8 px font is too big for that).
 _KEYS = {
-    "Q": ("###", "#.#", "#.#", "###", "..#"),
+    "Q": (".#.", "#.#", "#.#", ".#.", "..#"),
     "E": ("###", "#..", "##.", "#..", "###"),
 }
 
