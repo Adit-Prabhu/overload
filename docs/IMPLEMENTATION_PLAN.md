@@ -68,6 +68,8 @@ Each robot carries one power or none, and each attacks in its own way, so no two
   - Burst widens
 - **Fusions:** Arc Trail (Spark + Blink) and Shock Cone (Spark + Burst). Blink + Burst stays unsupported.
 
+Superseded on Nov 17 by chance fusion: five base powers, ten pairs and three rarities per pair. Spec, build order and cut order in [POWERS_AND_FUSION.md](POWERS_AND_FUSION.md).
+
 ### Order of work
 This scope needs the instructor's G3 approval (Nov 30) before it counts. If cuts are needed, the G1 cut order applies: the second recipe first, then the hidden branch, then extra rooms. Rooms are data, so cutting one is cheap.
 
