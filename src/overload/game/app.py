@@ -23,8 +23,10 @@ import pygame
 from overload.agent.client import TacticClient
 from overload.agent.selector import FixedSchedule, LiveSelector, NeutralSelector, Selector
 from overload.art.pixel import hud, tiles
+from overload.game import title as title_screen
 from overload.game.audio import Audio
 from overload.game.flow import FuseBoxMenu, Session
+from overload.game.title import run_title
 from overload.game.view import VIEW, PixelView
 from overload.paths import ROOT
 from overload.session.replay import Recording, apply_menu, check_campaign, menu_by_frame
@@ -52,6 +54,7 @@ class Options:
     schedule: str = "A"
     trace: Path | None = None
     mute: bool = False
+    skip_title: bool = False
 
 
 class InputReader:
@@ -243,6 +246,21 @@ def play(options: Options) -> int:
         os.environ["SDL_VIDEODRIVER"] = "dummy"
         os.environ["SDL_AUDIODRIVER"] = "dummy"
 
+    if not (options.headless or options.replay or options.skip_title):
+        # The title comes first: no rival session or trace exists until the player starts.
+        pygame.init()
+        started = False
+        try:
+            started = run_title(_open_window(False), pygame.time.Clock())
+        finally:
+            if not started:
+                pygame.quit()
+                hud.forget()
+                tiles.forget_fonts()
+                title_screen.forget()
+        if not started:
+            return 0
+
     replay: Recording | None = Recording.load(options.replay) if options.replay else None
     practice = replay.mode == "practice" if replay else options.practice
     seed = replay.seed if replay else options.seed
@@ -413,6 +431,7 @@ def play(options: Options) -> int:
         pygame.quit()
         hud.forget()
         tiles.forget_fonts()
+        title_screen.forget()
         if session is not None and isinstance(session.selector, LiveSelector):
             session.selector.client.close()
 
