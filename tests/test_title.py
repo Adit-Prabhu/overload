@@ -17,10 +17,11 @@ def display():
     screen = pygame.display.set_mode((256, 144))
     yield screen
     pygame.quit()
-    from overload.art.pixel import hud
+    from overload.art.pixel import hud, tiles
     from overload.game import title
 
     hud.forget()
+    tiles.forget_fonts()
     title.forget()
 
 
@@ -59,3 +60,17 @@ def test_both_pages_draw_and_list_every_control(display) -> None:
     title.draw(display)
     actions = {action for action, _ in CONTROLS}
     assert {"MOVE", "FIRE", "DODGE", "POWERS", "LOADOUT AND FUSION"} <= actions
+
+
+def test_closing_the_window_at_the_title_quits(display) -> None:
+    from overload.game.title import run_title
+
+    pygame.event.post(pygame.event.Event(pygame.QUIT))
+    assert run_title(display, pygame.time.Clock()) is False
+
+
+def test_enter_at_the_title_starts(display) -> None:
+    from overload.game.title import run_title
+
+    pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    assert run_title(display, pygame.time.Clock()) is True

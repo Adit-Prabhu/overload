@@ -106,7 +106,7 @@ class TitleScreen:
         w, h = screen.get_size()
         backdrop = _backdrop()
         span = backdrop.get_width() - w
-        x = round((math.sin(self.tick / 900) * 0.5 + 0.5) * span)
+        x = round((math.sin(self.tick / 4000) * 0.5 + 0.5) * span)  # about 15 px a second
         screen.blit(backdrop, (-x, -40))
         veil = pygame.Surface((w, h), pygame.SRCALPHA)
         veil.fill(rgba("px.outline", 200))

@@ -86,7 +86,7 @@ class InputReader:
                 self._restart = True
             elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self._confirm = True
-            elif event.key in (pygame.K_TAB, pygame.K_i):
+            elif event.key == pygame.K_TAB:
                 self._toggle = True
             if event.key == pygame.K_q:
                 self._power_q = True
@@ -107,7 +107,9 @@ class InputReader:
         return pressed
 
     def drop_power_latches(self) -> None:
-        self._power_q = self._power_e = False
+        """Forget presses made in a menu (Q, E, Space, R), so none of them acts on the first
+        tick after it closes."""
+        self._power_q = self._power_e = self._dodge = self._restart = False
 
     def take_menu(self) -> list[str]:
         """Fuse Box keys pressed since the last call. Read every frame, used in the Fuse Box."""
@@ -219,11 +221,45 @@ def build_selector(options: Options) -> tuple[Selector, str | None, str]:
     return NeutralSelector(), None, "off"
 
 
+def toggle_pause(paused: bool, run) -> bool:
+    """Tab: close the menu if open, else open it, but only mid-sector with the Surge up (not
+    while down, in the Fuse Box or at the ending)."""
+    can_pause = run.stage == "encounter" and run.world.outcome == "playing"
+    return not paused and can_pause
+
+
+def ticks_due(paused: bool, headless: bool, accumulated: float, elapsed: float):
+    """How many fixed ticks to run this frame, and the time left over. The loadout menu stops
+    time: nothing runs and nothing carries over while it is open."""
+    if paused:
+        return 0, 0.0
+    if headless:
+        return 1, accumulated
+    accumulated = min(accumulated + elapsed, MAX_TICKS_PER_FRAME * TICK_SECONDS)
+    due = int(accumulated / TICK_SECONDS)
+    return due, accumulated - due * TICK_SECONDS
+
+
 def play(options: Options) -> int:
     """Run the game. Returns a process exit code."""
     if options.headless:
         os.environ["SDL_VIDEODRIVER"] = "dummy"
         os.environ["SDL_AUDIODRIVER"] = "dummy"
+
+    if not (options.headless or options.replay or options.skip_title):
+        # The title comes first: no rival session or trace exists until the player starts.
+        pygame.init()
+        started = False
+        try:
+            started = run_title(_open_window(False), pygame.time.Clock())
+        finally:
+            if not started:
+                pygame.quit()
+                hud.forget()
+                tiles.forget_fonts()
+                title_screen.forget()
+        if not started:
+            return 0
 
     replay: Recording | None = Recording.load(options.replay) if options.replay else None
     practice = replay.mode == "practice" if replay else options.practice
@@ -280,10 +316,6 @@ def play(options: Options) -> int:
     try:
         screen = _open_window(options.headless)
         pygame.display.set_caption("Overload")
-        if not (options.headless or replay is not None or options.skip_title):
-            if not run_title(screen, pygame.time.Clock()):
-                return 0
-            pygame.mouse.set_visible(False)
         view = PixelView(run)
         reader = InputReader()
         menu = FuseBoxMenu()
@@ -301,19 +333,11 @@ def play(options: Options) -> int:
                 cursor = pygame.mouse.get_pos()
             elapsed = clock.tick(240) / 1000.0
             if reader.take_toggle() and session is not None:
-                can_pause = run.stage == "encounter" and run.world.outcome == "playing"
-                paused = not paused and can_pause
+                paused = toggle_pause(paused, run)
                 if not paused:
                     menu.reset()
                     reader.drop_power_latches()
-            if options.headless:
-                due = 1
-            else:
-                accumulated = min(accumulated + elapsed, MAX_TICKS_PER_FRAME * TICK_SECONDS)
-                due = int(accumulated / TICK_SECONDS)
-                accumulated -= due * TICK_SECONDS
-            if paused:
-                due, accumulated = 0, 0.0  # the loadout menu stops time
+            due, accumulated = ticks_due(paused, options.headless, accumulated, elapsed)
             in_fuse_box = getattr(run, "stage", None) == "fuse_box"
             for _ in range(due):
                 if scripted is not None:
