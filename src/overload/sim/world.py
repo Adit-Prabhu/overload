@@ -16,6 +16,7 @@ import random
 
 from overload.sim.aiming import aim, launch_point
 from overload.sim.arena import SUBSTATION, Arena
+from overload.sim.collision import blocked, solids
 from overload.sim.damage import damage_rival
 from overload.sim.geometry import (
     circle_hits_rect,
@@ -90,7 +91,7 @@ def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena =
         return
     aim(world.player, inp, tuning)
     _dodge(world, inp, tuning)
-    _move_player(world.player, inp, tuning, arena)
+    _move_player(world, inp, tuning, arena)
     _fire(world, inp, tuning, arena)
     use_powers(world, inp, tuning, arena)
     _hostiles(world, tuning, arena)
@@ -138,13 +139,14 @@ def _dodge(world: World, inp: InputFrame, tuning: Tuning) -> None:
     world.events.append(Event("dodge", player.x, player.y))
 
 
-def _move_player(player: Player, inp: InputFrame, tuning: Tuning, arena: Arena) -> None:
+def _move_player(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> None:
+    player = world.player
     if player.dodging:
         vx, vy = player.dodge_dx * tuning.dodge_speed, player.dodge_dy * tuning.dodge_speed
     else:
         nx, ny = normalize(inp.move_x, inp.move_y)
         vx, vy = nx * tuning.player_speed, ny * tuning.player_speed
-    player.x, player.y = move_body(player.x, player.y, vx, vy, tuning.player_radius, arena)
+    player.x, player.y = move_body(player.x, player.y, vx, vy, tuning.player_radius, arena, world)
 
 
 def _fire(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> None:
@@ -240,7 +242,7 @@ def _relay(world: World, relay: Hostile, tuning: Tuning, arena: Arena) -> None:
             if (
                 not on_player
                 and not outside_bounds(spot, relay.radius, arena.bounds)
-                and not any(circle_hits_rect(spot, relay.radius, rect) for rect in arena.obstacles)
+                and not blocked(world, arena, spot, relay.radius)
             ):
                 relay.dest_x, relay.dest_y = spot
                 break
@@ -281,10 +283,10 @@ def _move_projectiles(world: World, arena: Arena) -> None:
         shot.y += shot.vy
         shot.ttl -= 1
         center = (shot.x, shot.y)
-        blocked = outside_bounds(center, shot.radius, arena.bounds) or any(
-            circle_hits_rect(center, shot.radius, rect) for rect in arena.obstacles
+        hit_wall = outside_bounds(center, shot.radius, arena.bounds) or blocked(
+            world, arena, center, shot.radius
         )
-        if shot.ttl <= 0 or blocked:
+        if shot.ttl <= 0 or hit_wall:
             world.events.append(Event("fizzle", shot.x, shot.y, shot.id))
             continue
         survivors.append(shot)
@@ -384,7 +386,9 @@ def _separate(world: World, tuning: Tuning, arena: Arena) -> None:
                 nx, ny = -player.aim_x, -player.aim_y
             player.x, player.y = bx + nx * reach, by + ny * reach
             moved = True
-        player.x, player.y = move_body(player.x, player.y, 0.0, 0.0, tuning.player_radius, arena)
+        player.x, player.y = move_body(
+            player.x, player.y, 0.0, 0.0, tuning.player_radius, arena, world
+        )
         if not moved:
             break
 
@@ -399,12 +403,15 @@ def hurt_player(world: World, damage: int, tuning: Tuning) -> None:
     world.events.append(Event("player_hit", player.x, player.y))
 
 
-def move_body(x: float, y: float, vx: float, vy: float, radius: float, arena: Arena):
-    """Move a circle and push it out of walls and props. Speeds stay below the thinnest
-    obstacle, so nothing tunnels."""
+def move_body(
+    x: float, y: float, vx: float, vy: float, radius: float, arena: Arena, world: World | None
+):
+    """Move a circle and push it out of walls, props and locked doors. Speeds stay below the
+    thinnest obstacle, so nothing tunnels."""
     pos = (x + vx, y + vy)
+    nearby = solids(world, arena, pos, radius + abs(vx) + abs(vy) + 2.0)
     for _ in range(2):
-        for rect in arena.obstacles:
+        for rect in nearby:
             pos = push_out_of_rect(pos, radius, rect)
         pos = clamp_inside(pos, radius, arena.bounds)
     return pos
@@ -514,6 +521,7 @@ def _clamp(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Ar
                 ny * tuning.clamp_speed,
                 rival.radius,
                 arena,
+                world,
             )
         if rival.cooldown > 0:
             rival.cooldown -= 1
@@ -534,6 +542,7 @@ def _clamp(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Ar
             rival.aim_y * tuning.clamp_dash_speed,
             rival.radius,
             arena,
+            world,
         )
         if circles_overlap(
             (rival.x, rival.y), rival.radius, (player.x, player.y), tuning.player_radius
@@ -561,10 +570,17 @@ def _insulate(world: World, rival: Rival, player: Player, tuning: Tuning, arena:
             -ny * tuning.rival_speed,
             rival.radius,
             arena,
+            world,
         )
     elif distance > tuning.insulate_max_distance:
         rival.x, rival.y = move_body(
-            rival.x, rival.y, nx * tuning.rival_speed, ny * tuning.rival_speed, rival.radius, arena
+            rival.x,
+            rival.y,
+            nx * tuning.rival_speed,
+            ny * tuning.rival_speed,
+            rival.radius,
+            arena,
+            world,
         )
     rival.cooldown -= 1
     if rival.cooldown <= 0:
@@ -611,7 +627,7 @@ def _oscillate(world: World, rival: Rival, player: Player, tuning: Tuning, arena
     nx, ny = normalize(player.x - rival.x, player.y - rival.y)
     vx, vy = -ny * rival.strafe * tuning.oscillate_speed, nx * rival.strafe * tuning.oscillate_speed
     before = (rival.x, rival.y)
-    rival.x, rival.y = move_body(rival.x, rival.y, vx, vy, rival.radius, arena)
+    rival.x, rival.y = move_body(rival.x, rival.y, vx, vy, rival.radius, arena, world)
     rival.strafe_timer -= 1
     moved = abs(rival.x - before[0]) + abs(rival.y - before[1])
     if rival.strafe_timer <= 0 or ((vx or vy) and moved < 0.25):

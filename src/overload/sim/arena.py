@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from overload.floor import FLOOR, Floor, tile_rect_px
 from overload.rooms import PROPS, SUBSTATION_HALL, TILE, Room, footprint_tiles
+from overload.sim.collision import build_index
 from overload.sim.geometry import Point, Rect, circle_hits_rect
 from overload.sim.tuning import DEFAULT
 
@@ -25,6 +27,12 @@ class Arena:
     player_spawn: Point
     practice_spawns: tuple[Point, ...]
     rival_spawn: Point
+    doors: tuple[tuple[str, Rect], ...] = ()  # door id and its rectangle, solid when locked
+    index: dict = field(default_factory=dict, compare=False, hash=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if not self.index:
+            object.__setattr__(self, "index", build_index(self.obstacles))
 
 
 def wall_rects(room: Room) -> list[Rect]:
@@ -93,6 +101,33 @@ SUBSTATION = from_room(
 )
 
 
+def from_floor(floor: Floor) -> Arena:
+    """The whole substation floor as one arena. Doors are listed so they can lock. The
+    player starts in sector 1's entry room. Robot and Regulator spawns belong to the rooms
+    (overload.floor), so the practice and rival spawns here are only defaults."""
+    room = floor.room
+    w, h = room.size
+    entry = floor.get("s1_entry")
+    chamber = floor.get("s1_chamber")
+
+    def center(tile: tuple[int, int]) -> Point:
+        return (tile[0] * TILE + TILE / 2, tile[1] * TILE + TILE / 2)
+
+    return Arena(
+        room=room,
+        size=(w, h),
+        bounds=(0.0, 0.0, float(w), float(h)),
+        obstacles=tuple(wall_rects(room) + prop_rects(room)),
+        player_spawn=center(entry.center),
+        practice_spawns=(),
+        rival_spawn=center(chamber.center),
+        doors=tuple((door.id, tile_rect_px(door.rect)) for door in floor.doors),
+    )
+
+
+FLOOR_ARENA = from_floor(FLOOR)
+
+
 def arena_id(arena: Arena) -> str:
     """Short stable hash of the room and spawns. Replays record it, like the tuning ID, so a
     room edit is caught before playback instead of at the final hash."""
@@ -103,6 +138,7 @@ def arena_id(arena: Arena) -> str:
             "player": arena.player_spawn,
             "practice": arena.practice_spawns,
             "rival": arena.rival_spawn,
+            **({"doors": arena.doors} if arena.doors else {}),
         },
         sort_keys=True,
         separators=(",", ":"),

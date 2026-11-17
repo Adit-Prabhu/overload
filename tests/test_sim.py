@@ -109,8 +109,8 @@ def test_pinned_hashes_match_across_python_versions() -> None:
     in its description. An unexplained change means determinism broke.
     """
     assert DEFAULT.tuning_id() == "290e351e"
-    assert run_all(21, scripted_inputs(21, 5000)).state_hash() == "7c3deac8d0fa161a"
-    assert run_all(3, scripted_inputs(9, 1200)).state_hash() == "db89019d0437ed60"
+    assert run_all(21, scripted_inputs(21, 5000)).state_hash() == "96e019472bffe516"
+    assert run_all(3, scripted_inputs(9, 1200)).state_hash() == "d39b79e1be483379"
 
 
 @pytest.mark.parametrize(

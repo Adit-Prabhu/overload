@@ -16,9 +16,9 @@ from dataclasses import dataclass, field
 
 from overload.sim.aiming import launch_point
 from overload.sim.arena import Arena
+from overload.sim.collision import blocked
 from overload.sim.damage import damage_rival
 from overload.sim.geometry import (
-    circle_hits_rect,
     circles_overlap,
     length,
     normalize,
@@ -152,28 +152,30 @@ def blink_destination(
     distance = reach
     while distance >= tuning.blink_min_distance:
         spot = (player.x + ux * distance, player.y + uy * distance)
-        if _free(spot, tuning.player_radius, arena) and _clear_path(
-            (player.x, player.y), spot, arena
+        if _free(world, spot, tuning.player_radius, arena) and _clear_path(
+            world, (player.x, player.y), spot, arena
         ):
             return spot
         distance -= 4.0
     return None
 
 
-def _free(spot: tuple[float, float], radius: float, arena: Arena) -> bool:
+def _free(world: World, spot: tuple[float, float], radius: float, arena: Arena) -> bool:
     if outside_bounds(spot, radius, arena.bounds):
         return False
-    return not any(circle_hits_rect(spot, radius, rect) for rect in arena.obstacles)
+    return not blocked(world, arena, spot, radius)
 
 
-def _clear_path(start: tuple[float, float], end: tuple[float, float], arena: Arena) -> bool:
+def _clear_path(
+    world: World, start: tuple[float, float], end: tuple[float, float], arena: Arena
+) -> bool:
     """No wall or prop crosses the straight line. Samples every 4 px, well under the
     thinnest obstacle."""
     dx, dy = end[0] - start[0], end[1] - start[1]
     steps = max(1, int(length(dx, dy) / 4.0))
     for i in range(1, steps + 1):
         point = (start[0] + dx * i / steps, start[1] + dy * i / steps)
-        if any(circle_hits_rect(point, 1.0, rect) for rect in arena.obstacles):
+        if blocked(world, arena, point, 1.0):
             return False
     return True
 
