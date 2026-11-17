@@ -111,7 +111,7 @@ def update_manifest(written: dict[str, Path]) -> None:
                 "kind": "audio",
                 "creator": "Overload project, composed in code",
                 "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
-                "license": "Original work, see assets/audio/LICENSE.txt",
+                "license": "CC-BY-4.0",
                 "license_file": LICENSE,
                 "sha256": digest,
                 "added": added(relative, digest),
@@ -127,11 +127,11 @@ def update_manifest(written: dict[str, Path]) -> None:
             "kind": "license",
             "creator": "Overload project",
             "source": "Written for this project",
-            "license": "Original work",
+            "license": "CC-BY-4.0",
             "license_file": LICENSE,
             "sha256": license_digest,
             "added": added(LICENSE, license_digest),
-            "approval": "Pending Adit's choice of a project license",
+            "approval": "Adit chose CC BY 4.0 for art and audio, Nov 17",
         }
     )
     manifest["assets"] = keep + audio
