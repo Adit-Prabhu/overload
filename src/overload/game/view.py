@@ -27,7 +27,7 @@ from overload.sim.campaign import Campaign
 from overload.sim.powers import COOLDOWN_KEYS, EVOLUTIONS, RECIPE_ORDER, RECIPES, Kit, evolved
 from overload.sim.run import Run
 from overload.sim.state import Event
-from overload.sim.tuning import DEFAULT
+from overload.sim.tuning import DEFAULT, Tuning
 
 VIEW = (256, 144)
 SURGE_FEET = 8  # sprite feet sit this many pixels below the body center
@@ -650,8 +650,10 @@ class PixelView:
         kit: Kit | None = None,
         selected: int = 0,
         notice: str | None = None,
+        tuning: Tuning = DEFAULT,
     ) -> None:
-        """Between encounters: the stolen powers, the two slots and the one recipe."""
+        """Between encounters: the stolen powers (evolved ones marked), the two slots and the
+        two recipes."""
         kit = kit or Kit()
         w, h = screen.get_size()
         screen.blit(_dim(screen.get_size(), 235), (0, 0))
@@ -671,7 +673,7 @@ class PixelView:
                 hud.text(screen, ">", (16, y), "px.hazard.1")
             icon = effects.charge_icon(ability)
             screen.blit(icon, icon.get_rect(midleft=(24, y + 3)))
-            name = NAMES[ability] + (" +" if evolved(kit.fragments, ability, DEFAULT) else "")
+            name = NAMES[ability] + (" +" if evolved(kit.fragments, ability, tuning) else "")
             hud.text(screen, name, (36, y), "ui.text" if chosen else "ui.dim")
 
         hud.text(screen, "LOADOUT", (150, 25), "ui.dim")

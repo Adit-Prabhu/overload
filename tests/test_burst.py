@@ -133,3 +133,119 @@ def test_power_guards() -> None:
         dataclasses.replace(DEFAULT, burst_knock=40.0)
     with pytest.raises(ValueError):
         dataclasses.replace(DEFAULT, boost_factor=4.0)
+
+
+def test_a_robot_killed_by_burst_drops_its_charge_the_same_tick() -> None:
+    world = armed("burst")
+    p = world.player
+    breaker = spawn_robot(world, "breaker", p.x + 24, p.y)
+    breaker.health = 1
+    step(world, aim_right(world, power_q=True))
+    assert breaker not in world.hostiles
+    assert [c.kind for c in world.charges] == ["burst"]
+
+
+def test_a_robot_killed_by_a_chain_is_removed() -> None:
+    world = armed("spark", fragments={"spark": 3}, slots=("spark", ""))
+    p = world.player
+    spawn_robot(world, "sentry", p.x + 40, p.y)
+    second = spawn_robot(world, "drone", p.x + 40, p.y + 30)
+    second.health = 1
+    for _ in range(20):
+        step(world, aim_right(world, power_q=True))
+        if second not in world.hostiles:
+            break
+    assert second not in world.hostiles
+    assert any(c.kind == "spark" for c in world.charges)
+
+
+def test_burst_is_shielded_while_the_regulator_boots() -> None:
+    world = armed("burst")
+    p = world.player
+    from overload.sim.spawns import spawn_rival
+
+    rival = spawn_rival(world, p.x + 26, p.y, "lateral")
+    step(world, aim_right(world, power_q=True))
+    assert rival.health == rival.max_health
+    assert "rival_shielded" in {e.kind for e in world.events}
+
+
+def test_knockback_stops_at_a_locked_door() -> None:
+    from floorbot import enter
+
+    from overload.sim.campaign import Campaign
+
+    campaign = Campaign(1)
+    world = campaign.world
+    Kit(["burst"], {"burst": 1}, ["burst", ""]).apply(world)
+    enter(campaign, "s1_hall")
+    floor = campaign.arena.floor
+    x, y, w, h = next(d.rect for d in floor.doors if d.id == "s1_hall>s1_bay")
+    door_x = x * 16
+    p = world.player
+    p.x, p.y = door_x - 40, (y + h / 2) * 16
+    robot = spawn_robot(world, "sentry", door_x - 16, p.y)
+    for _ in range(3):
+        world.player.cooldowns.clear()
+        campaign.step(InputFrame(aim_x=int(door_x) + 40, aim_y=int(p.y), power_q=True))
+    assert robot.x + robot.radius <= door_x + 0.01, "the shutter holds the robot in the room"
+
+
+def test_a_retry_keeps_the_entry_evolutions() -> None:
+    from floorbot import skip_sector
+
+    from overload.sim.campaign import Campaign
+
+    campaign = Campaign(1)
+    Kit(["spark"], {"spark": 3}, ["spark", ""]).apply(campaign.world)
+    skip_sector(campaign)
+    campaign.begin_next("pressure")
+    campaign.world.fragments = {"spark": 9}
+    campaign.world.player.charge = 0
+    campaign.step(IDLE)
+    campaign.step(InputFrame(restart=True))
+    assert campaign.world.fragments == {"spark": 3}
+    assert evolved(campaign.world.fragments, "spark", DEFAULT)
+
+
+def test_shock_cone_can_be_fused_in_real_play_and_replays_exactly(tmp_path) -> None:
+    """Burst drops in sector 2, so at the second Fuse Box a real run can fuse Shock Cone.
+    The recorded run, Fuse Box actions included, replays to the same hash."""
+    from floorbot import play_campaign
+
+    from overload.session.replay import Recording, play
+    from overload.sim.arena import FLOOR_ARENA, arena_id
+    from overload.sim.campaign import Campaign
+
+    campaign = Campaign(2)
+    recording = Recording(
+        seed=2,
+        tuning_id=DEFAULT.tuning_id(),
+        arena_id=arena_id(FLOOR_ARENA),
+        mode="campaign",
+        protocols=["lateral"],
+    )
+    results = []
+
+    def fuse_box(campaign, recording) -> None:
+        if campaign.encounter == 2:
+            results.append(campaign.fuse("spark", "burst"))
+            recording.fuse_box("fuse", "spark", "burst")
+
+    play_campaign(campaign, recording=recording, on_fuse_box=fuse_box)
+    assert results == ["fused"] and "shock_cone" in campaign.world.unlocked
+    recording.final_hash = campaign.state_hash()
+    path = tmp_path / "shock.json"
+    recording.save(path)
+    assert play(Recording.load(path)).state_hash() == recording.final_hash
+
+
+def test_evolved_burst_also_reaches_farther() -> None:
+    plain = armed("burst")
+    wide = armed("burst", fragments={"burst": 3})
+    for world in (plain, wide):
+        p = world.player
+        spawn_robot(world, "sweeper", p.x + 52, p.y)  # beyond 44 + 5, within 56 + 5
+        step(world, aim_right(world, power_q=True))
+    assert plain.hostiles[-1].health == DEFAULT.sweeper_health
+    assert wide.hostiles[-1].health == DEFAULT.sweeper_health - DEFAULT.burst_damage

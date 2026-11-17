@@ -168,7 +168,8 @@ _SIN20 = 0.3420201433256687
 def _burst(world: World, tuning: Tuning, arena: Arena, shock: bool) -> None:
     """A short discharge cone along the aim: damages and knocks back every robot in it,
     clears hostile shots in it and dents the Regulator (too heavy to push). Evolved, the
-    cone is wider and longer. Shock Cone adds a fan of three sparks."""
+    cone is wider and longer. Shock Cone adds a fan of three sparks. A robot counts when its
+    center is in the cone (its body may poke out), and the pulse passes over props."""
     player = world.player
     wide = evolved(world.fragments, "burst", tuning)
     reach = tuning.burst_wide_range if wide else tuning.burst_range

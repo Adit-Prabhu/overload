@@ -337,7 +337,8 @@ _SPAWNS = {
 
 # Robot waves per combat room: each wave is a list of (robot kind, spawn index). The next wave
 # warps in when the last robot of the previous one is down. Sector 1 brings Arc Drones (Spark)
-# and Sweepers, sector 2 Relay Bots (Blink) and Sentries, sector 3 Breakers (Burst) and a mix.
+# and Sweepers, sector 2 Relay Bots (Blink), Sentries and one Breaker (Burst, so Shock Cone can
+# be fused before sector 3), sector 3 more Breakers and a mix.
 WAVES: dict[str, tuple[tuple[tuple[str, int], ...], ...]] = {
     "s1_hall": (
         (("drone", 0), ("drone", 3)),
@@ -353,7 +354,7 @@ WAVES: dict[str, tuple[tuple[tuple[str, int], ...], ...]] = {
     ),
     "s2_tanks": (
         (("relay", 2), ("relay", 3)),
-        (("sentry", 0), ("relay", 4), ("sweeper", 5), ("drone", 1)),
+        (("sentry", 0), ("relay", 4), ("breaker", 5), ("drone", 1)),
     ),
     "s3_core": (
         (("breaker", 4), ("drone", 2), ("sweeper", 3)),

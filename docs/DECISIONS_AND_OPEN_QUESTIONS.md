@@ -49,6 +49,7 @@ GDF v2.1 Sections 5.1/5.2 and Gate 1 read. Required live deployed model behavior
 | Production ceiling: three short combat rooms, one hidden branch | Six combat rooms, three chambers, two Fuse Box rooms, three entries, one hidden room | As above. Rooms are data, so cuts are cheap |
 | Enemies: Arc Mite (Spark), Relay (Blink), Coil (Burst) | Arc Drone (Spark), Relay Bot (Blink), Breaker (Burst), plus two power-less robots, Sweeper and Sentry | Adit, Nov 17: robots instead of bug-like machines, and each attacker needs its own attack and projectile |
 | The Regulator observes its own encounter | The Regulator observes the whole sector with the same visible kinds | One fight is thin evidence, and the fiction is that it watches how you fight. Explained in IMPLEMENTATION_PLAN section 2b |
+| The rival observes power uses by power (G1 plan, knowledge boundary) | Spark, Blink and Arc Trail counts arrive with #11. Burst and Shock Cone uses are not observed yet | Both need new evidence kinds in `config/evidence.json` and a Worker redeploy, which waits for Adit's go. Until then the rival sees less than the plan says, never more |
 | Balance not specified | Health 40 for every protocol. A scripted player beats Clamp and Insulate in about 10 s and Oscillate in about 40 s. Solid bodies made Insulate harder for a player who only walks, since a hazard can pin them against the Regulator, so the test player now dodges out of armed tiles | Left for the Nov 25 playtest to judge before any retune |
 
 ## Pinned dependencies (OQ4, partly resolved)
