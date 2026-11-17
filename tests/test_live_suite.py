@@ -31,16 +31,18 @@ def test_percentile_is_nearest_rank() -> None:
     assert live_suite.percentile([], 0.95) is None
     assert live_suite.percentile([3, 1, 2], 0.5) == 2
     assert live_suite.percentile(list(range(1, 21)), 0.95) == 19
+    eighteen = list(range(1, 19))
+    assert live_suite.percentile(eighteen, 0.95) == 18, "ceil(0.95 x 18) = 18th value"
+    assert live_suite.percentile(eighteen, 0.5) == 9
 
 
-def test_summary_counts_fallbacks_and_agreement(tmp_path) -> None:
+def test_summary_counts_fallbacks_agreement_and_old_cost_field(tmp_path) -> None:
     base = {
         "source": "live",
         "reason": None,
         "latency_ms": 1000,
         "input_tokens": 400,
         "output_tokens": 40,
-        "actual_cost_usd": 0.0002,
         "evidence_ids": ["e1.far_share"],
     }
     records = [
@@ -48,17 +50,62 @@ def test_summary_counts_fallbacks_and_agreement(tmp_path) -> None:
         {**base, "case": "far_heavy", "intended": "pressure", "tactic": "spacing"},
         {
             **base,
-            "case": "far_heavy",
-            "intended": "pressure",
+            "case": "near_heavy",
+            "intended": "spacing",
             "tactic": "lateral",
             "source": "fallback",
             "reason": "timeout",
             "evidence_ids": [],
+            "input_tokens": None,
+            "output_tokens": None,
         },
     ]
     path = tmp_path / "summary.md"
-    live_suite.write_summary(path, "test", records, 3)
+    live_suite.write_summary(path, "test", records)
     text = path.read_text()
+    assert "| Attempts | 3 (1 to 2 per case) |" in text
     assert "| Valid live decisions | 2 of 3 |" in text
     assert "| Agree with the designer's intent | 1 of 2 valid |" in text
     assert "fallback (timeout)" in text
+    assert "USD 0.0004" in text
+
+
+def test_a_run_never_exceeds_the_attempt_ceiling(tmp_path, monkeypatch) -> None:
+    calls = []
+
+    def fake_case(client, case):
+        calls.append(case["id"])
+        return {
+            "case": case["id"],
+            "intended": case["intended"],
+            "tactic": "lateral",
+            "source": "live",
+            "reason": None,
+            "latency_ms": 10,
+            "input_tokens": 1,
+            "output_tokens": 1,
+            "evidence_ids": [],
+            "est_cost_usd": 0.0,
+        }
+
+    monkeypatch.setattr(live_suite, "run_case", fake_case)
+    monkeypatch.setattr(live_suite, "ROOT", tmp_path)
+    monkeypatch.setattr(live_suite, "prompt_hash", lambda: "test")
+    monkeypatch.setattr(live_suite, "git_commit", lambda: "test")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "live_suite",
+            "http://rival.test",
+            "--label",
+            "cap",
+            "--worker-version",
+            "test",
+            "--repeats",
+            "10",
+        ],
+    )
+    live_suite.main()
+    assert len(calls) == live_suite.MAX_ATTEMPTS
+    results = next(tmp_path.glob("evidence/rival/*-cap/results.jsonl"))
+    assert len(results.read_text().splitlines()) == live_suite.MAX_ATTEMPTS
