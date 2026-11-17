@@ -26,8 +26,9 @@ def forget() -> None:
     pixel_font.cache_clear()
 
 
-def text(target: pygame.Surface, message: str, pos: tuple[int, int], token: str,
-         anchor: str = "topleft") -> pygame.Rect:
+def text(
+    target: pygame.Surface, message: str, pos: tuple[int, int], token: str, anchor: str = "topleft"
+) -> pygame.Rect:
     image = pixel_font().render(message, False, rgb(token))
     rect = image.get_rect(**{anchor: pos})
     shadow = pixel_font().render(message, False, rgb("px.outline"))

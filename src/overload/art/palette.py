@@ -25,6 +25,7 @@ TOKENS = MappingProxyType(
         "ui.text": "#E6ECF5",
         "ui.dim": "#7D8AA3",
         "fx.flash": "#FFFFFF",
+        "fx.none": "#000000",
         # Pixel art ramps (darkest first). Station materials are cool and dark so that
         # characters, powers and hostile orange read on top of them.
         "px.outline": "#0E111A",
@@ -32,7 +33,7 @@ TOKENS = MappingProxyType(
         "px.floor.0": "#1A2030",
         "px.floor.1": "#232B3D",
         "px.floor.2": "#2C364C",
-        "px.floor.3": "#3A4660",
+        "px.floor.3": "#4A5878",
         "px.wall.0": "#1E2535",
         "px.wall.1": "#2F3B53",
         "px.wall.2": "#43526F",
@@ -75,6 +76,22 @@ TOKENS = MappingProxyType(
         "px.spark.light": "#FFF3A6",
         "px.blink.light": "#B5F6FF",
         "px.burst.light": "#FFB3E1",
+        "px.concrete.0": "#1D2129",
+        "px.concrete.1": "#2A2F39",
+        "px.concrete.2": "#353B47",
+        "px.concrete.3": "#474E5C",
+        "px.wood.0": "#3B2618",
+        "px.wood.1": "#62402A",
+        "px.wood.2": "#8A5E3C",
+        "px.lamp": "#FFB45A",
+        "px.lamp.light": "#FFE2B0",
+        "px.led.amber": "#FFC247",
+        "px.ambient": "#7A84A6",
+        "px.tile.0": "#1A1F29",
+        "px.tile.1": "#262D3B",
+        "px.tile.2": "#2D3546",
+        "px.tile.3": "#3B465C",
+        "px.paint": "#C9CED8",
     }
 )
 

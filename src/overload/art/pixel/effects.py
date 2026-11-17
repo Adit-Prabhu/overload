@@ -12,10 +12,24 @@ from functools import cache
 import pygame
 
 from overload.art.palette import rgb
-from overload.art.pixel.actors import LEGEND
 from overload.art.pixel.grid import render
 
 Point = tuple[float, float]
+
+LEGEND = {
+    "e": "px.hostile.2",
+    "E": "px.hostile.3",
+    "x": "px.hostile.0",
+    "!": "hostile.danger",
+    "Y": "power.spark",
+    "y": "px.spark.light",
+    "K": "power.blink",
+    "k": "px.blink.light",
+    "U": "power.burst",
+    "u": "px.burst.light",
+    "F": "player.core",
+    "C": "player.core",
+}
 
 _HOSTILE_BOLT = [
     "...e...",
@@ -148,8 +162,9 @@ def charge(target: pygame.Surface, light: pygame.Surface, pos: Point, power: str
     _blit_center(light, charge_icon(power), spot)
 
 
-def arc_trail(target: pygame.Surface, light: pygame.Surface, start: Point, end: Point,
-              life: float) -> None:
+def arc_trail(
+    target: pygame.Surface, light: pygame.Surface, start: Point, end: Point, life: float
+) -> None:
     """Spark + Blink fusion: a jagged spark line strung between two Blink diamonds."""
     if life <= 0:
         return
@@ -177,18 +192,27 @@ def blink_ghost(target: pygame.Surface, light: pygame.Surface, pos: Point) -> No
     _blit_center(light, diamond, pos)
 
 
-def _ring_dots(surface: pygame.Surface, token: str, center: Point, radius: float,
-               progress: float) -> None:
+def _ring_dots(
+    surface: pygame.Surface, token: str, center: Point, radius: float, progress: float
+) -> None:
     count = max(1, int(round(radius * 2.2)))
     lit = int(count * max(0.0, min(1.0, progress)))
     for i in range(lit):
         a = -math.pi / 2 + math.tau * i / count
-        surface.set_at((round(center[0] + math.cos(a) * radius),
-                        round(center[1] + math.sin(a) * radius)), rgb(token))
+        surface.set_at(
+            (round(center[0] + math.cos(a) * radius), round(center[1] + math.sin(a) * radius)),
+            rgb(token),
+        )
 
 
-def aim_tell(target: pygame.Surface, light: pygame.Surface, origin: Point, angle: float,
-             progress: float, reach: float = 70) -> None:
+def aim_tell(
+    target: pygame.Surface,
+    light: pygame.Surface,
+    origin: Point,
+    angle: float,
+    progress: float,
+    reach: float = 70,
+) -> None:
     """Aimed-shot telegraph: a dotted line shows the locked direction while a ring of dots
     fills around the shooter. Readable without color: it is a line plus a filling ring."""
     ox, oy = origin
@@ -213,8 +237,9 @@ def relay_destination(target: pygame.Surface, pos: Point, progress: float) -> No
                     target.set_at((cx + dx, cy + dy), rgb("hostile.danger"))
 
 
-def hazard_tile(target: pygame.Surface, light: pygame.Surface, top_left: Point,
-                progress: float) -> None:
+def hazard_tile(
+    target: pygame.Surface, light: pygame.Surface, top_left: Point, progress: float
+) -> None:
     """Insulate protocol hazard: outline at once, hatching fills downward over the tell."""
     x, y = round(top_left[0]), round(top_left[1])
     pygame.draw.rect(target, rgb("px.hostile.3"), (x, y, 16, 16), 1)

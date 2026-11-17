@@ -23,11 +23,10 @@ class Glow:
         self._big = pygame.Surface(self.size)
 
     def clear(self) -> None:
-        self.layer.fill(rgb("px.void"))
+        self.layer.fill(rgb("fx.none"))
 
     def apply(self, target: pygame.Surface) -> None:
         """Blur the light layer and add it to `target`, plus the crisp light itself."""
-        self.layer.fill(rgb("px.void"), special_flags=pygame.BLEND_RGB_SUB)
         pygame.transform.smoothscale(self.layer, self._small.get_size(), self._small)
         pygame.transform.box_blur(self._small, self.radius, True, self._scratch)
         pygame.transform.box_blur(self._scratch, self.radius, True, self._small)
