@@ -1,8 +1,10 @@
 """What the Regulator saw: the only game data that ever reaches the model.
 
 ObservationLog never receives the World. The caller hands it visible facts only: where the
-Surge and the Regulator stand, and the Surge's visible actions. Hidden state (charge,
-cooldowns, inventory, RNG, other entities) cannot reach the summary by construction.
+Surge and the Regulator stand, and the Surge's visible actions, including powers it used.
+Hidden state (charge, cooldowns, inventory and loadout, RNG, other entities) cannot reach the
+summary by construction. Power use is counted only when it happens on screen, so an unused
+or unequipped power is never revealed.
 """
 
 from __future__ import annotations
@@ -25,7 +27,9 @@ def evidence_labels() -> dict[str, str]:
 
 NEAR = 40.0  # px, about 2.5 tiles
 FAR = 104.0  # px, about 6.5 tiles
-VISIBLE_ACTIONS = ("shot", "dodge")
+# Visible actions only: a gun shot, a dodge, and a power the Surge actually used (a rejected
+# Blink shows nothing and is not counted).
+VISIBLE_ACTIONS = ("shot", "dodge", "power_spark", "power_blink", "power_arc_trail")
 TICKS_PER_MINUTE = 60 * 60
 
 
@@ -61,6 +65,9 @@ class ObservationLog:
             "near_share": round(self.bands["near"] / total, 2),
             "shots_per_minute": round(self.actions["shot"] / minutes, 1),
             "dodges": self.actions["dodge"],
+            "spark_uses": self.actions["power_spark"],
+            "blink_uses": self.actions["power_blink"],
+            "arc_trail_uses": self.actions["power_arc_trail"],
         }
         labels = evidence_labels()
         items = [

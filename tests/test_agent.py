@@ -332,7 +332,8 @@ def test_summary_matches_the_service_schema() -> None:
 
 def test_hidden_state_never_changes_the_summary() -> None:
     """Over a whole stretch of play, worlds that differ only in hidden state (charge,
-    cooldowns, invulnerability, RNG, other entities) produce identical summaries."""
+    cooldowns, invulnerability, RNG, other entities, the stolen powers and loadout) produce
+    identical summaries."""
     run = Run(4)
     rival = (300.0, 100.0)
     logs = (ObservationLog(1), ObservationLog(1))
@@ -351,6 +352,10 @@ def test_hidden_state_never_changes_the_summary() -> None:
         twin.player.gun_cooldown = 7
         twin.player.invulnerable = 33
         twin.rng.seed(999)
+        twin.unlocked = ["spark", "blink", "arc_trail"]
+        twin.fragments = {"spark": 5, "blink": 3}
+        twin.player.slots = ["arc_trail", "blink"]
+        twin.player.cooldowns = {"teleport": 40}
         twin.hostiles.clear()
         twin.projectiles.clear()
         observe_world(logs[0], run.world, rival)
@@ -358,6 +363,39 @@ def test_hidden_state_never_changes_the_summary() -> None:
     first, second = (log.summary("lateral") for log in logs)
     assert first == second
     assert logs[0].ticks == 180 and logs[0].actions["dodge"] >= 1
+
+
+def test_power_uses_are_counted_only_when_seen() -> None:
+    from overload.sim.campaign import encounter_world
+    from overload.sim.powers import Kit
+    from overload.sim.world import step
+
+    kit = Kit(["spark", "blink"], {"spark": 1, "blink": 1}, ["spark", "blink"])
+    world = encounter_world(1, 2, "lateral", kit=kit)
+    log = ObservationLog(2)
+    rival = (world.rival.x, world.rival.y)
+    world.player.x, world.player.y = world.player.x, world.player.y
+    step(
+        world,
+        InputFrame(
+            aim_x=int(world.player.x) + 40, aim_y=int(world.player.y), power_q=True, power_e=True
+        ),
+    )
+    observe_world(log, world, rival)
+    step(
+        world, InputFrame(aim_x=int(world.player.x) + 40, aim_y=int(world.player.y), power_e=True)
+    )  # Blink on cooldown: nothing happens, nothing counted
+    observe_world(log, world, rival)
+    values = {item["id"]: item["value"] for item in log.summary("lateral")["items"]}
+    assert values["e2.spark_uses"] == 1 and values["e2.blink_uses"] == 1
+    assert values["e2.arc_trail_uses"] == 0
+
+
+def test_a_rejected_blink_is_not_observed() -> None:
+    log = ObservationLog(1)
+    log.observe((0.0, 0.0), (100.0, 0.0), ["blink_rejected"])
+    values = {item["id"]: item["value"] for item in log.summary("lateral")["items"]}
+    assert values["e1.blink_uses"] == 0
 
 
 def test_trace_records_decisions_without_identity(tmp_path) -> None:
