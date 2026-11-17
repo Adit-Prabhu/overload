@@ -152,6 +152,11 @@ def test_props_must_be_on_the_floor() -> None:
         Room("bad", ("###", "#.#", "###"), ("T..", "...", "..."))
 
 
+def test_transformer_needs_a_clear_footprint() -> None:
+    with pytest.raises(ValueError, match="footprint"):
+        Room("bad", ("####", "#..#", "#.##", "####"), ("....", ".T..", "....", "...."))
+
+
 def test_hall_renders_with_its_lights_and_props() -> None:
     art = tiles.render_room(SUBSTATION_HALL)
     decor = "".join(SUBSTATION_HALL.decor)

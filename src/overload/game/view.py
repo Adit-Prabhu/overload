@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
+from functools import cache
 
 import pygame
 
@@ -16,14 +17,44 @@ from overload import __version__
 from overload.art.palette import rgb, rgba
 from overload.art.pixel import actors, effects, hud, tiles
 from overload.art.pixel.light import Glow
-from overload.art.pixel.lighting import Lighting
+from overload.art.pixel.lighting import Lighting, pool, quantize
 from overload.sim import world as rules
+from overload.sim.arena import arena_id
 from overload.sim.run import Run
 from overload.sim.state import Event
 
 VIEW = (256, 144)
 SURGE_FEET = 8  # sprite feet sit this many pixels below the body center
 MITE_FEET = 5
+
+
+@cache
+def _shadow(half: int) -> pygame.Surface:
+    shade = pygame.Surface((half * 2, 5), pygame.SRCALPHA)
+    pygame.draw.ellipse(shade, rgba("px.outline", 120), (0, 0, half * 2, 5))
+    return shade
+
+
+@cache
+def _banner_panel(width: int) -> pygame.Surface:
+    panel = pygame.Surface((width, 34), pygame.SRCALPHA)
+    panel.fill(rgba("px.outline", 200))
+    return panel
+
+
+def prewarm_lights() -> None:
+    """Build every light pool the view uses before the first frame, so play never stutters."""
+    for strength in range(80, 101, 5):
+        pool(84, "px.lamp", strength)
+        pool(84, "px.lamp", strength * Lighting.TINT // 100)
+    for radius, token, strength in (
+        (64, "px.lamp.light", 75),
+        (40, "px.lamp.light", 70),
+        (12, "px.hostile.2", 45),
+        (12, "player.halo", 45),
+    ):
+        pool(radius, token, strength)
+        pool(radius, token, strength * Lighting.TINT // 100)
 
 
 @dataclass
@@ -52,17 +83,31 @@ class PixelView:
         player = run.world.player
         self.camera = [player.x - VIEW[0] / 2, player.y - VIEW[1] / 2]
         self._clamp_camera()
-        self.stamp = f"overload {__version__} tuning {run.tuning.tuning_id()}"
+        self.stamp = (
+            f"overload {__version__} tuning {run.tuning.tuning_id()} arena {arena_id(run.arena)}"
+        )
+        prewarm_lights()
 
     # Camera ---------------------------------------------------------------------------
 
     def _clamp_camera(self) -> None:
-        w, h = self.room_size
-        self.camera[0] = min(max(self.camera[0], 0.0), float(w - VIEW[0]))
-        self.camera[1] = min(max(self.camera[1], 0.0), float(h - VIEW[1]))
+        """Keep the view inside the room. A room smaller than the view is centered."""
+        for axis in (0, 1):
+            spare = self.room_size[axis] - VIEW[axis]
+            if spare <= 0:
+                self.camera[axis] = spare / 2
+            else:
+                self.camera[axis] = min(max(self.camera[axis], 0.0), float(spare))
 
     def camera_offset(self) -> tuple[int, int]:
         return (round(self.camera[0]), round(self.camera[1]))
+
+    def update(self, run: Run, cursor: tuple[int, int]) -> None:
+        """Advance cosmetic state by one simulation tick. Called once per tick, never per
+        rendered frame, so effects and camera behave the same at any display rate."""
+        self.consume(run, run.world.events)
+        self._tick_cosmetics()
+        self.follow(run, cursor)
 
     def follow(self, run: Run, cursor: tuple[int, int]) -> None:
         """Ease toward the player, nudged a little toward where they are aiming."""
@@ -127,7 +172,6 @@ class PixelView:
     # Drawing --------------------------------------------------------------------------
 
     def draw(self, screen: pygame.Surface, run: Run, cursor: tuple[int, int]) -> None:
-        self._tick_cosmetics()
         world, tuning = run.world, run.tuning
         player = world.player
         cam = self.camera_offset()
@@ -145,9 +189,7 @@ class PixelView:
         facing_left = player.aim_x < 0
 
         def shadow(x: float, y: float, half: int) -> None:
-            shade = pygame.Surface((half * 2, 5), pygame.SRCALPHA)
-            pygame.draw.ellipse(shade, rgba("px.outline", 120), (0, 0, half * 2, 5))
-            screen.blit(shade, (round(x - half), round(y - 3)))
+            screen.blit(_shadow(half), (round(x - half), round(y - 3)))
 
         def draw_at_feet(image: pygame.Surface, feet: tuple[float, float]) -> None:
             fx, fy = v(*feet)
@@ -242,7 +284,7 @@ class PixelView:
 
         self.lighting.begin()
         for i, (x, y) in enumerate(self.room.lamps):
-            pulse = 90 + round(10 * math.sin(t * 2 + i))
+            pulse = quantize(90 + 10 * math.sin(t * 2 + i))
             self.lighting.add(v(x, y + 24), 84, "px.lamp", pulse)
         for x, y in self.room.ceiling:
             self.lighting.add(v(x, y), 64, "px.lamp.light", 75)
@@ -275,9 +317,7 @@ class PixelView:
             if outcome == "down"
             else ("SECTOR CLEAR", "R TO RUN IT AGAIN")
         )
-        panel = pygame.Surface((w, 34), pygame.SRCALPHA)
-        panel.fill(rgba("px.outline", 200))
-        screen.blit(panel, (0, h // 2 - 17))
+        screen.blit(_banner_panel(w), (0, h // 2 - 17))
         hud.text(screen, title, (w // 2, h // 2 - 12), "ui.text", "midtop")
         hud.text(screen, hint, (w // 2, h // 2 + 2), "px.hazard.1", "midtop")
         hud.text(screen, self.stamp, (4, h - 3), "px.floor.3", "bottomleft")

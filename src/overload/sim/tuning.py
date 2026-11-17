@@ -11,6 +11,7 @@ import json
 from dataclasses import asdict, dataclass
 
 TICK_RATE = 60
+THINNEST_OBSTACLE = 14.0  # px, the narrowest prop footprint in the arena
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,8 @@ class Tuning:
             raise ValueError("Arc Mite fire interval leaves no room for recovery")
         if self.arc_mite_fire_interval // 2 <= self.arc_mite_tell:
             raise ValueError("Arc Mite first shot could start inside its tell window")
+        if self.shot_speed + 2 * self.shot_radius >= THINNEST_OBSTACLE:
+            raise ValueError("Shots could tunnel through the thinnest obstacle")
         if self.dodge_speed >= self.player_radius:
             raise ValueError("Dodge speed must stay below the player radius to avoid tunneling")
 

@@ -12,7 +12,7 @@ import pytest
 
 from overload.session.replay import Recording, play
 from overload.sim import world as rules
-from overload.sim.arena import SUBSTATION
+from overload.sim.arena import SUBSTATION, arena_id
 from overload.sim.geometry import circle_hits_rect
 from overload.sim.inputs import IDLE, InputFrame
 from overload.sim.run import Run
@@ -32,8 +32,8 @@ def scripted_inputs(seed: int, ticks: int) -> list[InputFrame]:
             InputFrame(
                 move_x=move[0],
                 move_y=move[1],
-                aim_x=rng.randrange(0, 1280),
-                aim_y=rng.randrange(0, 720),
+                aim_x=rng.randrange(0, 416),
+                aim_y=rng.randrange(0, 256),
                 fire=rng.random() < 0.7,
                 dodge=rng.random() < 0.02,
                 restart=rng.random() < 0.01,
@@ -66,7 +66,11 @@ def test_replay_round_trip(tmp_path) -> None:
     frames = scripted_inputs(9, 1200)
     original = run_all(3, frames)
     recording = Recording(
-        seed=3, tuning_id=DEFAULT.tuning_id(), frames=frames, final_hash=original.state_hash()
+        seed=3,
+        tuning_id=DEFAULT.tuning_id(),
+        arena_id=arena_id(SUBSTATION),
+        frames=frames,
+        final_hash=original.state_hash(),
     )
     path = tmp_path / "replay.json"
     recording.save(path)
@@ -76,8 +80,16 @@ def test_replay_round_trip(tmp_path) -> None:
 
 
 def test_replay_with_other_tuning_is_refused() -> None:
-    recording = Recording(seed=1, tuning_id="00000000", frames=[IDLE])
+    recording = Recording(
+        seed=1, tuning_id="00000000", arena_id=arena_id(SUBSTATION), frames=[IDLE]
+    )
     with pytest.raises(ValueError, match="tuning"):
+        play(recording)
+
+
+def test_replay_with_other_arena_is_refused() -> None:
+    recording = Recording(seed=1, tuning_id=DEFAULT.tuning_id(), arena_id="00000000", frames=[IDLE])
+    with pytest.raises(ValueError, match="arena"):
         play(recording)
 
 
@@ -95,8 +107,8 @@ def test_pinned_hashes_match_across_python_versions() -> None:
     in its description. An unexplained change means determinism broke.
     """
     assert DEFAULT.tuning_id() == "6019347a"
-    assert run_all(21, scripted_inputs(21, 5000)).state_hash() == "4014069942d5e018"
-    assert run_all(3, scripted_inputs(9, 1200)).state_hash() == "d9f610ee825ace68"
+    assert run_all(21, scripted_inputs(21, 5000)).state_hash() == "9bd7f51d728591d4"
+    assert run_all(3, scripted_inputs(9, 1200)).state_hash() == "c0c659d070bb6163"
 
 
 @pytest.mark.parametrize(
@@ -106,6 +118,7 @@ def test_pinned_hashes_match_across_python_versions() -> None:
         {"arc_mite_recovery": 5},
         {"arc_mite_fire_interval": 40},
         {"dodge_speed": 14.0},
+        {"shot_speed": 12.0},
     ],
 )
 def test_unreadable_or_unsafe_tuning_is_rejected(change: dict) -> None:

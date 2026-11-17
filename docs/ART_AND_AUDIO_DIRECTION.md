@@ -312,5 +312,5 @@ This approach has four advantages:
 | Tell timing | Sim tests assert every hostile attack's tell and recovery frames meet the timing standards in section 2 |
 | Mute playability | Every audio event maps to a visual event (test, once audio lands) |
 | Audio technical | Peak level ≤ -1 dBFS, seamless loops, equal stem lengths |
-| Performance | A full frame renders in about 2 ms at 256 × 144 on the development laptop. Profile again before Alpha |
+| Performance | Light pools are built before the first frame. After that a full frame renders in well under 1 ms at 256 × 144 on the development laptop. Cosmetic effects advance per simulation tick, so they look the same at any display rate. Profile again before Alpha |
 | Cohesion review | Adit compares each new batch with the approved style frame. Anything off-theme gets sent back |

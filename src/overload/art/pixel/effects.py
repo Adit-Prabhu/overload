@@ -1,6 +1,6 @@
 """Pixel effects: projectiles, charges, Arc Trail, telegraphs, dodge ghosts and hit flashes.
 
-Functions draw onto `target` (the 320 x 180 view) and, for anything that emits light, also
+Functions draw onto `target` (the 256 x 144 view) and, for anything that emits light, also
 onto `light` (a black surface the bloom pass reads). Coordinates are view pixels.
 """
 

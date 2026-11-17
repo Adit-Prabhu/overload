@@ -21,6 +21,7 @@ import pygame
 from overload.art.pixel import hud, tiles
 from overload.game.view import VIEW, PixelView
 from overload.session.replay import Recording
+from overload.sim.arena import arena_id
 from overload.sim.inputs import IDLE, InputFrame
 from overload.sim.run import Run
 from overload.sim.tuning import TICK_RATE
@@ -104,10 +105,14 @@ def play(options: Options) -> int:
     replay: Recording | None = Recording.load(options.replay) if options.replay else None
     seed = replay.seed if replay else options.seed
     run = Run(seed)
+    room = arena_id(run.arena)
     if replay and replay.tuning_id != run.tuning.tuning_id():
         print(f"Replay uses tuning {replay.tuning_id}, this build is {run.tuning.tuning_id()}")
         return 2
-    recording = Recording(seed=seed, tuning_id=run.tuning.tuning_id())
+    if replay and replay.arena_id != room:
+        print(f"Replay uses arena {replay.arena_id}, this build is {room}")
+        return 2
+    recording = Recording(seed=seed, tuning_id=run.tuning.tuning_id(), arena_id=room)
     scripted: Iterator[InputFrame] | None = iter(replay.frames) if replay else None
 
     pygame.init()
@@ -124,6 +129,8 @@ def play(options: Options) -> int:
         while not reader.quit and not finished:
             for event in pygame.event.get():
                 reader.handle(event)
+            if scripted is None and not options.headless:
+                cursor = pygame.mouse.get_pos()
             elapsed = clock.tick(240) / 1000.0
             if options.headless:
                 due = 1
@@ -141,13 +148,10 @@ def play(options: Options) -> int:
                     frame = reader.frame(view.camera_offset()) if not options.headless else IDLE
                 run.step(frame)
                 recording.frames.append(frame)
-                view.consume(run, run.world.events)
                 if scripted is not None:
                     cam = view.camera_offset()
                     cursor = (frame.aim_x - cam[0], frame.aim_y - cam[1])
-            if scripted is None and not options.headless:
-                cursor = pygame.mouse.get_pos()
-            view.follow(run, cursor)
+                view.update(run, cursor)
             view.draw(screen, run, cursor)
             pygame.display.flip()
             frames += 1

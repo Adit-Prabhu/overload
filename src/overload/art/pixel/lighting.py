@@ -16,20 +16,26 @@ from overload.art.palette import rgb
 
 @cache
 def pool(radius: int, token: str, strength: int) -> pygame.Surface:
-    """Radial light pool. `strength` is a percentage, so the cache stays small."""
+    """Radial light pool, drawn as concentric filled circles from the rim inward (fast, and
+    identical every time). `strength` is a percentage, so the cache stays small."""
     size = radius * 2 + 1
     surface = pygame.Surface((size, size))
     surface.fill(rgb("fx.none"))
     r, g, b = rgb(token)
-    for y in range(size):
-        for x in range(size):
-            d = ((x - radius) ** 2 + (y - radius) ** 2) ** 0.5 / radius
-            if d < 1.0:
-                k = (1.0 - d) ** 1.6 * strength / 100
-                surface.set_at(
-                    (x, y), (min(255, round(r * k)), min(255, round(g * k)), min(255, round(b * k)))
-                )
+    for ring in range(radius, 0, -1):
+        k = (1.0 - ring / radius) ** 1.6 * strength / 100
+        shade = (min(255, round(r * k)), min(255, round(g * k)), min(255, round(b * k)))
+        pygame.draw.circle(surface, shade, (radius, radius), ring)
+    k = strength / 100
+    surface.set_at(
+        (radius, radius), (min(255, round(r * k)), min(255, round(g * k)), min(255, round(b * k)))
+    )
     return surface
+
+
+def quantize(strength: float, step: int = 5) -> int:
+    """Round a varying strength (for example a pulsing lamp) so pools come from the cache."""
+    return int(round(strength / step) * step)
 
 
 class Lighting:

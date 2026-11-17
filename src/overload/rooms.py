@@ -27,6 +27,11 @@ FLOOR_DECALS = frozenset("oxcdbu")
 PROPS = frozenset("TCRIKB")
 
 
+def footprint_tiles(prop: str) -> int:
+    """Width and height of a prop's footprint in tiles."""
+    return 2 if prop == "T" else 1
+
+
 @dataclass(frozen=True)
 class Room:
     """`labels` are stenciled words: (tile x, tile y, text, "wall" or "floor")."""
@@ -51,6 +56,23 @@ class Room:
                     )
                 if (char in FLOOR_DECALS or char in PROPS) and on_wall:
                     raise ValueError(f"{self.name}: floor item {char!r} at ({x}, {y}) is on a wall")
+                if char in PROPS:
+                    size = footprint_tiles(char)
+                    for dy in range(size):
+                        for dx in range(size):
+                            if dx == dy == 0:
+                                continue
+                            ny, nx = y + dy, x + dx
+                            if (
+                                ny >= len(self.terrain)
+                                or nx >= width
+                                or self.terrain[ny][nx] == "#"
+                                or self.decor[ny][nx] != "."
+                            ):
+                                raise ValueError(
+                                    f"{self.name}: prop {char!r} at ({x}, {y}) needs a clear "
+                                    f"{size} x {size} floor footprint"
+                                )
 
     @property
     def size(self) -> tuple[int, int]:

@@ -21,7 +21,7 @@ import pygame
 
 from overload.art.palette import rgb, rgba
 from overload.art.pixel.grid import add_outline
-from overload.rooms import TILE, Room
+from overload.rooms import TILE, Room, footprint_tiles
 
 Point = tuple[int, int]
 
@@ -509,7 +509,7 @@ class Prop:
 
     @property
     def footprint(self) -> tuple[int, int, int, int]:
-        size = 2 if self.kind == "T" else 1
+        size = footprint_tiles(self.kind)
         return (self.tile_x * TILE, self.tile_y * TILE, size * TILE, size * TILE)
 
     @property

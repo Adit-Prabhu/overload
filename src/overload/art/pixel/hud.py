@@ -1,4 +1,4 @@
-"""Pixel HUD at 320 x 180, in the spirit of action roguelikes: status panel top left, power
+"""Pixel HUD at 256 x 144, in the spirit of action roguelikes: status panel top left, power
 sockets bottom right, Regulator bar top center. Text uses Silkscreen (SIL OFL 1.1)."""
 
 from __future__ import annotations
@@ -35,6 +35,13 @@ def text(
     target.blit(shadow, rect.move(1, 1))
     target.blit(image, rect)
     return rect
+
+
+@cache
+def _cooldown_shade(height: int) -> pygame.Surface:
+    shade = pygame.Surface((18, max(1, height)), pygame.SRCALPHA)
+    shade.fill(rgba("px.outline", 170))
+    return shade
 
 
 def _panel(target: pygame.Surface, rect: tuple[int, int, int, int]) -> None:
@@ -81,9 +88,7 @@ def draw(target: pygame.Surface, hud: Hud) -> None:
             icon = effects.charge_icon(power)
             target.blit(icon, icon.get_rect(center=(x + 10, y + 10)))
             if hud.cooldowns[i] > 0:
-                shade = pygame.Surface((18, round(18 * hud.cooldowns[i])), pygame.SRCALPHA)
-                shade.fill(rgba("px.outline", 170))
-                target.blit(shade, (x + 1, y + 1))
+                target.blit(_cooldown_shade(round(18 * hud.cooldowns[i])), (x + 1, y + 1))
         text(target, "QE"[i], (x + 10, y - 2), "ui.dim", "midbottom")
 
     # Regulator bar, top center.

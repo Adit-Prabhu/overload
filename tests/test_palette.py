@@ -5,7 +5,9 @@ so comments and docstrings never trigger it. It flags:
 - hex color strings (#RGB, #RGBA, #RRGGBB, #RRGGBBAA), alone or inside a longer string
 - pygame color names such as "red" used as a string literal
 - 0xRRGGBB integer literals
-- tuples or lists of three or four integers from 0 to 255
+- tuples or lists of three or four integers from 0 to 255 where a color goes: the color
+  argument of fill, set_at, pygame.draw.* and font render, color keywords, variables named
+  like colors, and UPPER_CASE constants. Rects and positions elsewhere are not colors.
 - any construction of pygame's Color class, however it was imported
 """
 
@@ -74,7 +76,9 @@ def _color_slots(tree: ast.AST) -> set[int]:
                     slots.add(id(keyword.value))
         elif isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and re.search("colou?r", target.id.lower()):
+                if isinstance(target, ast.Name) and (
+                    re.search("colou?r", target.id.lower()) or target.id.isupper()
+                ):
                     slots.add(id(node.value))
     return slots
 
@@ -138,6 +142,7 @@ def test_unknown_token_is_rejected() -> None:
         'font.render("x", False, (1, 2, 3))',
         "glow_color = (10, 20, 30)",
         "make(color=(1, 2, 3))",
+        "LAMP = (255, 200, 120)",
     ],
 )
 def test_scanner_catches_color_literals(snippet: str) -> None:

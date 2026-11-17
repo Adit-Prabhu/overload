@@ -7,10 +7,13 @@ games. Walls and prop footprints are solid. Props also block shots, so they work
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 
-from overload.rooms import PROPS, SUBSTATION_HALL, TILE, Room
+from overload.rooms import PROPS, SUBSTATION_HALL, TILE, Room, footprint_tiles
 from overload.sim.geometry import Point, Rect, circle_hits_rect
+from overload.sim.tuning import DEFAULT
 
 
 @dataclass(frozen=True)
@@ -52,7 +55,7 @@ def prop_rects(room: Room) -> list[Rect]:
     for y, row in enumerate(room.decor):
         for x, char in enumerate(row):
             if char in PROPS:
-                size = 2 if char == "T" else 1
+                size = footprint_tiles(char)
                 rects.append((x * TILE + 1.0, y * TILE + 1.0, size * TILE - 2.0, size * TILE - 2.0))
     return rects
 
@@ -62,10 +65,11 @@ def from_room(
 ) -> Arena:
     w, h = room.size
     obstacles = tuple(wall_rects(room) + prop_rects(room))
+    clearance = max(DEFAULT.player_radius, DEFAULT.arc_mite_radius)
 
     def center(tile: tuple[int, int]) -> Point:
         point = (tile[0] * TILE + TILE / 2, tile[1] * TILE + TILE / 2)
-        if any(circle_hits_rect(point, 6.0, rect) for rect in obstacles):
+        if any(circle_hits_rect(point, clearance, rect) for rect in obstacles):
             raise ValueError(f"{room.name}: spawn tile {tile} is blocked")
         return point
 
@@ -80,3 +84,19 @@ def from_room(
 
 
 SUBSTATION = from_room(SUBSTATION_HALL, player_tile=(8, 10), practice_tiles=((19, 4), (17, 11)))
+
+
+def arena_id(arena: Arena) -> str:
+    """Short stable hash of the room and spawns. Replays record it, like the tuning ID, so a
+    room edit is caught before playback instead of at the final hash."""
+    blob = json.dumps(
+        {
+            "terrain": arena.room.terrain,
+            "decor": arena.room.decor,
+            "player": arena.player_spawn,
+            "practice": arena.practice_spawns,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(blob.encode()).hexdigest()[:8]
