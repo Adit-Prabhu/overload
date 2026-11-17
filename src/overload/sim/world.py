@@ -15,6 +15,7 @@ from overload.sim.geometry import (
     circle_hits_rect,
     circles_overlap,
     clamp_inside,
+    length,
     normalize,
     outside_bounds,
     push_out_of_rect,
@@ -357,7 +358,7 @@ def _clamp(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Ar
     if rival.action == "move":
         dx, dy = player.x - rival.x, player.y - rival.y
         nx, ny = normalize(dx, dy)
-        distance = (dx * dx + dy * dy) ** 0.5
+        distance = length(dx, dy)
         if distance > tuning.clamp_range:
             rival.x, rival.y = move_body(
                 rival.x,
@@ -404,7 +405,7 @@ def _insulate(world: World, rival: Rival, player: Player, tuning: Tuning, arena:
     """Hold the Surge at range, lay hazard tiles under them and lob slow orbs."""
     dx, dy = player.x - rival.x, player.y - rival.y
     nx, ny = normalize(dx, dy)
-    distance = (dx * dx + dy * dy) ** 0.5
+    distance = length(dx, dy)
     if distance < tuning.insulate_min_distance:
         rival.x, rival.y = move_body(
             rival.x,
