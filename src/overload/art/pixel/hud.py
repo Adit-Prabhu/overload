@@ -49,59 +49,99 @@ def _panel(target: pygame.Surface, rect: tuple[int, int, int, int]) -> None:
     pygame.draw.rect(target, rgb("px.wall.2"), rect, 1)
 
 
+SHORT = {
+    "spark": "SPARK",
+    "blink": "BLINK",
+    "burst": "BURST",
+    "arc_trail": "TRAIL",
+    "shock_cone": "CONE",
+}
+# 3 x 5 key letters drawn inside a slot's corner (the 8 px font is too big for that).
+_KEYS = {
+    "Q": (".#.", "#.#", "#.#", ".#.", "..#"),
+    "E": ("###", "#..", "##.", "#..", "###"),
+}
+
+
+def key_glyph(target: pygame.Surface, key: str, x: int, y: int, token: str) -> None:
+    target.fill(rgb("px.outline"), (x - 1, y - 1, 5, 7))
+    for dy, row in enumerate(_KEYS[key]):
+        for dx, char in enumerate(row):
+            if char == "#":
+                target.fill(rgb(token), (x + dx, y + dy, 1, 1))
+
+
+def _outlined_rect(target: pygame.Surface, rect: tuple[int, int, int, int], token: str) -> None:
+    x, y, w, h = rect
+    target.fill(rgb("px.outline"), (x - 1, y - 1, w + 2, h + 2))
+    target.fill(rgb(token), rect)
+
+
 @dataclass(frozen=True)
 class Hud:
     charge: int
     max_charge: int
     dodge_ready: float = 1.0
     sockets: tuple[str | None, str | None] = (None, None)
-    cooldowns: tuple[float, float] = (0.0, 0.0)
+    cooldowns: tuple[float, float] = (0.0, 0.0)  # fraction left
     rival_health: float | None = None
     rival_protocol: str | None = None
+    rival_name: str = "REGULATOR"
     stamp: str = ""
+    tick: int = 0
 
 
 def draw(target: pygame.Surface, hud: Hud) -> None:
+    """The in-play HUD (art direction, HUD layout): health top left, powers bottom right,
+    the boss bar top center during a fight. The minimap is drawn by the view."""
     w, h = target.get_size()
+    low = hud.charge <= 2
+    pulse = (hud.tick // 8) % 2 == 0
 
-    # Status panel: battery icon, one cell per point of charge, dodge readiness underneath.
-    _panel(target, (4, 4, 14 + hud.max_charge * 7, 17))
-    pygame.draw.rect(target, rgb("player.core"), (7, 7, 5, 7), 1)
-    target.fill(rgb("player.core"), (8, 6, 3, 1))
+    # Health: a battery glyph and one pip per point, red and pulsing when low.
+    body = "hostile.danger" if low and pulse else "player.core"
+    target.fill(rgb("px.outline"), (3, 3, 7, 11))
+    pygame.draw.rect(target, rgb(body), (4, 5, 5, 8), 1)
+    target.fill(rgb(body), (5, 4, 3, 1))
     for i in range(hud.max_charge):
-        cell = (14 + i * 7, 7, 6, 7)
+        x = 12 + i * 6
         if i < hud.charge:
-            target.fill(rgb("player.core"), cell)
-            target.fill(rgb("player.halo"), (cell[0], cell[1] + 5, 6, 2))
+            _outlined_rect(target, (x, 5, 5, 7), "hostile.danger" if low else "player.core")
+            target.fill(rgb("px.hostile.3" if low else "player.halo"), (x, 10, 5, 2))
         else:
-            pygame.draw.rect(target, rgb("px.floor.3"), cell, 1)
-    bar_w = hud.max_charge * 7 + 7
-    target.fill(rgb("px.floor.2"), (7, 16, bar_w, 2))
-    target.fill(rgb("power.blink"), (7, 16, round(bar_w * hud.dodge_ready), 2))
+            target.fill(rgb("px.outline"), (x - 1, 4, 7, 9))
+            pygame.draw.rect(target, rgb("px.floor.3"), (x, 5, 5, 7), 1)
+    width = hud.max_charge * 6 - 1
+    target.fill(rgb("px.outline"), (11, 14, width + 2, 3))
+    target.fill(rgb("power.blink"), (12, 15, round(width * hud.dodge_ready), 1))
 
-    # Power sockets, bottom right.
+    # Powers: two slots with the key in the corner. A dark fill drains while cooling.
     for i, power in enumerate(hud.sockets[:2]):
-        x = w - 52 + i * 24
-        y = h - 28
-        _panel(target, (x, y, 20, 20))
+        x, y = w - 4 - 20 * (2 - i) - 2 * (1 - i), h - 24
+        ready = bool(power) and hud.cooldowns[i] <= 0
+        target.fill(rgb("px.outline"), (x - 1, y - 1, 20, 20))
+        pygame.draw.rect(
+            target, rgb("player.core" if ready else "px.wall.2"), (x - 1, y - 1, 20, 20), 1
+        )
         if power:
-            icon = effects.charge_icon(power)
-            target.blit(icon, icon.get_rect(center=(x + 10, y + 10)))
+            icon = pygame.transform.scale_by(effects.charge_icon(power), 2)
+            target.blit(icon, icon.get_rect(center=(x + 9, y + 9)))
             if hud.cooldowns[i] > 0:
-                target.blit(_cooldown_shade(round(18 * hud.cooldowns[i])), (x + 1, y + 1))
-        text(target, "QE"[i], (x + 10, y - 2), "ui.dim", "midbottom")
+                shade = _cooldown_shade(round(18 * hud.cooldowns[i]))
+                target.blit(shade, (x, y))
+        key_glyph(target, "QE"[i], x + 7, y - 7, "ui.text" if ready else "ui.dim")  # a tab above
 
-    # Regulator bar, top center.
+    # The boss: name and a thin bar, top center, only while it fights.
     if hud.rival_health is not None:
-        bar_w = 96
+        bar_w = 100
         bx = (w - bar_w) // 2
-        text(target, "REGULATOR", (w // 2, 4), "ui.text", "midtop")
-        target.fill(rgb("px.outline"), (bx - 1, 14, bar_w + 2, 6))
-        target.fill(rgb("px.hostile.1"), (bx, 15, bar_w, 4))
-        target.fill(rgb("px.hostile.3"), (bx, 15, round(bar_w * hud.rival_health), 4))
+        text(target, hud.rival_name, (w // 2, 2), "ui.text", "midtop")
+        target.fill(rgb("px.outline"), (bx - 1, 11, bar_w + 2, 5))
+        target.fill(rgb("px.hostile.1"), (bx, 12, bar_w, 3))
+        target.fill(rgb("px.hostile.3"), (bx, 12, round(bar_w * hud.rival_health), 3))
         if hud.rival_protocol:
             icon = effects.protocol_icon(hud.rival_protocol)
-            target.blit(icon, icon.get_rect(midright=(bx - 4, 17)))
+            target.blit(icon, icon.get_rect(midright=(bx - 3, 13)))
 
     if hud.stamp:
         text(target, hud.stamp, (4, h - 3), "px.floor.3", "bottomleft")

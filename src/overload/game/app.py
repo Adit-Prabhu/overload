@@ -24,7 +24,7 @@ from overload.agent.client import TacticClient
 from overload.agent.selector import FixedSchedule, LiveSelector, NeutralSelector, Selector
 from overload.art.pixel import hud, tiles
 from overload.game.audio import Audio
-from overload.game.flow import FUSE_NOTICES, FuseBoxMenu, Session
+from overload.game.flow import FuseBoxMenu, Session
 from overload.game.view import VIEW, PixelView
 from overload.paths import ROOT
 from overload.session.replay import Recording, apply_menu, check_campaign, menu_by_frame
@@ -32,6 +32,7 @@ from overload.session.trace import TraceWriter
 from overload.sim.arena import arena_id
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import IDLE, InputFrame
+from overload.sim.powers import Kit
 from overload.sim.run import Run
 from overload.sim.tuning import TICK_RATE
 
@@ -65,6 +66,7 @@ class InputReader:
         self._dodge = False
         self._restart = False
         self._confirm = False
+        self._toggle = False
         self._power_q = False
         self._power_e = False
         self._menu: list[str] = []
@@ -81,6 +83,8 @@ class InputReader:
                 self._restart = True
             elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self._confirm = True
+            elif event.key == pygame.K_TAB:
+                self._toggle = True
             if event.key == pygame.K_q:
                 self._power_q = True
             elif event.key == pygame.K_e:
@@ -94,8 +98,15 @@ class InputReader:
         pressed, self._confirm = self._confirm, False
         return pressed
 
+    def take_toggle(self) -> bool:
+        """Tab: open or close the loadout menu."""
+        pressed, self._toggle = self._toggle, False
+        return pressed
+
     def drop_power_latches(self) -> None:
-        self._power_q = self._power_e = False
+        """Forget presses made in a menu (Q, E, Space, R), so none of them acts on the first
+        tick after it closes."""
+        self._power_q = self._power_e = self._dodge = self._restart = False
 
     def take_menu(self) -> list[str]:
         """Fuse Box keys pressed since the last call. Read every frame, used in the Fuse Box."""
@@ -143,16 +154,18 @@ def fuse_box_frame(
     reader: InputReader,
     recording: Recording,
     was_in_fuse_box: bool,
+    paused: bool = False,
 ) -> list[str]:
-    """Menu keys and Enter, once per rendered frame after the tick batch. Keys only count if
-    the Fuse Box was already open when the frame began, so a press made while the last
-    encounter was ending never becomes a menu choice. Leaving the Fuse Box drops any Q or E
-    press still latched, so it cannot fire a power on the next encounter's first tick.
+    """Menu keys and Enter, once per rendered frame after the tick batch. Keys count in the
+    Fuse Box (if it was already open when the frame began, so a press made while the last
+    encounter was ending never becomes a menu choice) and in the paused loadout menu. Leaving
+    either drops any Q or E press still latched, so it cannot fire a power on the next tick.
     Returns the interface sounds to play."""
     keys = reader.take_menu()
     confirmed = reader.take_confirm()
     sounds: list[str] = []
-    if not (was_in_fuse_box and session.campaign.stage == "fuse_box"):
+    in_fuse_box = was_in_fuse_box and session.campaign.stage == "fuse_box"
+    if not (in_fuse_box or paused):
         return sounds
     for key in keys:
         action = menu.press(session, key)
@@ -162,8 +175,8 @@ def fuse_box_frame(
         if action[0] == "equip":
             sounds.append("confirm")
         else:
-            sounds.append("fusion" if menu.notice == FUSE_NOTICES["fused"] else "deny")
-    if confirmed:
+            sounds.append("fusion" if menu.last_result == "fused" else "deny")
+    if confirmed and in_fuse_box:
         decision = session.confirm()
         if decision is not None:
             recording.begin_next(decision.tactic)
@@ -203,6 +216,25 @@ def build_selector(options: Options) -> tuple[Selector, str | None, str]:
             print("The rival service is unreachable. Every encounter will use the fallback.")
         return LiveSelector(client, session_id), session_id, "live"
     return NeutralSelector(), None, "off"
+
+
+def toggle_pause(paused: bool, run) -> bool:
+    """Tab: close the menu if open, else open it, but only mid-sector with the Surge up (not
+    while down, in the Fuse Box or at the ending)."""
+    can_pause = run.stage == "encounter" and run.world.outcome == "playing"
+    return not paused and can_pause
+
+
+def ticks_due(paused: bool, headless: bool, accumulated: float, elapsed: float):
+    """How many fixed ticks to run this frame, and the time left over. The loadout menu stops
+    time: nothing runs and nothing carries over while it is open."""
+    if paused:
+        return 0, 0.0
+    if headless:
+        return 1, accumulated
+    accumulated = min(accumulated + elapsed, MAX_TICKS_PER_FRAME * TICK_SECONDS)
+    due = int(accumulated / TICK_SECONDS)
+    return due, accumulated - due * TICK_SECONDS
 
 
 def play(options: Options) -> int:
@@ -275,18 +307,19 @@ def play(options: Options) -> int:
         frames = 0
         finished = False
         cursor = (VIEW[0] // 2, VIEW[1] // 2)
+        paused = False
         while not reader.quit and not finished:
             for event in pygame.event.get():
                 reader.handle(event)
             if scripted is None and not options.headless:
                 cursor = pygame.mouse.get_pos()
             elapsed = clock.tick(240) / 1000.0
-            if options.headless:
-                due = 1
-            else:
-                accumulated = min(accumulated + elapsed, MAX_TICKS_PER_FRAME * TICK_SECONDS)
-                due = int(accumulated / TICK_SECONDS)
-                accumulated -= due * TICK_SECONDS
+            if reader.take_toggle() and session is not None:
+                paused = toggle_pause(paused, run)
+                if not paused:
+                    menu.reset()
+                    reader.drop_power_latches()
+            due, accumulated = ticks_due(paused, options.headless, accumulated, elapsed)
             in_fuse_box = getattr(run, "stage", None) == "fuse_box"
             for _ in range(due):
                 if scripted is not None:
@@ -328,7 +361,7 @@ def play(options: Options) -> int:
                 else:
                     view.after_tick(run)
             if session is not None:
-                for sound in fuse_box_frame(session, menu, reader, recording, in_fuse_box):
+                for sound in fuse_box_frame(session, menu, reader, recording, in_fuse_box, paused):
                     audio.play(sound)
                     if sound == "fusion":
                         view.flash_fusion()
@@ -349,6 +382,18 @@ def play(options: Options) -> int:
                     menu.selected,
                     menu.notice,
                     run.tuning,
+                )
+            elif paused:
+                view.draw_fuse_box(
+                    screen,
+                    run.encounter,
+                    True,
+                    None,
+                    Kit.from_world(run.world),
+                    menu.selected,
+                    menu.notice,
+                    run.tuning,
+                    title="LOADOUT",
                 )
             elif stage == "ending":
                 view.draw_ending(

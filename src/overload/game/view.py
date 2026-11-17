@@ -19,8 +19,8 @@ from overload.art.pixel import actors, effects, hud, tiles
 from overload.art.pixel import robots as robots_art
 from overload.art.pixel.light import Glow
 from overload.art.pixel.lighting import Lighting, pool, quantize
-from overload.floor import TILE
-from overload.sim import aiming
+from overload.floor import CELL, GRID, TILE
+from overload.sim import aiming, floorplay
 from overload.sim import world as rules
 from overload.sim.arena import arena_id
 from overload.sim.campaign import Campaign
@@ -37,6 +37,18 @@ SOCKET_TOKENS = {
     "burst": "burst",
     "arc_trail": "spark",
     "shock_cone": "burst",
+}
+DESCRIPTIONS = {
+    "spark": "A HEAVY BOLT. TWO MORE CHARGES EVOLVE IT",
+    "blink": "TELEPORT TOWARD THE CURSOR",
+    "burst": "KNOCKBACK CONE THAT WIPES SHOTS",
+    "arc_trail": "A BLINK THAT LEAVES A SHOCK LINE",
+    "shock_cone": "A BURST PLUS A FAN OF SPARKS",
+}
+EVOLVED_INFO = {
+    "spark": "EVOLVED. HITS CHAIN TO A SECOND ROBOT",
+    "blink": "EVOLVED. A BURST OF SPEED ON ARRIVAL",
+    "burst": "EVOLVED. A WIDER, LONGER CONE",
 }
 NAMES = {
     "spark": "SPARK",
@@ -77,7 +89,6 @@ def robot_image(robot, tick: int, left: bool, charging: bool) -> pygame.Surface:
 
 
 FUSION_TICKS = 30
-RECIPE_CENTER = (178, 78)  # the middle of the recipe row in the Fuse Box
 RIVAL_FLASH = -1  # flash key for the Regulator (hostile IDs are positive)
 POSES = {"pressure": "clamp", "spacing": "insulate", "lateral": "oscillate"}
 
@@ -159,6 +170,7 @@ class PixelView:
         self.ghosts: list[tuple[float, float, int]] = []
         self.blinks: list[tuple[float, float, int]] = []
         self.bursts: list[tuple] = []
+        self.seen: set[str] = set()  # rooms the minimap has revealed (cosmetic only)
         self.chains: list[tuple] = []
         self.notice: tuple[str, int] | None = None
         self.unlock_flash = 0
@@ -198,6 +210,11 @@ class PixelView:
         before the next input is read)."""
         self.consume(run, run.world.events)
         self._tick_cosmetics()
+        floor = run.arena.floor
+        if floor is not None:
+            room = floorplay.room_of(floor, run.world.player.x, run.world.player.y)
+            if room is not None:
+                self.seen.add(room.id)
 
     def follow(self, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         """Ease toward the player, nudged a little toward where they are aiming. In a fight
@@ -321,6 +338,55 @@ class PixelView:
                 effects.cracked_wall(screen, rect, world.secret_hits.get(door.id, 0))
             else:
                 effects.shutter(screen, self.glow.layer, rect, (world.tick // 8) % 2 == 0)
+
+    def _minimap(self, screen: pygame.Surface, run: Run | Campaign) -> None:
+        """Top right (art direction, HUD layout): a schematic of the 5 x 3 room grid, about
+        50 x 22 px. Rooms show once seen, or as an outline once a door to them is known.
+        Current room white, cleared grey, the locked room blinking red, a dot for chambers
+        (red) and Fuse Boxes (blue). Corridors between shown rooms are 1 px lines."""
+        floor = run.arena.floor
+        if floor is None:
+            return
+        world = run.world
+        cell_w, cell_h, gap = 8, 5, 3
+        cols, rows = GRID
+        x0 = screen.get_width() - 4 - (cols * (cell_w + gap) - gap)
+        y0 = 4
+
+        def cell(room) -> pygame.Rect:
+            cx, cy = room.rect[0] // CELL[0], room.rect[1] // CELL[1]
+            return pygame.Rect(x0 + cx * (cell_w + gap), y0 + cy * (cell_h + gap), cell_w, cell_h)
+
+        seen = self.seen
+        locked = set(world.locked)
+        known = set(seen) | {
+            d.other for d in floor.doors if d.room in seen and (not d.secret or d.id not in locked)
+        }
+        for door in floor.doors:
+            if door.room < door.other and door.room in known and door.other in known:
+                if door.secret and door.id in locked:
+                    continue
+                a, b = cell(floor.get(door.room)), cell(floor.get(door.other))
+                pygame.draw.line(screen, rgb("px.outline"), a.center, b.center, 3)
+                pygame.draw.line(screen, rgb("px.wall.2"), a.center, b.center, 1)
+        here = floorplay.room_of(floor, world.player.x, world.player.y)
+        for room in floor.rooms:
+            if room.id not in known:
+                continue
+            rect = cell(room)
+            screen.fill(rgb("px.outline"), rect.inflate(2, 2))
+            if room.id not in seen:
+                pygame.draw.rect(screen, rgb("px.floor.3"), rect, 1)
+                continue
+            token = "px.floor.3" if room.id in world.cleared else "px.wall.3"
+            if here is not None and room.id == here.id:
+                token = "player.core"
+            screen.fill(rgb(token), rect)
+            if room.id == world.active_room and (world.tick // 10) % 2 == 0:
+                pygame.draw.rect(screen, rgb("hostile.danger"), rect, 1)
+            mark = {"chamber": "hostile.danger", "fuse": "power.blink"}.get(room.kind)
+            if mark:
+                screen.fill(rgb(mark), (rect.centerx - 1, rect.centery - 1, 2, 2))
 
     def flash_fusion(self) -> None:
         self.fusion_flash = FUSION_TICKS
@@ -627,8 +693,10 @@ class PixelView:
                 ),
                 rival_health=(max(0, rival.health) / rival.max_health) if rival else None,
                 rival_protocol=POSES[rival.protocol] if rival else None,
+                tick=tick,
             ),
         )
+        self._minimap(screen, run)
         if self.unlock_flash:
             screen.blit(_flash(VIEW, self.unlock_flash * 8), (0, 0))
         if self.notice:
@@ -651,60 +719,122 @@ class PixelView:
         selected: int = 0,
         notice: str | None = None,
         tuning: Tuning = DEFAULT,
+        title: str = "FUSE BOX",
     ) -> None:
-        """Between encounters: the stolen powers (evolved ones marked), the two slots and the
-        two recipes."""
+        """The loadout screen (art direction, HUD layout): one framed panel like an inventory
+        screen. Header, the stolen powers with evolution pips (left), the equipped slots and
+        the fusion recipes (right), a detail line about the selected power, and one footer
+        line of controls. The Fuse Box adds its status and Continue."""
         kit = kit or Kit()
+        fuse_box = title == "FUSE BOX"
         w, h = screen.get_size()
-        screen.blit(_dim(screen.get_size(), 235), (0, 0))
-        if self.fusion_flash:
-            screen.blit(_flash(VIEW, self.fusion_flash * 6), (0, 0))
-            effects.fusion_rings(screen, RECIPE_CENTER, 1 - self.fusion_flash / FUSION_TICKS)
-        hud.text(screen, "FUSE BOX", (w // 2, 3), "ui.text", "midtop")
-        hud.text(screen, f"ENCOUNTER {encounter} OF 3 NEXT", (w // 2, 12), "ui.dim", "midtop")
+        screen.blit(_dim(screen.get_size(), 210), (0, 0))
+        panel = pygame.Rect(10, 8, w - 20, h - 16)
+        screen.fill(rgb("px.outline"), panel)
+        pygame.draw.rect(screen, rgb("px.wall.2"), panel, 1)
+        left, right, top = panel.x + 6, panel.right - 6, panel.y + 4
 
-        hud.text(screen, "POWERS", (24, 25), "ui.dim")
-        if not kit.unlocked:
-            hud.text(screen, "NONE STOLEN YET", (24, 36), "px.floor.3")
-        for i, ability in enumerate(kit.unlocked):
-            y = 36 + i * 10
-            chosen = i == min(selected, len(kit.unlocked) - 1)
+        # Header.
+        hud.text(screen, title, (left, top), "ui.text")
+        context = f"ENCOUNTER {encounter} OF 3 NEXT" if fuse_box else f"SECTOR {encounter} PAUSED"
+        hud.text(screen, context, (right, top), "ui.dim", "topright")
+        screen.fill(rgb("px.wall.1"), (left, top + 11, right - left, 1))
+
+        # Left column: the stolen powers.
+        col_y = top + 15
+        hud.text(screen, "POWERS", (left, col_y), "ui.dim")
+        rows = list(kit.unlocked)
+        pick = min(selected, len(rows) - 1) if rows else -1
+        if not rows:
+            hud.text(screen, "NONE STOLEN YET", (left, col_y + 12), "px.floor.3")
+        for i, ability in enumerate(rows):
+            y = col_y + 11 + i * 11
+            chosen = i == pick
             if chosen:
-                hud.text(screen, ">", (16, y), "px.hazard.1")
+                screen.fill(rgb("px.wall.1"), (left - 2, y - 1, 104, 10))
             icon = effects.charge_icon(ability)
-            screen.blit(icon, icon.get_rect(midleft=(24, y + 3)))
-            name = NAMES[ability] + (" +" if evolved(kit.fragments, ability, tuning) else "")
-            hud.text(screen, name, (36, y), "ui.text" if chosen else "ui.dim")
+            screen.blit(icon, icon.get_rect(midleft=(left + 1, y + 4)))
+            hud.text(screen, NAMES[ability], (left + 12, y), "ui.text" if chosen else "ui.dim")
+            if ability in EVOLUTIONS:
+                count = min(kit.fragments.get(ability, 0), tuning.evolve_at)
+                for p in range(tuning.evolve_at):
+                    token = f"power.{ability}" if p < count else "px.floor.2"
+                    screen.fill(rgb(token), (left + 88 + p * 4, y + 3, 3, 3))
+        divider_x = left + 108
+        screen.fill(rgb("px.wall.1"), (divider_x, col_y, 1, 64))
 
-        hud.text(screen, "LOADOUT", (150, 25), "ui.dim")
+        # Right column: equipped slots, then the recipes.
+        rx = divider_x + 6
+        hud.text(screen, "EQUIPPED", (rx, col_y), "ui.dim")
+        card_w = (right - rx - 4) // 2
         for i, ability in enumerate(kit.slots):
-            x = 150 + i * 26
-            pygame.draw.rect(screen, rgb("px.floor.3"), (x, 35, 20, 20), 1)
-            hud.text(screen, "QE"[i], (x + 10, 56), "ui.dim", "midtop")
+            card = pygame.Rect(rx + i * (card_w + 4), col_y + 10, card_w, 16)
+            pygame.draw.rect(screen, rgb("px.wall.2"), card, 1)
+            hud.key_glyph(screen, "QE"[i], card.x + 2, card.y + 2, "ui.text")
             if ability:
                 icon = effects.charge_icon(ability)
-                screen.blit(icon, icon.get_rect(center=(x + 10, 45)))
-
-        for row, (a, b) in enumerate(RECIPE_ORDER):  # the two recipes, results dim until fused
-            y = 74 + row * 11
+                screen.blit(icon, icon.get_rect(midleft=(card.x + 8, card.centery)))
+                hud.text(screen, hud.SHORT[ability], (card.x + 18, card.y + 4), "ui.text")
+            else:
+                hud.text(screen, "EMPTY", (card.x + 18, card.y + 4), "px.floor.3")
+        hud.text(screen, "FUSIONS", (rx, col_y + 31), "ui.dim")
+        for row, (a, b) in enumerate(RECIPE_ORDER):
+            y = col_y + 42 + row * 11
             result = RECIPES[frozenset((a, b))]
             for i, ability in enumerate((a, b, result)):
                 icon = effects.charge_icon(ability)
-                have = ability in kit.unlocked
-                screen.blit(icon, icon.get_rect(center=(156 + i * 22, y)))
-                if not have:  # not stolen or not fused yet: shown dim
-                    screen.blit(_dim(icon.get_size(), 170), icon.get_rect(center=(156 + i * 22, y)))
-            hud.text(screen, "+", (167, y - 4), "ui.dim", "midtop")
-            hud.text(screen, "=", (189, y - 4), "ui.dim", "midtop")
+                spot = icon.get_rect(center=(rx + 4 + i * 17, y + 4))
+                screen.blit(icon, spot)
+                if ability not in kit.unlocked:
+                    screen.blit(_dim(icon.get_size(), 170), spot)
+            hud.text(screen, "+", (rx + 13, y), "ui.dim", "midtop")
+            hud.text(screen, "=", (rx + 30, y), "ui.dim", "midtop")
+            missing = [p for p in (a, b) if p not in kit.unlocked]
+            if result in kit.unlocked:
+                status, token = "DONE", "power.blink"
+            elif missing:
+                status, token = f"NEED {missing[0].upper()}", "px.floor.3"
+            else:
+                status, token = "F FUSE", "px.hazard.1"
+            hud.text(screen, status, (right, y), token, "topright")
+            if result in kit.unlocked and self.fusion_flash > 0:  # the fusion just made
+                glow = round(255 * self.fusion_flash / FUSION_TICKS)
+                ring = pygame.Rect(rx - 3, y - 2, right - rx + 6, 12)
+                frame = pygame.Surface(ring.size, pygame.SRCALPHA)
+                pygame.draw.rect(frame, rgba("power.spark", glow), frame.get_rect(), 1)
+                screen.blit(frame, ring)
 
-        lines = [(line, "px.lamp") for line in _wrap(message.upper(), 40)] if message else []
-        if notice:
-            lines.append((notice, "power.spark"))
-        for i, (line, token) in enumerate(lines[:3]):
-            hud.text(screen, line, (w // 2, 96 + i * 9), token, "midtop")
-        hud.text(screen, "W S PICK   Q E EQUIP   F FUSE", (w // 2, 123), "ui.dim", "midtop")
-        prompt = "ENTER TO CONTINUE" if ready else "ROUTING POWER..."
-        hud.text(screen, prompt, (w // 2, 131), "px.hazard.1" if ready else "ui.dim", "midtop")
+        # Detail line: the Fuse Box status (the approved D7 line always shows), else the
+        # selected power.
+        detail_y = col_y + 70
+        screen.fill(rgb("px.wall.1"), (left, detail_y - 3, right - left, 1))
+        if fuse_box and message:
+            lines, token = _wrap(message.upper(), 38), "px.lamp"
+        elif pick >= 0:
+            ability = rows[pick]
+            name = NAMES[ability]
+            info = DESCRIPTIONS[ability]
+            if evolved(kit.fragments, ability, tuning) and ability in EVOLVED_INFO:
+                info = EVOLVED_INFO[ability]
+            lines, token = _wrap(f"{name}: {info}", 38), "ui.dim"
+        else:
+            lines, token = ["DESTROY ROBOTS TO STEAL THEIR POWERS"], "ui.dim"
+        for i, line in enumerate(lines[:2]):
+            hud.text(screen, line, (left, detail_y + i * 9), token)
+
+        # Footer: one line of controls.
+        footer_y = panel.bottom - 11
+        if fuse_box:
+            end, end_token = (
+                ("ENTER CONTINUE", "px.hazard.1") if ready else ("ROUTING POWER", "ui.dim")
+            )
+        else:
+            end, end_token = "TAB RESUME", "px.hazard.1"
+        if notice:  # the result of the last key, in place of the controls until W or S
+            hud.text(screen, notice, (left, footer_y), "power.spark")
+        else:
+            hud.text(screen, "W/S PICK  Q/E EQUIP  F FUSE", (left, footer_y), "ui.dim")
+        hud.text(screen, end, (right, footer_y), end_token, "topright")
 
     def draw_ending(
         self,

@@ -176,6 +176,18 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | EN-09 | Lighting states per encounter (standby, rising, overload) | P1 | Not started |
 
 ### UI and HUD
+#### HUD layout (Nov 17 redesign)
+The view is only 256 x 144, so every HUD pixel competes with the fight. Rules, after how small-resolution roguelikes handle it (Soul Knight, Enter the Gungeon, Hades):
+
+1. **Footprint under 10 percent, corners only, 4 px margins.** No big panels: elements sit on the scene with the shared 1 px outline and a drop shadow.
+2. **Only what matters mid-fight.** Health, power readiness, where you are, the boss. Control hints live on the title screen's controls page and in the loadout menu footer, not on screen.
+3. **Health, top left:** a battery glyph and one compact pip per point (about 50 x 10 px). Pips turn red at 2 or less and the battery glyph pulses. Dodge readiness is a 1 px line under them.
+4. **Minimap, top right:** a schematic of the 5 x 3 room grid (about 50 x 22 px), not a scaled map. Rooms appear once seen or once a door to them is known. Current room white, cleared grey, the locked room red, a dot for chambers and Fuse Boxes.
+5. **Powers, bottom right:** two 18 px slots with a small Q or E tab above each. A dark fill drains while a power cools, and the border goes bright when it is ready. Names appear in the loadout menu, not here.
+6. **Boss, top center, only during the fight:** the name and a thin bar.
+
+**Loadout and Fuse Box screen:** one framed panel over a darkened scene, laid out like an inventory screen. A header with the title and context. Left: the stolen powers, each with pips toward its evolution. Right: the two equipped slots as cards, then one row per fusion recipe (the two ingredients and the result as icons) with a status of F FUSE, DONE or what is missing, and a brief glow around a recipe just fused. A detail line describes the selected power. One footer line of controls, which the result of the last key (a fusion, or what is missing) replaces until the next pick. The Fuse Box uses the same panel. Its detail line is always the link status (the approved D7 line when the link is down), plus Continue.
+
 | ID | Asset | Pri | Status |
 | --- | --- | --- | --- |
 | UI-01 | Battery charge cells and dodge bar, top left | P0 | Done |
