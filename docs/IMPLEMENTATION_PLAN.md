@@ -1,5 +1,5 @@
 # Overload · Implementation plan
-Version 0.3 · November 16, 2026 · G1 approved. D1 to D3 and D8 approved by Adit
+Version 0.4 · November 16, 2026 · G1 approved. D1 to D3, D6 and D8 approved by Adit
 
 This plan turns the Initial Project Plan into buildable work through the finals. The Initial Project Plan stays unchanged as the G1 submission. After G1, these tasks move into Asana with owners, dependencies and acceptance checks. Asset direction lives in [ART_AND_AUDIO_DIRECTION.md](ART_AND_AUDIO_DIRECTION.md).
 
@@ -9,7 +9,7 @@ This plan turns the Initial Project Plan into buildable work through the finals.
 - **Gates.** The instructor approves gates. Agents never approve or merge their own work.
 
 ## 2. Decisions
-D1 to D3 and D8 were approved by Adit on November 16, 2026. D4 to D7 are still open.
+D1 to D3, D6 and D8 were approved by Adit on November 16, 2026. D4, D5 and D7 are still open.
 
 | ID | Decision | Recommendation or outcome | Needed by |
 | --- | --- | --- | --- |
@@ -18,7 +18,7 @@ D1 to D3 and D8 were approved by Adit on November 16, 2026. D4 to D7 are still o
 | D3 | Hours through Nov 28 | **Approved: option A, 40 h** (section 6), up from the 30 h in the Initial plan | Done |
 | D4 | Music approach | Code-composed synth soundtrack built by the Audio agent and approved by Adit. Alternatives: Adit composes in a tool such as BeepBox, or licensed CC0 tracks | Nov 18 |
 | D5 | How visible rival adaptation is | Protocol boot pose, sound sting and icon at encounter start, with no text label. The icon and pose are identical in both conditions | Nov 19 |
-| D6 | Provider and credential path for the Worker | Read the instructor's Cloudflare foundation first. If Vertex needs a stored service account key in a Worker secret, ask the instructor before using it. Otherwise use another course-eligible provider with a server-side key | Nov 19 (buffer before the Nov 21 deadline in the risk register) |
+| D6 | Provider and credential path for the Worker | **Approved.** Gemini on Vertex AI with the course credits. The Worker signs its own access token from a service account key stored as a Worker secret (`roles/aiplatform.user` only). If the course project blocks key creation, ask the instructor. Steps in [DEPLOY.md](DEPLOY.md) | Done |
 | D8 | Art direction | **Approved.** Original pixel art in a 3/4 top-down view, in the spirit of Soul Knight, with a follow camera. Replaces the neon vector look from version 0.1 of the art doc. Tasks 2 and 3 were redone in this style on November 16 | Done |
 | D7 | Fallback wording | The Fuse Box line reads "Grid link unstable. Regulator running default protocol." It's shown only in live mode and logged as a confound | Nov 22 |
 
