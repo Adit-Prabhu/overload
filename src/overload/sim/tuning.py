@@ -44,6 +44,36 @@ class Tuning:
     arc_mite_tell: int = 27
     arc_mite_recovery: int = 18
 
+    # The Regulator. Every attack has a tell of at least 0.5 s (30 ticks).
+    rival_radius: float = 14.0
+    rival_health: int = 40
+    rival_boot: int = 90
+    rival_speed: float = 0.8
+    rival_contact_damage: int = 1
+
+    clamp_range: float = 72.0
+    clamp_tell: int = 30
+    clamp_dash_ticks: int = 12
+    clamp_dash_speed: float = 3.6
+    clamp_recovery: int = 36
+    clamp_rest: int = 24
+
+    insulate_min_distance: float = 96.0
+    insulate_max_distance: float = 150.0
+    insulate_hazard_interval: int = 150
+    insulate_hazard_tell: int = 36
+    insulate_hazard_active: int = 150
+    insulate_orb_interval: int = 110
+    insulate_orb_tell: int = 30
+    orb_speed: float = 1.2
+    orb_radius: float = 4.0
+    orb_ttl: int = 400
+
+    oscillate_speed: float = 1.0
+    oscillate_turn: int = 90
+    oscillate_interval: int = 84
+    oscillate_tell: int = 30
+
     def __post_init__(self) -> None:
         """Reject values that would break readability rules or the tell logic."""
         if self.arc_mite_tell < 0.40 * TICK_RATE:
@@ -54,6 +84,13 @@ class Tuning:
             raise ValueError("Arc Mite fire interval leaves no room for recovery")
         if self.arc_mite_fire_interval // 2 <= self.arc_mite_tell:
             raise ValueError("Arc Mite first shot could start inside its tell window")
+        for name in ("clamp_tell", "insulate_hazard_tell", "insulate_orb_tell", "oscillate_tell"):
+            if getattr(self, name) < 0.50 * TICK_RATE:
+                raise ValueError(f"{name}: Regulator tells must last at least 0.50 s")
+        if self.clamp_recovery < 0.60 * TICK_RATE:
+            raise ValueError("Clamp lunges need at least 0.60 s of recovery")
+        if self.clamp_dash_speed >= THINNEST_OBSTACLE:
+            raise ValueError("Clamp dashes could tunnel through the thinnest obstacle")
         if self.shot_speed + 2 * self.shot_radius >= THINNEST_OBSTACLE:
             raise ValueError("Shots could tunnel through the thinnest obstacle")
         if self.dodge_speed >= self.player_radius:
