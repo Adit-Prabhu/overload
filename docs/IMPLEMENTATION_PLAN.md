@@ -1,12 +1,10 @@
 # Overload · Implementation plan
-Version 0.1 · November 16, 2026 · D1 to D3 approved by Adit
+Version 0.2 · November 16, 2026 · G1 approved. D1 to D3 approved by Adit
 
 This plan turns the Initial Project Plan into buildable work through the finals. The Initial Project Plan stays unchanged as the G1 submission. After G1, these tasks move into Asana with owners, dependencies and acceptance checks. Asset direction lives in [ART_AND_AUDIO_DIRECTION.md](ART_AND_AUDIO_DIRECTION.md).
 
 ## 1. Preconditions
-- **G1 decision.** The instructor's Approve or Hold is due by November 17.
-  - On Approve, feature work starts.
-  - On Hold, the corrective work named in the decision comes first, and this plan shifts.
+- **G1 decision.** Approved, as Adit reported on November 16. Feature work has started.
 - **Human authorization.** Adit authorizes each of these individually: paid model calls, deployments, credential creation, pushes to `main`, tags, releases and course submissions.
 - **Gates.** The instructor approves gates. Agents never approve or merge their own work.
 
@@ -62,9 +60,9 @@ overload/
   tools/
     art/ contact_sheet.py cvd_check.py
     audio/ synth.py song.py sfx.py render.py preview.py
-  worker/                          TypeScript Cloudflare Worker (agents 0.33.0, wrangler 4.163.0)
+  worker/                          TypeScript Cloudflare Worker (wrangler 4.156.1, Agents SDK added in task 4)
     src/ index.ts session.ts rival.ts validate.ts provider.ts budget.ts
-    test/                          vitest with @cloudflare/vitest-pool-workers
+    test/                          vitest with @cloudflare/vitest-plugin
   eval/                            live suite: authored histories, configs, results
   tests/
   docs/

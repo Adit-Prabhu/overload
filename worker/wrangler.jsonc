@@ -1,0 +1,6 @@
+{
+  // Rival tactic service. Not deployed yet: deployment needs Adit's go-ahead (AGENTS.md).
+  "name": "overload-rival",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01"
+}
