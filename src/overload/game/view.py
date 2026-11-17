@@ -20,12 +20,16 @@ from overload.art.pixel.light import Glow
 from overload.art.pixel.lighting import Lighting, pool, quantize
 from overload.sim import world as rules
 from overload.sim.arena import arena_id
+from overload.sim.campaign import Campaign
 from overload.sim.run import Run
 from overload.sim.state import Event
 
 VIEW = (256, 144)
 SURGE_FEET = 8  # sprite feet sit this many pixels below the body center
 MITE_FEET = 5
+RIVAL_FEET = 19
+RIVAL_FLASH = -1  # flash key for the Regulator (hostile IDs are positive)
+POSES = {"pressure": "clamp", "spacing": "insulate", "lateral": "oscillate"}
 
 
 @cache
@@ -36,10 +40,32 @@ def _shadow(half: int) -> pygame.Surface:
 
 
 @cache
+def _orb() -> pygame.Surface:
+    return pygame.transform.scale_by(effects.hostile_bolt(), 2)
+
+
+@cache
 def _banner_panel(width: int) -> pygame.Surface:
     panel = pygame.Surface((width, 34), pygame.SRCALPHA)
     panel.fill(rgba("px.outline", 200))
     return panel
+
+
+@cache
+def _dim(size: tuple[int, int]) -> pygame.Surface:
+    panel = pygame.Surface(size, pygame.SRCALPHA)
+    panel.fill(rgba("px.outline", 190))
+    return panel
+
+
+def _wrap(text: str, width: int) -> list[str]:
+    lines: list[str] = []
+    for word in text.split():
+        if lines and len(lines[-1]) + 1 + len(word) <= width:
+            lines[-1] += " " + word
+        else:
+            lines.append(word)
+    return lines
 
 
 def prewarm_lights() -> None:
@@ -52,6 +78,7 @@ def prewarm_lights() -> None:
         (40, "px.lamp.light", 70),
         (12, "px.hostile.2", 45),
         (12, "player.halo", 45),
+        (40, "px.hostile.2", 25),
     ):
         pool(radius, token, strength)
         pool(radius, token, strength * Lighting.TINT // 100)
@@ -68,7 +95,7 @@ class Spark:
 
 
 class PixelView:
-    def __init__(self, run: Run) -> None:
+    def __init__(self, run: Run | Campaign) -> None:
         self.room = tiles.render_room(run.arena.room)
         self.room_size = run.arena.size
         self.glow = Glow(VIEW)
@@ -102,18 +129,24 @@ class PixelView:
     def camera_offset(self) -> tuple[int, int]:
         return (round(self.camera[0]), round(self.camera[1]))
 
-    def update(self, run: Run, cursor: tuple[int, int]) -> None:
+    def update(self, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         """Advance cosmetic state by one simulation tick. Called once per tick, never per
         rendered frame, so effects and camera behave the same at any display rate."""
         self.consume(run, run.world.events)
         self._tick_cosmetics()
         self.follow(run, cursor)
 
-    def follow(self, run: Run, cursor: tuple[int, int]) -> None:
-        """Ease toward the player, nudged a little toward where they are aiming."""
+    def follow(self, run: Run | Campaign, cursor: tuple[int, int]) -> None:
+        """Ease toward the player, nudged a little toward where they are aiming. In a fight
+        the camera frames the player and the Regulator together, so the Regulator's tells
+        stay on screen at the distances the fight is played at."""
         player = run.world.player
         lead_x = (cursor[0] - VIEW[0] / 2) * 0.15
         lead_y = (cursor[1] - VIEW[1] / 2) * 0.15
+        rival = run.world.rival
+        if rival is not None and rival.health > 0:
+            lead_x = (rival.x - player.x) * 0.5
+            lead_y = (rival.y - player.y) * 0.5
         target = (player.x + lead_x - VIEW[0] / 2, player.y + lead_y - VIEW[1] / 2)
         self.camera[0] += (target[0] - self.camera[0]) * 0.18
         self.camera[1] += (target[1] - self.camera[1]) * 0.18
@@ -121,7 +154,7 @@ class PixelView:
 
     # Events ---------------------------------------------------------------------------
 
-    def consume(self, run: Run, events: list[Event]) -> None:
+    def consume(self, run: Run | Campaign, events: list[Event]) -> None:
         for event in events:
             if event.kind == "shot":
                 self.muzzle = 3
@@ -133,6 +166,14 @@ class PixelView:
                 self._burst(event.x, event.y, 8, "power.spark", 1.4)
             elif event.kind == "player_hit":
                 self._burst(event.x, event.y, 10, "player.core", 1.6)
+            elif event.kind == "rival_hit":
+                self.flashes[RIVAL_FLASH] = 4
+                self._burst(event.x, event.y, 3, "px.hostile.3", 1.2)
+            elif event.kind == "rival_destroyed":
+                self._burst(event.x, event.y, 30, "px.hostile.3", 2.4)
+                self._burst(event.x, event.y, 18, "px.lamp.light", 2.0)
+            elif event.kind == "rival_shielded":
+                self._burst(event.x, event.y, 2, "ui.dim", 0.8)
             elif event.kind == "fizzle":
                 self._burst(event.x, event.y, 2, "px.bot.3", 0.6)
         player = run.world.player
@@ -171,7 +212,7 @@ class PixelView:
 
     # Drawing --------------------------------------------------------------------------
 
-    def draw(self, screen: pygame.Surface, run: Run, cursor: tuple[int, int]) -> None:
+    def draw(self, screen: pygame.Surface, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         world, tuning = run.world, run.tuning
         player = world.player
         cam = self.camera_offset()
@@ -195,6 +236,11 @@ class PixelView:
             fx, fy = v(*feet)
             screen.blit(image, (round(fx - image.get_width() / 2), round(fy - image.get_height())))
 
+        for hazard in world.hazards:
+            arming = tuning.insulate_hazard_tell
+            progress = 1.0 - hazard.arming / arming if hazard.arming > 0 else 1.0
+            effects.hazard_tile(screen, self.glow.layer, v(hazard.x, hazard.y), progress)
+
         drawables = [
             (prop.base_y, lambda prop=prop: prop.draw(screen, cam)) for prop in self.room.props
         ]
@@ -212,6 +258,34 @@ class PixelView:
                 draw_at_feet(image, feet)
 
             drawables.append((feet[1], draw_mite))
+
+        rival = world.rival
+        if rival is not None and rival.health > 0:
+            rival_feet = (rival.x, rival.y + RIVAL_FEET)
+            needle = math.atan2(player.y - rival.y, player.x - rival.x)
+            busy = rival.action in ("tell", "dash")
+            rival_left = rival.aim_x < 0 if busy else player.x < rival.x
+
+            def draw_rival() -> None:
+                shadow(*v(*rival_feet), 18)
+                image = actors.regulator(POSES[rival.protocol], rival_left, needle)
+                if RIVAL_FLASH in self.flashes:
+                    image = effects.tinted(image, "fx.flash")
+                draw_at_feet(image, rival_feet)
+                if rival.boot > 0 and (tick // 4) % 3:
+                    cx, cy = v(rival.x, rival.y)
+                    ring = pygame.Rect(0, 0, 40, 46)
+                    ring.center = (round(cx), round(cy) + 2)
+                    for surface in (screen, self.glow.layer):
+                        pygame.draw.ellipse(surface, rgb("px.hostile.2"), ring, 1)
+                if rival.boot > 0:
+                    icon = pygame.transform.scale_by(
+                        effects.protocol_icon(POSES[rival.protocol]), 2
+                    )
+                    top = v(rival.x, rival.y + RIVAL_FEET - image.get_height() - 12)
+                    screen.blit(icon, icon.get_rect(center=(round(top[0]), round(top[1]))))
+
+            drawables.append((rival_feet[1], draw_rival))
 
         surge_feet = (player.x, player.y + SURGE_FEET)
         hit_blink = player.invulnerable > 0 and (tick // 4) % 2 == 0
@@ -266,9 +340,22 @@ class PixelView:
                 )
             core = v(hostile.x, hostile.y - 2)
             self.glow.layer.fill(rgb("power.spark"), (round(core[0]) - 1, round(core[1]), 2, 2))
+        if rival is not None and rival.health > 0 and rules.rival_telegraphing(rival):
+            effects.aim_tell(
+                screen,
+                self.glow.layer,
+                v(rival.x, rival.y),
+                math.atan2(rival.aim_y, rival.aim_x),
+                rules.rival_tell_progress(rival, tuning),
+                reach=96,
+            )
 
         for shot in world.projectiles:
-            if shot.hostile:
+            if shot.hostile and shot.radius > tuning.bolt_radius:
+                orb = _orb()
+                for surface in (screen, self.glow.layer):
+                    surface.blit(orb, orb.get_rect(center=tuple(map(round, v(shot.x, shot.y)))))
+            elif shot.hostile:
                 effects.bolt(screen, self.glow.layer, v(shot.x, shot.y))
             else:
                 effects.player_shot(
@@ -293,6 +380,8 @@ class PixelView:
         for shot in world.projectiles:
             token = "px.hostile.2" if shot.hostile else "player.halo"
             self.lighting.add(v(shot.x, shot.y), 12, token, 45)
+        if rival is not None and rival.health > 0:
+            self.lighting.add(v(rival.x, rival.y), 40, "px.hostile.2", 25)
         self.lighting.apply(screen)
         self.glow.apply(screen)
 
@@ -303,12 +392,41 @@ class PixelView:
                 charge=player.charge,
                 max_charge=tuning.player_max_charge,
                 dodge_ready=1.0 - player.dodge_cooldown / dodge_total,
+                rival_health=(max(0, rival.health) / rival.max_health) if rival else None,
+                rival_protocol=POSES[rival.protocol] if rival else None,
             ),
         )
-        if world.outcome != "playing":
+        stage = getattr(run, "stage", None)
+        if world.outcome == "down" or (stage is None and world.outcome == "clear"):
             self._banner(screen, world.outcome)
         reticle = effects.reticle()
         screen.blit(reticle, reticle.get_rect(center=cursor))
+
+    def draw_fuse_box(
+        self, screen: pygame.Surface, encounter: int, ready: bool, message: str | None
+    ) -> None:
+        """Between encounters. Loadout and fusion arrive with task 8."""
+        w, h = screen.get_size()
+        screen.blit(_dim(screen.get_size()), (0, 0))
+        hud.text(screen, "FUSE BOX", (w // 2, 30), "ui.text", "midtop")
+        hud.text(screen, f"ENCOUNTER {encounter} OF 3 NEXT", (w // 2, 44), "ui.dim", "midtop")
+        if message:
+            for i, line in enumerate(_wrap(message.upper(), 34)):
+                hud.text(screen, line, (w // 2, 70 + i * 11), "px.lamp", "midtop")
+        prompt = "ENTER TO CONTINUE" if ready else "ROUTING POWER..."
+        hud.text(screen, prompt, (w // 2, h - 30), "px.hazard.1" if ready else "ui.dim", "midtop")
+        hud.text(screen, self.stamp, (4, h - 3), "px.floor.3", "bottomleft")
+
+    def draw_ending(self, screen: pygame.Surface, seconds: float, retries: int, shots: int) -> None:
+        w, h = screen.get_size()
+        screen.blit(_dim(screen.get_size()), (0, 0))
+        hud.text(screen, "SECTOR CLEAR", (w // 2, 34), "ui.text", "midtop")
+        minutes, rest = divmod(int(seconds), 60)
+        lines = (f"TIME {minutes:02d}:{rest:02d}", f"RETRIES {retries}", f"SHOTS {shots}")
+        for i, line in enumerate(lines):
+            hud.text(screen, line, (w // 2, 58 + i * 12), "ui.dim", "midtop")
+        hud.text(screen, "ESC TO QUIT", (w // 2, h - 30), "px.hazard.1", "midtop")
+        hud.text(screen, self.stamp, (4, h - 3), "px.floor.3", "bottomleft")
 
     def _banner(self, screen: pygame.Surface, outcome: str) -> None:
         w, h = screen.get_size()

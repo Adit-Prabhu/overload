@@ -70,6 +70,21 @@ class Recording:
         )
 
 
+def check_campaign(recording: Recording) -> None:
+    """Reject campaign recordings that could not have come from a real session."""
+    if recording.mode != "campaign":
+        raise ValueError(f"cannot replay mode {recording.mode!r}")
+    if not recording.protocols or recording.protocols[0] != NEUTRAL:
+        raise ValueError("a campaign recording starts with the neutral protocol")
+    if len(recording.starts) != len(recording.protocols) - 1:
+        raise ValueError("a campaign recording needs one start per encounter after the first")
+    bounds = [0, *recording.starts]
+    if any(b <= a for a, b in zip(bounds, bounds[1:], strict=False)):
+        raise ValueError("encounter starts must be positive and strictly increasing")
+    if recording.starts and recording.starts[-1] > len(recording.frames):
+        raise ValueError("an encounter start lies beyond the recorded frames")
+
+
 def play(
     recording: Recording, tuning: Tuning = DEFAULT, arena: Arena = SUBSTATION
 ) -> Run | Campaign:
@@ -88,17 +103,7 @@ def play(
         for frame in recording.frames:
             run.step(frame)
         return run
-    if recording.mode != "campaign":
-        raise ValueError(f"cannot replay mode {recording.mode!r}")
-    if not recording.protocols or recording.protocols[0] != NEUTRAL:
-        raise ValueError("a campaign recording starts with the neutral protocol")
-    if len(recording.starts) != len(recording.protocols) - 1:
-        raise ValueError("a campaign recording needs one start per encounter after the first")
-    bounds = [0, *recording.starts]
-    if any(b <= a for a, b in zip(bounds, bounds[1:], strict=False)):
-        raise ValueError("encounter starts must be positive and strictly increasing")
-    if recording.starts and recording.starts[-1] > len(recording.frames):
-        raise ValueError("an encounter start lies beyond the recorded frames")
+    check_campaign(recording)
     campaign = Campaign(recording.seed, tuning, arena)
     starts = dict(zip(recording.starts, recording.protocols[1:], strict=True))
     for index in range(len(recording.frames) + 1):
