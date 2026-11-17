@@ -72,6 +72,8 @@ class Campaign:
         self.protocols: dict[int, str] = {1: NEUTRAL}
         self.retries: dict[int, int] = {1: 0}
         self.kit = Kit()
+        # The ending readout: fighting time, shots and every power use, across retries.
+        self.stats: dict = {"ticks": 0, "shots": 0, "powers": {}}
         self.world = encounter_world(seed, 1, NEUTRAL, tuning, arena, self.kit)
         self.checkpoint = copy.deepcopy(self.world)
 
@@ -85,10 +87,24 @@ class Campaign:
             self.world = copy.deepcopy(self.checkpoint)
             self.retries[self.encounter] += 1
             return
+        if self.world.outcome != "playing":
+            self.world.events.clear()  # waiting on the retry: nothing happens
+            return
         step(self.world, inp, self.tuning, self.arena)
+        self._count(self.world.events)
         if self.world.outcome == "clear":
             self.kit = Kit.from_world(self.world)
             self.stage = "fuse_box" if self.encounter < ENCOUNTERS else "ending"
+
+    def _count(self, events) -> None:
+        self.stats["ticks"] += 1
+        powers = self.stats["powers"]
+        for event in events:
+            if event.kind == "shot":
+                self.stats["shots"] += 1
+            elif event.kind.startswith("power_"):
+                name = event.kind.removeprefix("power_")
+                powers[name] = powers.get(name, 0) + 1
 
     def equip(self, slot: int, ability: str) -> bool:
         """Fuse Box: put an unlocked ability in slot 0 (Q) or 1 (E)."""
@@ -128,6 +144,7 @@ class Campaign:
                 "protocols": self.protocols,
                 "retries": self.retries,
                 "kit": asdict(self.kit),
+                "stats": self.stats,
             },
             sort_keys=True,
             separators=(",", ":"),
