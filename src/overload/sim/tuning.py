@@ -24,6 +24,9 @@ class Tuning:
     hit_invulnerability: int = 40
 
     gun_cooldown: int = 10
+    hand_x: float = 3.0  # the caster is held this far to the facing side of the body center
+    hand_y: float = 1.0  # and this far below it
+    barrel: float = 9.0  # shots leave the caster's tip, this far along the aim
     shot_speed: float = 4.5
     shot_radius: float = 1.5
     shot_damage: int = 1

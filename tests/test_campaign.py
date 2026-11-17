@@ -312,4 +312,4 @@ def test_pinned_campaign_hash_matches_across_python_versions() -> None:
             break
         campaign.step(scripted_player(campaign.world, tick))
     assert (campaign.stage, campaign.encounter) == ("ending", 3)
-    assert campaign.state_hash() == "4bb04726124fadae"
+    assert campaign.state_hash() == "95858b3305050df1"

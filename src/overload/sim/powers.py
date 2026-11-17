@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from overload.sim.aiming import launch_point
 from overload.sim.arena import Arena
 from overload.sim.damage import damage_rival
 from overload.sim.geometry import (
@@ -101,7 +102,8 @@ def use_powers(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> N
         if player.cooldowns.get(key, 0) > 0:
             continue
         if ability == "spark":
-            _spark(world, tuning)
+            if not _spark(world, tuning, arena):
+                continue  # fizzled against a wall at point blank: no cost, not a use
             player.cooldowns[key] = tuning.spark_cooldown
         elif _blink(world, inp, tuning, arena, trail=ability == "arc_trail"):
             cooldown = (
@@ -113,14 +115,16 @@ def use_powers(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> N
         world.events.append(Event(f"power_{ability}", player.x, player.y, slot))
 
 
-def _spark(world: World, tuning: Tuning) -> None:
+def _spark(world: World, tuning: Tuning, arena: Arena) -> bool:
     player = world.player
-    offset = tuning.player_radius + tuning.spark_radius + 2.0
+    start = launch_point(world, tuning, arena)
+    if start is None:
+        return False
     world.projectiles.append(
         Projectile(
             id=world.new_id(),
-            x=player.x + player.aim_x * offset,
-            y=player.y + player.aim_y * offset,
+            x=start[0],
+            y=start[1],
             vx=player.aim_x * tuning.spark_speed,
             vy=player.aim_y * tuning.spark_speed,
             radius=tuning.spark_radius,
@@ -130,6 +134,7 @@ def _spark(world: World, tuning: Tuning) -> None:
             kind="spark",
         )
     )
+    return True
 
 
 def blink_destination(

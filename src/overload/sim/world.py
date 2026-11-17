@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import random
 
+from overload.sim.aiming import aim, launch_point
 from overload.sim.arena import SUBSTATION, Arena
 from overload.sim.damage import damage_rival
 from overload.sim.geometry import (
@@ -87,10 +88,10 @@ def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena =
     world.events.clear()
     if world.outcome != "playing":
         return
-    _aim(world.player, inp)
+    aim(world.player, inp, tuning)
     _dodge(world, inp, tuning)
     _move_player(world.player, inp, tuning, arena)
-    _fire(world, inp, tuning)
+    _fire(world, inp, tuning, arena)
     use_powers(world, inp, tuning, arena)
     _hostiles(world, tuning, arena)
     _rival(world, tuning, arena)
@@ -124,12 +125,6 @@ def tell_progress(hostile: Hostile, tuning: Tuning = DEFAULT) -> float:
     return 1.0 - hostile.fire_timer / tuning.arc_mite_tell
 
 
-def _aim(player: Player, inp: InputFrame) -> None:
-    ax, ay = normalize(inp.aim_x - player.x, inp.aim_y - player.y)
-    if ax or ay:
-        player.aim_x, player.aim_y = ax, ay
-
-
 def _dodge(world: World, inp: InputFrame, tuning: Tuning) -> None:
     player = world.player
     if not inp.dodge or player.dodging or player.dodge_cooldown > 0:
@@ -152,16 +147,19 @@ def _move_player(player: Player, inp: InputFrame, tuning: Tuning, arena: Arena) 
     player.x, player.y = move_body(player.x, player.y, vx, vy, tuning.player_radius, arena)
 
 
-def _fire(world: World, inp: InputFrame, tuning: Tuning) -> None:
+def _fire(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> None:
     player = world.player
     if not inp.fire or player.gun_cooldown > 0 or player.dodging:
         return
-    offset = tuning.player_radius + tuning.shot_radius + 2.0
+    player.gun_cooldown = tuning.gun_cooldown
+    start = launch_point(world, tuning, arena)
+    if start is None:
+        return
     world.projectiles.append(
         Projectile(
             id=world.new_id(),
-            x=player.x + player.aim_x * offset,
-            y=player.y + player.aim_y * offset,
+            x=start[0],
+            y=start[1],
             vx=player.aim_x * tuning.shot_speed,
             vy=player.aim_y * tuning.shot_speed,
             radius=tuning.shot_radius,
@@ -170,7 +168,6 @@ def _fire(world: World, inp: InputFrame, tuning: Tuning) -> None:
             ttl=tuning.shot_ttl,
         )
     )
-    player.gun_cooldown = tuning.gun_cooldown
     world.events.append(Event("shot", player.x, player.y))
 
 
