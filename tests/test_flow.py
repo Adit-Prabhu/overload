@@ -71,6 +71,11 @@ def test_summary_goes_to_the_selector_when_an_encounter_ends() -> None:
         "e1.near_share",
         "e1.shots_per_minute",
         "e1.dodges",
+        "e1.spark_uses",
+        "e1.blink_uses",
+        "e1.arc_trail_uses",
+        "e1.burst_uses",
+        "e1.shock_cone_uses",
     }
     assert fought > 0, "fighting in a room is observed, walking between rooms is not"
 

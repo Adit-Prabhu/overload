@@ -333,7 +333,8 @@ def test_summary_matches_the_service_schema() -> None:
 def test_hidden_state_never_changes_the_summary() -> None:
     """Over a whole stretch of play, worlds that differ only in hidden state (charge,
     cooldowns, invulnerability, RNG, the robots' health and timers, projectiles in flight,
-    the kit) produce identical summaries. Where the robots stand is visible, so it stays."""
+    the stolen powers and loadout) produce identical summaries. Where the robots stand is
+    visible, so it stays."""
     run = Run(4)
     logs = (ObservationLog(1), ObservationLog(1))
     for tick in range(180):
@@ -365,6 +366,62 @@ def test_hidden_state_never_changes_the_summary() -> None:
     assert logs[0].ticks == 180 and logs[0].actions["dodge"] >= 1
 
 
+def test_power_uses_are_counted_only_when_seen() -> None:
+    from overload.sim.campaign import encounter_world
+    from overload.sim.powers import Kit
+    from overload.sim.world import step
+
+    kit = Kit(["spark", "blink"], {"spark": 1, "blink": 1}, ["spark", "blink"])
+    world = encounter_world(1, 2, "lateral", kit=kit)
+    log = ObservationLog(2)
+    step(
+        world,
+        InputFrame(
+            aim_x=int(world.player.x) + 40, aim_y=int(world.player.y), power_q=True, power_e=True
+        ),
+    )
+    observe_world(log, world)
+    step(
+        world, InputFrame(aim_x=int(world.player.x) + 40, aim_y=int(world.player.y), power_e=True)
+    )  # Blink on cooldown: nothing happens, nothing counted
+    observe_world(log, world)
+    values = {item["id"]: item["value"] for item in log.summary("lateral")["items"]}
+    assert values["e2.spark_uses"] == 1 and values["e2.blink_uses"] == 1
+    assert values["e2.arc_trail_uses"] == 0
+
+
+def test_powers_that_do_not_happen_are_never_observed() -> None:
+    """Pressing Q or E with an empty slot, a power that is not unlocked, or while dodging
+    does nothing on screen, so nothing reaches the summary."""
+    from overload.sim.campaign import encounter_world
+    from overload.sim.powers import Kit
+    from overload.sim.world import step
+
+    cases = {
+        "empty slot": Kit(["spark"], {"spark": 1}, ["", ""]),
+        "locked power": Kit([], {}, ["spark", "blink"]),
+        "dodging": Kit(["spark", "blink"], {"spark": 1, "blink": 1}, ["spark", "blink"]),
+    }
+    for case, kit in cases.items():
+        world = encounter_world(1, 2, "lateral", kit=kit)
+        log = ObservationLog(2)
+        aim = (int(world.player.x) + 40, int(world.player.y))
+        if case == "dodging":
+            step(world, InputFrame(aim_x=aim[0], aim_y=aim[1], dodge=True))
+        step(world, InputFrame(aim_x=aim[0], aim_y=aim[1], power_q=True, power_e=True))
+        observe_world(log, world)
+        values = {item["id"]: item["value"] for item in log.summary("lateral")["items"]}
+        uses = [values[f"e2.{kind}_uses"] for kind in ("spark", "blink", "arc_trail")]
+        assert uses == [0, 0, 0], case
+
+
+def test_a_rejected_blink_is_not_observed() -> None:
+    log = ObservationLog(1)
+    log.observe((0.0, 0.0), (100.0, 0.0), ["blink_rejected"])
+    values = {item["id"]: item["value"] for item in log.summary("lateral")["items"]}
+    assert values["e1.blink_uses"] == 0
+
+
 def test_trace_records_decisions_without_identity(tmp_path) -> None:
     trace = TraceWriter(tmp_path / "trace.jsonl", condition="live", tuning_id="t", arena_id="a")
     decision = NeutralSelector().poll(2)
@@ -375,3 +432,25 @@ def test_trace_records_decisions_without_identity(tmp_path) -> None:
     assert record["tactic"] == catalogue().neutral and record["condition"] == "live"
     assert len(record["config_hash"]) == 16
     assert not {"name", "email", "player"} & set(record)
+
+
+@pytest.mark.parametrize("power", ["burst", "shock_cone"])
+def test_burst_and_shock_cone_uses_are_observed(power) -> None:
+    """Each Burst or Shock Cone the Surge actually fires is counted, the same as the other
+    powers. A press on cooldown shows nothing and counts nothing."""
+    from overload.sim.campaign import encounter_world
+    from overload.sim.powers import Kit
+    from overload.sim.world import step
+
+    kit = Kit([power], {power: 1}, [power, ""])
+    world = encounter_world(1, 2, "lateral", kit=kit)
+    log = ObservationLog(2)
+    aim = {"aim_x": int(world.player.x) + 40, "aim_y": int(world.player.y)}
+    for _ in range(2):  # the second press is on cooldown
+        step(world, InputFrame(**aim, power_q=True))
+        observe_world(log, world)
+    values = {item["id"]: item["value"] for item in log.summary("lateral")["items"]}
+    assert values[f"e2.{power}_uses"] == 1
+    others = {"spark_uses", "blink_uses", "arc_trail_uses", "burst_uses", "shock_cone_uses"}
+    for kind in others - {f"{power}_uses"}:
+        assert values[f"e2.{kind}"] == 0

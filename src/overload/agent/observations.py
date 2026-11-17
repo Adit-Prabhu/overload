@@ -1,8 +1,10 @@
 """What the Regulator saw: the only game data that ever reaches the model.
 
 ObservationLog never receives the World. The caller hands it visible facts only: where the
-Surge and the nearest fighting hostile stand, and the Surge's visible actions. Hidden state (charge,
-cooldowns, inventory, RNG, other entities) cannot reach the summary by construction.
+Surge and the nearest fighting hostile stand, and the Surge's visible actions, including the
+powers it used. Hidden state (charge, cooldowns, inventory and loadout, RNG, other entities)
+cannot reach the summary by construction. Power use is counted only when it happens on screen,
+so an unused or unequipped power is never revealed.
 """
 
 from __future__ import annotations
@@ -25,7 +27,17 @@ def evidence_labels() -> dict[str, str]:
 
 NEAR = 40.0  # px, about 2.5 tiles
 FAR = 104.0  # px, about 6.5 tiles
-VISIBLE_ACTIONS = ("shot", "dodge")
+# Visible actions only: a gun shot, a dodge, and a power the Surge actually used (a rejected
+# Blink shows nothing and is not counted).
+VISIBLE_ACTIONS = (
+    "shot",
+    "dodge",
+    "power_spark",
+    "power_blink",
+    "power_arc_trail",
+    "power_burst",
+    "power_shock_cone",
+)
 TICKS_PER_MINUTE = 60 * 60
 
 
@@ -51,7 +63,7 @@ class ObservationLog:
                 self.actions[action] += 1
 
     def summary(self, previous_tactic: str) -> dict:
-        """The request summary: evidence items with stable IDs, at most a few hundred bytes."""
+        """The request summary: ten evidence items with stable IDs, under 1 KB."""
         e = f"e{self.encounter}"
         total = max(1, self.ticks)
         minutes = max(total / TICKS_PER_MINUTE, 1 / 60)
@@ -61,6 +73,11 @@ class ObservationLog:
             "near_share": round(self.bands["near"] / total, 2),
             "shots_per_minute": round(self.actions["shot"] / minutes, 1),
             "dodges": self.actions["dodge"],
+            "spark_uses": self.actions["power_spark"],
+            "blink_uses": self.actions["power_blink"],
+            "arc_trail_uses": self.actions["power_arc_trail"],
+            "burst_uses": self.actions["power_burst"],
+            "shock_cone_uses": self.actions["power_shock_cone"],
         }
         labels = evidence_labels()
         items = [
