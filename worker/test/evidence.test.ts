@@ -15,15 +15,19 @@ const summary = {
 };
 
 describe("power-use evidence", () => {
-  it("lists the three power kinds with server-side labels", () => {
+  it("lists the five power kinds with server-side labels", () => {
     expect(EVIDENCE_LABELS.spark_uses).toBe("Spark power shots used");
     expect(EVIDENCE_LABELS.blink_uses).toBe("Blink teleports used");
     expect(EVIDENCE_LABELS.arc_trail_uses).toBe("Arc Trail teleports used");
+    expect(EVIDENCE_LABELS.burst_uses).toBe("Burst shockwaves used");
+    expect(EVIDENCE_LABELS.shock_cone_uses).toBe("Shock Cone blasts used");
   });
 
   it("passes the strict request schema", () => {
     expect(Summary.safeParse(summary).success).toBe(true);
-    const unknown = { ...summary, items: [{ id: "e2.burst_uses", label: "x", value: 1 }] };
+    const burst = { ...summary, items: [{ id: "e2.shock_cone_uses", label: "x", value: 1 }] };
+    expect(Summary.safeParse(burst).success).toBe(true);
+    const unknown = { ...summary, items: [{ id: "e2.charge_left", label: "x", value: 1 }] };
     expect(Summary.safeParse(unknown).success).toBe(false);
   });
 

@@ -5,17 +5,20 @@ from __future__ import annotations
 import json
 import threading
 
+from floorbot import FloorBot, enter, skip_sector
+
 from overload.agent.client import TacticClient
 from overload.agent.selector import FixedSchedule, LiveSelector, NeutralSelector
 from overload.game.flow import FALLBACK_LINE, FUSE_NOTICES, MIN_FUSE_TICKS, FuseBoxMenu, Session
 from overload.session.trace import TraceWriter
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import IDLE, InputFrame
+from overload.sim.tuning import DEFAULT
 
 
 def clear_encounter(session: Session) -> None:
-    session.campaign.world.rival.health = 0
-    session.tick(IDLE)
+    """Finish the current sector and stand in its Fuse Box (or reach the ending)."""
+    skip_sector(session.campaign, session.tick)
 
 
 def wait_in_fuse_box(session: Session, ticks: int) -> None:
@@ -34,7 +37,7 @@ def test_fixed_schedule_runs_the_whole_campaign() -> None:
         assert session.ready()
         decision = session.confirm()
         assert decision.tactic == selector.order[encounter - 1]
-        assert session.campaign.world.rival.protocol == decision.tactic
+        assert session.campaign.world.protocol == decision.tactic
     clear_encounter(session)
     assert session.campaign.stage == "ending"
 
@@ -55,8 +58,10 @@ def test_summary_goes_to_the_selector_when_an_encounter_ends() -> None:
             seen[encounter] = summary
 
     session = Session(Campaign(1), Recorder())
-    for _ in range(30):
-        session.tick(InputFrame(move_x=1, fire=True, aim_x=300, aim_y=150))
+    enter(session.campaign, "s1_hall", session.tick)
+    for _ in range(DEFAULT.warp_tell + 20):  # robots warp in, then a fight is observed
+        session.tick(InputFrame(fire=True, aim_x=300, aim_y=150))
+    fought = session.log.ticks
     clear_encounter(session)
     assert list(seen) == [2]
     ids = {item["id"] for item in seen[2]["items"]}
@@ -69,19 +74,23 @@ def test_summary_goes_to_the_selector_when_an_encounter_ends() -> None:
         "e1.spark_uses",
         "e1.blink_uses",
         "e1.arc_trail_uses",
+        "e1.burst_uses",
+        "e1.shock_cone_uses",
     }
-    assert session.log.ticks == 31
+    assert fought > 0, "fighting in a room is observed, walking between rooms is not"
 
 
 def test_retry_restarts_the_observation_record() -> None:
     session = Session(Campaign(1), NeutralSelector())
-    for _ in range(40):
+    enter(session.campaign, "s1_hall", session.tick)
+    for _ in range(DEFAULT.warp_tell + 20):  # robots arrive and the fight is observed
         session.tick(IDLE)
+    assert session.log.ticks > 0
     session.campaign.world.player.charge = 0
     session.tick(IDLE)
     assert session.campaign.world.outcome == "down"
     session.tick(InputFrame(restart=True))
-    assert session.log.ticks == 0
+    assert session.log.ticks == 0, "the retry rolls the record back to the sector start"
     assert session.campaign.retries[1] == 1
 
 
@@ -152,12 +161,11 @@ def test_trace_records_the_session(tmp_path) -> None:
     assert events == ["decision", "encounter_start", "encounter_end", "decision", "encounter_start"]
 
 
-def test_menu_ticks_do_not_repeat_the_clearing_events() -> None:
+def test_fuse_box_ticks_never_repeat_old_events() -> None:
     session = Session(Campaign(1), NeutralSelector())
-    session.campaign.world.rival.health = 0
-    session.tick(InputFrame(fire=True))
-    assert session.campaign.world.events, "the clearing tick reports its events once"
-    session.tick(InputFrame(fire=True))
+    clear_encounter(session)
+    assert session.campaign.stage == "fuse_box"
+    session.tick(IDLE)
     assert session.campaign.world.events == []
 
 
@@ -182,7 +190,7 @@ def test_baseline_traces_never_claim_a_summary_was_sent(tmp_path) -> None:
 def fuse_box_with(*abilities: str) -> Session:
     session = Session(Campaign(1), NeutralSelector())
     clear_encounter(session)
-    session.campaign.kit.unlocked = list(abilities)
+    session.campaign.world.unlocked = list(abilities)
     return session
 
 
@@ -201,12 +209,12 @@ def test_menu_fusion_shows_the_supported_recipe_when_it_fails() -> None:
     session = fuse_box_with("spark")
     menu = FuseBoxMenu()
     assert menu.press(session, "fuse") == ["fuse", "spark", "blink"]
-    assert menu.notice == FUSE_NOTICES["missing"] and "SPARK + BLINK" in menu.notice
+    assert menu.notice == FUSE_NOTICES["missing"]
     assert session.campaign.kit.unlocked == ["spark"]
-    session.campaign.kit.unlocked.append("blink")
+    session.campaign.world.unlocked.append("blink")
     menu.press(session, "fuse")
-    assert session.campaign.kit.unlocked == ["spark", "blink", "arc_trail"]
-    assert menu.notice == FUSE_NOTICES["fused"]
+    assert session.campaign.world.unlocked == ["spark", "blink", "arc_trail"]
+    assert menu.notice == "ARC TRAIL FUSED"
 
 
 def test_menu_with_nothing_stolen_ignores_equip_keys() -> None:
@@ -220,7 +228,7 @@ def test_menu_actions_are_traced(tmp_path) -> None:
     trace = TraceWriter(tmp_path / "t.jsonl", condition="off", tuning_id="t", arena_id="a")
     session = Session(Campaign(1), NeutralSelector(), trace, "anon")
     clear_encounter(session)
-    session.campaign.kit.unlocked = ["spark"]
+    session.campaign.world.unlocked = ["spark"]
     session.equip(0, "spark")
     session.fuse("spark", "blink")
     rows = [json.loads(line) for line in (tmp_path / "t.jsonl").read_text().splitlines()]
@@ -241,14 +249,14 @@ def press_keys(reader, *keys) -> None:
 def live_menu_setup():
     from overload.game.app import InputReader
     from overload.session.replay import Recording
-    from overload.sim.arena import SUBSTATION, arena_id
+    from overload.sim.arena import FLOOR_ARENA, arena_id
     from overload.sim.tuning import DEFAULT
 
     session = Session(Campaign(1), NeutralSelector())
     recording = Recording(
         seed=1,
         tuning_id=DEFAULT.tuning_id(),
-        arena_id=arena_id(SUBSTATION),
+        arena_id=arena_id(FLOOR_ARENA),
         mode="campaign",
         protocols=["lateral"],
     )
@@ -292,10 +300,11 @@ def test_a_live_fuse_box_session_replays_exactly() -> None:
 
     session, menu, reader, recording = live_menu_setup()
     campaign = session.campaign
-    from test_campaign import scripted_player
-
-    for tick in range(4000):  # win encounter 1 with real inputs, as a player would
-        frame = scripted_player(campaign.world, tick)
+    bot = FloorBot(campaign)
+    for tick in range(20_000):  # clear sector 1 with real inputs, as a player would
+        frame = bot.frame(tick)
+        if campaign.world.outcome == "down":
+            frame = InputFrame(restart=True)
         session.tick(frame)
         recording.frames.append(frame)
         if campaign.stage == "fuse_box":
@@ -313,3 +322,80 @@ def test_a_live_fuse_box_session_replays_exactly() -> None:
         session.tick(frame)
         recording.frames.append(frame)
     assert play(recording).state_hash() == campaign.state_hash()
+
+
+def test_the_fuse_box_holds_the_surge_still_and_ignores_restart() -> None:
+    session = Session(Campaign(1), NeutralSelector())
+    clear_encounter(session)
+    campaign = session.campaign
+    player = campaign.world.player
+    where = (player.x, player.y)
+    for _ in range(30):
+        session.tick(InputFrame(move_x=1, fire=True, restart=True, power_q=True, dodge=True))
+    assert (player.x, player.y) == where and not campaign.world.projectiles
+    assert campaign.stage == "fuse_box" and campaign.retries == {1: 0}
+
+
+def test_the_paused_loadout_menu_works_mid_sector() -> None:
+    import pygame
+
+    from overload.game.app import fuse_box_frame
+
+    session, menu, reader, recording = live_menu_setup()
+    session.campaign.world.unlocked = ["spark", "blink"]
+    press_keys(reader, pygame.K_f, pygame.K_RETURN)
+    sounds = fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=False, paused=True)
+    assert "arc_trail" in session.campaign.world.unlocked and "fusion" in sounds
+    assert recording.menu[-1][1:] == ["fuse", "spark", "blink"]
+    assert session.campaign.stage == "encounter", "Enter does nothing outside the Fuse Box"
+
+
+def test_tab_toggles_the_menu() -> None:
+    import pygame
+
+    from overload.game.app import InputReader
+
+    reader = InputReader()
+    press_keys(reader, pygame.K_TAB)
+    assert reader.take_toggle() and not reader.take_toggle()
+
+
+def test_menu_keys_pressed_during_play_are_dropped() -> None:
+    import pygame
+
+    from overload.game.app import fuse_box_frame
+
+    session, menu, reader, recording = live_menu_setup()
+    session.campaign.world.unlocked = ["spark", "blink"]
+    press_keys(reader, pygame.K_f, pygame.K_q)
+    assert fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=False) == []
+    assert "arc_trail" not in session.campaign.world.unlocked and not recording.menu
+    later = fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=False, paused=True)
+    assert later == [] and not recording.menu, "nothing queued from before the pause"
+
+
+def test_closing_the_menu_drops_dodge_and_power_presses() -> None:
+    import pygame
+
+    from overload.game.app import InputReader
+
+    reader = InputReader()
+    press_keys(reader, pygame.K_SPACE, pygame.K_q, pygame.K_e, pygame.K_r)
+    reader.drop_power_latches()
+    assert not (reader._dodge or reader._power_q or reader._power_e or reader._restart)
+
+
+def test_the_menu_stops_time_and_opens_only_mid_sector() -> None:
+    from overload.game.app import ticks_due, toggle_pause
+
+    assert ticks_due(True, False, 0.05, 0.5) == (0, 0.0)
+    assert ticks_due(True, True, 0.0, 0.0) == (0, 0.0)
+    assert ticks_due(False, True, 0.0, 0.0)[0] == 1
+    session = fuse_box_with("spark")
+    assert session.campaign.stage == "fuse_box"
+    assert toggle_pause(False, session.campaign) is False, "not in the Fuse Box"
+    fresh = Campaign(1)
+    assert toggle_pause(False, fresh) is True and toggle_pause(True, fresh) is False
+    fresh.world.player.charge = 0
+    fresh.step(IDLE)
+    assert toggle_pause(False, fresh) is False, "not while down"

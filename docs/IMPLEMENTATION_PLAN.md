@@ -22,6 +22,66 @@ All decisions D1 to D8 were approved by Adit on November 16, 2026.
 | D8 | Art direction | **Approved.** Original pixel art in a 3/4 top-down view, in the spirit of Soul Knight, with a follow camera. Replaces the neon vector look from version 0.1 of the art doc. Tasks 2 and 3 were redone in this style on November 16 | Done |
 | D7 | Fallback wording | **Approved.** The Fuse Box line reads "Grid link unstable. Regulator running default protocol." It's shown only in live mode and logged as a confound | Done |
 
+## 2b. Overhaul after the first play (Nov 17)
+Adit played the first playable build (#7 to #16) and found it too small and too samey. The findings, checked independently:
+- The whole game is one hall of 26 x 16 tiles, about 1.6 x 1.8 screens. Nothing to explore, and the player can roam the whole place at once.
+- Each fight is two machines plus the Regulator, three times in the same hall.
+- Every hostile fires the same bolt sprite.
+- The Arc Mite reads as a beetle and the Relay and Regulator as boxes, not robots.
+- Two base powers and one fusion are too few for a Soul Knight style game.
+- Shots did not leave the caster or land exactly on the cursor (fixed in #16).
+
+Kept: the tile and lighting style, the deterministic simulation and replays, the rival boundary, readable tells, the HUD, the Fuse Box, the audio and the steal, fuse, use loop.
+
+Decisions (Adit, Nov 17):
+- **Bigger map now, logged for G3.** The G1 production ceiling allowed three short combat rooms and one hidden branch. Adit chose a larger hand-built floor now. It goes in the G3 scope-lock proposal, and rooms are data, so the instructor can cut them cheaply. Procedural maps stay out of scope (G1 GDD).
+- **Dying restarts the sector.** The Surge respawns at the sector's start with the loadout it entered with. Rooms, robots, the Regulator and the observation record all roll back to that checkpoint, and the accepted tactic stays, so the experiment's retry rule (entry loadout, tactic and observation checkpoint, no new model call) holds.
+- **Chibi maintenance robots.** Round, chunky bodies with a big glowing visor, readable at 16 px. A style frame comes first for Adit's approval.
+
+### The new structure
+| Part | Contents |
+| --- | --- |
+| Floor | A hand-built substation floor of rooms joined by corridors, identical in both conditions. Three sectors with their own look: Control Hall, Transformer Yard, Core |
+| Sector | Entry, then two or three combat rooms, then the Regulator's chamber. Combat room doors lock on entry, robots warp in over a visible 0.6 s tell in two waves, and the doors open when the room is clear |
+| Fuse Box | A safe room between sectors: loadout, fusion and evolutions. The rival's one request starts here, as before |
+| Regulator | Fought once per sector, three times in all. Encounter 1 stays neutral. The tactic for the next sector is accepted in the Fuse Box and frozen when the player leaves it, before the sector's first room |
+| Observation window | The rival now observes the whole sector, robot rooms and the Regulator fight, because the Regulator "watches how you fight" and one fight is little evidence. It uses the same visible kinds only: distance to the nearest active hostile, shots and dodges. Power-use counts for Spark, Blink and Arc Trail come with #11, and Burst and Shock Cone counts later. Both need new evidence kinds and a Worker redeploy, so until then those uses are not observed. Robots in rooms ignore the tactic, so only the Regulator adapts. The fixed baseline records the same window in its trace but never reads it |
+| Hidden branch | One secret room behind a cracked wall in sector 2, holding an evolution charge |
+
+### Robots
+Each robot carries one power or none, and each attacks in its own way, so no two look or shoot alike. Hostile shots keep the hostile colors and differ by shape (accessibility rule: shape, not color alone).
+
+| Robot | Carries | Attack and tell |
+| --- | --- | --- |
+| Arc Drone | Spark | Hovers and fires a spiked spark ball after an aim tell |
+| Relay Bot | Blink | Marks a landing spot, blinks, then fires three diamond shards in a fan |
+| Breaker | Burst | Heavy brute. Raises its fists (tell), slams, and a shockwave ring expands along the floor |
+| Sweeper | Nothing | Small roller. Revs up (sparks under the wheels), then rushes in a straight line |
+| Sentry | Nothing | Stationary. A long tell, then a slow heavy shell |
+| Regulator | Nothing | A big armored control mech with the three protocols: Clamp lunges, Insulate orbs and hazard tiles, Oscillate needle volleys |
+
+### Powers (the G1 production ceiling)
+- **Base powers:** Spark, Blink and Burst (a short knockback cone).
+- **Evolutions:** two more charges of the same power unlock one:
+  - Spark chains to one nearby robot
+  - Blink gives a speed boost on arrival
+  - Burst widens
+- **Fusions:** Arc Trail (Spark + Blink) and Shock Cone (Spark + Burst). Blink + Burst stays unsupported.
+
+### Order of work
+This scope needs the instructor's G3 approval (Nov 30) before it counts. If cuts are needed, the G1 cut order applies: the second recipe first, then the hidden branch, then extra rooms. Rooms are data, so cutting one is cheap.
+
+Each item is its own reviewed PR:
+1. The robot style frame, for Adit's approval.
+2. The floor engine: rooms, corridors, doors, waves and the camera.
+3. The robot roster with distinct attacks.
+4. Sectors, the Fuse Box room, sector retry, and the rival's timing and observation window.
+5. Burst, evolutions and Shock Cone.
+6. The Regulator redesign.
+7. Sound for the new robots and rooms.
+
+The Worker needs a redeploy for the Burst evidence kind (with Adit's go).
+
 ## 3. Architecture
 
 ### Repository layout

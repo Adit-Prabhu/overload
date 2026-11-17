@@ -1,0 +1,7 @@
+Overload audio
+
+Every file in this folder is original work, composed in code for the Overload course project
+by tools/audio/ (no samples, no music or sound generators, no third-party recordings).
+
+Copyright 2026 the Overload project authors. All rights reserved until the project chooses a
+license.

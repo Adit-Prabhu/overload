@@ -16,27 +16,114 @@ import pygame
 from overload import __version__
 from overload.art.palette import rgb, rgba
 from overload.art.pixel import actors, effects, hud, tiles
+from overload.art.pixel import robots as robots_art
 from overload.art.pixel.light import Glow
 from overload.art.pixel.lighting import Lighting, pool, quantize
+from overload.floor import CELL, GRID, TILE
+from overload.sim import aiming, floorplay
 from overload.sim import world as rules
 from overload.sim.arena import arena_id
+from overload.sim.bosses import BY_KIND
 from overload.sim.campaign import Campaign
-from overload.sim.powers import COOLDOWN_KEYS, Kit
+from overload.sim.powers import COOLDOWN_KEYS, EVOLUTIONS, RECIPE_ORDER, RECIPES, Kit, evolved
 from overload.sim.run import Run
 from overload.sim.state import Event
+from overload.sim.tuning import DEFAULT, Tuning
 
 VIEW = (256, 144)
 SURGE_FEET = 8  # sprite feet sit this many pixels below the body center
-MITE_FEET = 5
-RELAY_FEET = 7
-SOCKET_TOKENS = {"spark": "spark", "blink": "blink", "arc_trail": "spark"}
-NAMES = {"spark": "SPARK", "blink": "BLINK", "arc_trail": "ARC TRAIL"}
+SOCKET_TOKENS = {
+    "spark": "spark",
+    "blink": "blink",
+    "burst": "burst",
+    "arc_trail": "spark",
+    "shock_cone": "burst",
+}
+DESCRIPTIONS = {
+    "spark": "A HEAVY BOLT. TWO MORE CHARGES EVOLVE IT",
+    "blink": "TELEPORT TOWARD THE CURSOR",
+    "burst": "KNOCKBACK CONE THAT WIPES SHOTS",
+    "arc_trail": "A BLINK THAT LEAVES A SHOCK LINE",
+    "shock_cone": "A BURST PLUS A FAN OF SPARKS",
+}
+EVOLVED_INFO = {
+    "spark": "EVOLVED. HITS CHAIN TO A SECOND ROBOT",
+    "blink": "EVOLVED. A BURST OF SPEED ON ARRIVAL",
+    "burst": "EVOLVED. A WIDER, LONGER CONE",
+}
+NAMES = {
+    "spark": "SPARK",
+    "blink": "BLINK",
+    "burst": "BURST",
+    "arc_trail": "ARC TRAIL",
+    "shock_cone": "SHOCK CONE",
+}
 COOLDOWNS = {
     "spark": "spark_cooldown",
     "blink": "blink_cooldown",
+    "burst": "burst_cooldown",
     "arc_trail": "arc_trail_cooldown",
+    "shock_cone": "shock_cone_cooldown",
 }
-RIVAL_FEET = 19
+RIVAL_FEET = 20
+ROBOT_FEET = {"drone": 9, "relay": 8, "breaker": 9, "sweeper": 5, "sentry": 6}
+CORE_GLOW = {"drone": "power.spark", "relay": "power.blink", "breaker": "power.burst"}
+SHOT_ART = {
+    "shard": robots_art.shard,
+    "shell": robots_art.shell,
+    "needle": robots_art.needle_dart,
+    "orb": robots_art.orb,
+}
+
+
+def robot_image(
+    robot, tick: int, left: bool, charging: bool, recover: int = DEFAULT.breaker_recover
+) -> pygame.Surface:
+    """The approved roster art (art/pixel/robots.py) for a robot in its current state, in
+    its sector's colors: stock orange, Cooled teal (sector 2) or Overcharged violet (sector 3).
+    Only the shell ramp changes. The danger red of its eyes never changes, though the bright
+    rim around some eyes shares the shell's highlight and takes the sector color."""
+    if robot.kind == "relay":
+        image = robots_art.relay_bot(False, arming=robot.phase == "blink")
+    elif robot.kind == "breaker":
+        slamming = robot.phase == "recover" and robot.fire_timer > recover - 14
+        image = robots_art.breaker(False, raising=robot.phase == "raise", slamming=slamming)
+    elif robot.kind == "sweeper":
+        image = robots_art.sweeper(tick, False, revving=robot.phase in ("rev", "rush"))
+    elif robot.kind == "sentry":
+        image = robots_art.sentry(False)
+    else:
+        image = robots_art.drone(tick, False)
+    image = tier_colors(image, robot.tier)
+    return robots_art.flipped(image) if left else image
+
+
+_HOSTILE_RAMP = ("px.hostile.0", "px.hostile.1", "px.hostile.2", "px.hostile.3")
+TIER_RAMPS = {
+    2: ("px.conduit.0", "px.conduit.1", "px.jacket.1", "px.jacket.2"),  # not Blink cyan
+    3: ("px.core.0", "px.core.1", "px.core.2", "px.core.3"),
+}
+_TIERED: dict[tuple[int, int], tuple[pygame.Surface, pygame.Surface]] = {}
+
+
+def tier_colors(image: pygame.Surface, tier: int) -> pygame.Surface:
+    """Swap the orange shell ramp for the tier's ramp. Cached per source frame (frames are
+    cached surfaces, so the identity check keeps a stale entry from being reused)."""
+    if tier == 1:
+        return image
+    key = (id(image), tier)
+    hit = _TIERED.get(key)
+    if hit is None or hit[0] is not image:
+        swapped = image.copy()
+        pixels = pygame.PixelArray(swapped)
+        for source, target in zip(_HOSTILE_RAMP, TIER_RAMPS[tier], strict=True):
+            pixels.replace(rgb(source), rgb(target))
+        pixels.close()
+        hit = _TIERED[key] = (image, swapped)
+    return hit[1]
+
+
+FUSION_TICKS = 30
 RIVAL_FLASH = -1  # flash key for the Regulator (hostile IDs are positive)
 POSES = {"pressure": "clamp", "spacing": "insulate", "lateral": "oscillate"}
 
@@ -46,11 +133,6 @@ def _shadow(half: int) -> pygame.Surface:
     shade = pygame.Surface((half * 2, 5), pygame.SRCALPHA)
     pygame.draw.ellipse(shade, rgba("px.outline", 120), (0, 0, half * 2, 5))
     return shade
-
-
-@cache
-def _orb() -> pygame.Surface:
-    return pygame.transform.scale_by(effects.hostile_bolt(), 2)
 
 
 @cache
@@ -113,6 +195,7 @@ class Spark:
 class PixelView:
     def __init__(self, run: Run | Campaign) -> None:
         self.room = tiles.render_room(run.arena.room)
+        self.room_data = run.arena.room
         self.room_size = run.arena.size
         self.glow = Glow(VIEW)
         self.lighting = Lighting(VIEW)
@@ -122,8 +205,15 @@ class PixelView:
         self.muzzle = 0
         self.ghosts: list[tuple[float, float, int]] = []
         self.blinks: list[tuple[float, float, int]] = []
+        self.bursts: list[tuple] = []
+        self.seen: set[str] = set()  # rooms the minimap has revealed (cosmetic only)
+        self.sector = 1
+        self.tint = [255.0, 255.0, 255.0]
+        self.chains: list[tuple] = []
         self.notice: tuple[str, int] | None = None
         self.unlock_flash = 0
+        self.shake = 0
+        self.fusion_flash = 0
         self.walking = 0
         self.last_player = (run.world.player.x, run.world.player.y)
         player = run.world.player
@@ -146,14 +236,53 @@ class PixelView:
                 self.camera[axis] = min(max(self.camera[axis], 0.0), float(spare))
 
     def camera_offset(self) -> tuple[int, int]:
+        """The camera. Aiming converts the cursor with this, so it never shakes."""
         return (round(self.camera[0]), round(self.camera[1]))
+
+    def jolt(self) -> tuple[int, int]:
+        """A slam's screen shake (2 px at most, art direction), applied only when drawing
+        the scene, so shots still go exactly where the reticle is."""
+        if self.shake <= 0:
+            return (0, 0)
+        amount = 2 if self.shake > 5 else 1
+        return (
+            amount * (1 if self.shake % 2 else -1),
+            amount * (1 if self.shake % 4 < 2 else -1),
+        )
 
     def update(self, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         """Advance cosmetic state by one simulation tick. Called once per tick, never per
         rendered frame, so effects and camera behave the same at any display rate."""
+        self.after_tick(run)
+        self.follow(run, cursor)
+
+    def after_tick(self, run: Run | Campaign) -> None:
+        """Effects and animation for the tick that just ran (the camera moves separately,
+        before the next input is read)."""
         self.consume(run, run.world.events)
         self._tick_cosmetics()
-        self.follow(run, cursor)
+        for wave in run.world.shockwaves:  # dust kicked up along the running ring
+            for _ in range(3):
+                a = self.cosmetic.uniform(0, math.tau)
+                self.sparks.append(
+                    Spark(
+                        wave.x + math.cos(a) * wave.radius,
+                        wave.y + math.sin(a) * wave.radius,
+                        math.cos(a) * 0.3,
+                        -0.4,
+                        self.cosmetic.randint(6, 12),
+                        "px.wall.3",
+                    )
+                )
+        floor = run.arena.floor
+        if floor is not None:
+            room = floorplay.room_of(floor, run.world.player.x, run.world.player.y)
+            if room is not None:
+                self.seen.add(room.id)
+                self.sector = room.sector
+            # Each sector has its own light, eased in as the Surge walks into it.
+            target = rgb(f"px.tint.{self.sector}")
+            self.tint = [c + (t - c) * 0.04 for c, t in zip(self.tint, target, strict=True)]
 
     def follow(self, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         """Ease toward the player, nudged a little toward where they are aiming. In a fight
@@ -175,6 +304,7 @@ class PixelView:
 
     def consume(self, run: Run | Campaign, events: list[Event]) -> None:
         stolen: list[str] = []
+        chain_start = None
         for event in events:
             if event.kind == "shot":
                 self.muzzle = 3
@@ -183,7 +313,7 @@ class PixelView:
                 self._burst(event.x, event.y, 4, "px.spark.light", 1.2)
             elif event.kind == "hostile_destroyed":
                 self._burst(event.x, event.y, 14, "px.hostile.3", 1.8)
-                self._burst(event.x, event.y, 8, "power.spark", 1.4)
+                self._burst(event.x, event.y, 8, f"power.{event.power or 'spark'}", 1.4)
             elif event.kind == "player_hit":
                 self._burst(event.x, event.y, 10, "player.core", 1.6)
             elif event.kind == "rival_hit":
@@ -209,6 +339,52 @@ class PixelView:
                 stolen.append(NAMES.get(event.power, event.power.upper()))
             elif event.kind == "absorb":
                 self._burst(event.x, event.y, 10, f"power.{event.power}", 1.4)
+            elif event.kind == "burst":
+                player = run.world.player
+                angle = math.atan2(player.aim_y, player.aim_x)
+                self.bursts.append(
+                    (event.x, event.y, angle, bool(event.ref), event.power == "shock_cone", 10)
+                )
+            elif event.kind == "chain_from":
+                chain_start = (event.x, event.y)
+            elif event.kind == "chain" and chain_start is not None:
+                self.chains.append((chain_start, (event.x, event.y), 8))
+            elif event.kind == "evolve":
+                self.unlock_flash = 12
+                self._burst(event.x, event.y, 24, f"power.{event.power}", 2.2)
+                name = NAMES.get(event.power, event.power.upper())
+                self.toast(f"{name} EVOLVED: {EVOLUTIONS.get(event.power, '')}", 120)
+            elif event.kind == "fully_evolved":
+                self._burst(event.x, event.y, 10, f"power.{event.power}", 1.4)
+                self.toast("FULLY EVOLVED", 60)
+            elif event.kind == "quake":
+                self.shake = 14
+                self._burst(event.x, event.y + 10, 30, "px.wall.3", 2.0)
+                self._burst(event.x, event.y + 10, 12, "px.coil.3", 1.6)
+            elif event.kind == "overload":
+                self.shake = 12
+                self.unlock_flash = 10
+                self._burst(event.x, event.y, 30, "power.burst", 2.2)
+                self.toast("GRID CORE OVERLOAD", 120)
+            elif event.kind == "boss_ring":
+                self._burst(event.x, event.y, 10, "hostile.danger", 1.2)
+            elif event.kind == "summon":
+                self._burst(event.x, event.y, 14, "power.burst", 1.4)
+            elif event.kind == "slam":
+                self.shake = 10
+                self._burst(event.x, event.y + 6, 18, "px.wall.3", 1.6)
+                self._burst(event.x, event.y + 6, 8, "px.dial.0", 1.2)
+            elif event.kind == "room_lock":
+                self.toast("LOCKDOWN", 60)
+            elif event.kind == "room_clear":
+                self.toast("ROOM CLEAR", 60)
+            elif event.kind == "warp_in":
+                self._burst(event.x, event.y, 10, "hostile.danger", 1.4)
+            elif event.kind == "secret_hit":
+                self._burst(event.x, event.y, 4, "px.wall.3", 1.0)
+            elif event.kind == "secret_open":
+                self._burst(event.x, event.y, 20, "px.wall.3", 2.0)
+                self.toast("A HIDDEN ROOM", 90)
             elif event.kind == "relay_from":
                 self.blinks.append((event.x, event.y, 12))
             elif event.kind == "fizzle":
@@ -219,8 +395,108 @@ class PixelView:
         moved = math.dist(self.last_player, (player.x, player.y)) > 0.1
         self.walking = self.walking + 1 if moved else 0
         self.last_player = (player.x, player.y)
-        if player.dodging:
-            self.ghosts.append((player.x, player.y, 10))
+        if player.dodging or (player.boost > 0 and run.world.tick % 3 == 0):
+            self.ghosts.append((player.x, player.y, 10))  # dodge and Overdrive trails
+
+    def _ripple(self, screen: pygame.Surface, world, cam: tuple[int, int]) -> None:
+        """A shockwave lifts the floor tiles it passes over by up to 3 px, with a dark gap
+        under each lifted tile, so the ground visibly rolls as the ring runs out."""
+        room = self.room.background
+        for wave in world.shockwaves:
+            reach = wave.radius + 12
+            x0, x1 = int((wave.x - reach) // TILE), int((wave.x + reach) // TILE)
+            y0, y1 = int((wave.y - reach) // TILE), int((wave.y + reach) // TILE)
+            for ty in range(y0, y1 + 1):
+                for tx in range(x0, x1 + 1):
+                    if self.room_data.is_wall(tx, ty):
+                        continue
+                    cx, cy = tx * TILE + TILE / 2, ty * TILE + TILE / 2
+                    off = abs(math.hypot(cx - wave.x, cy - wave.y) - wave.radius)
+                    lift = round(3 * (1 - off / 12)) if off < 12 else 0
+                    if lift <= 0:
+                        continue
+                    sx, sy = tx * TILE - cam[0], ty * TILE - cam[1]
+                    screen.fill(rgb("px.outline"), (sx, sy + TILE - lift, TILE, lift))
+                    screen.blit(room, (sx, sy - lift), (tx * TILE, ty * TILE, TILE, TILE - lift))
+                    screen.fill(rgb("px.wall.4"), (sx, sy - lift, TILE, 1))  # the lifted edge
+
+    def _draw_doors(self, screen: pygame.Surface, run: Run | Campaign, v) -> None:
+        """Locked doors: hazard-striped shutters. A locked secret wall looks like cracked wall,
+        and the passage behind it stays dark until it opens."""
+        floor = run.arena.floor
+        if floor is None:
+            return
+        world = run.world
+        locked = set(world.locked)
+        secrets = [d for d in floor.doors if d.secret]
+        if secrets and secrets[0].id in locked:
+            top, bottom = sorted(secrets, key=lambda d: d.rect[1])
+            x, y = top.rect[0], top.rect[1] + top.rect[3]
+            hidden = (x * TILE, y * TILE, top.rect[2] * TILE, (bottom.rect[1] - y) * TILE)
+            sx, sy = v(hidden[0], hidden[1])
+            screen.fill(rgb("px.void"), (round(sx), round(sy), hidden[2], hidden[3]))
+        for door in floor.doors:
+            if door.id not in locked:
+                continue
+            x, y, w, h = door.rect
+            sx, sy = v(x * TILE, y * TILE)
+            rect = pygame.Rect(round(sx), round(sy), w * TILE, h * TILE)
+            if door.secret:
+                effects.cracked_wall(screen, rect, world.secret_hits.get(door.id, 0))
+            else:
+                effects.shutter(screen, self.glow.layer, rect, (world.tick // 8) % 2 == 0)
+
+    def _minimap(self, screen: pygame.Surface, run: Run | Campaign) -> None:
+        """Top right (art direction, HUD layout): a schematic of the 5 x 3 room grid, about
+        50 x 22 px. Rooms show once seen, or as an outline once a door to them is known.
+        Current room white, cleared grey, the locked room blinking red, a dot for chambers
+        (red) and Fuse Boxes (blue). Corridors between shown rooms are 1 px lines."""
+        floor = run.arena.floor
+        if floor is None:
+            return
+        world = run.world
+        cell_w, cell_h, gap = 8, 5, 3
+        cols, rows = GRID
+        x0 = screen.get_width() - 4 - (cols * (cell_w + gap) - gap)
+        y0 = 4
+
+        def cell(room) -> pygame.Rect:
+            cx, cy = room.rect[0] // CELL[0], room.rect[1] // CELL[1]
+            return pygame.Rect(x0 + cx * (cell_w + gap), y0 + cy * (cell_h + gap), cell_w, cell_h)
+
+        seen = self.seen
+        locked = set(world.locked)
+        known = set(seen) | {
+            d.other for d in floor.doors if d.room in seen and (not d.secret or d.id not in locked)
+        }
+        for door in floor.doors:
+            if door.room < door.other and door.room in known and door.other in known:
+                if door.secret and door.id in locked:
+                    continue
+                a, b = cell(floor.get(door.room)), cell(floor.get(door.other))
+                pygame.draw.line(screen, rgb("px.outline"), a.center, b.center, 3)
+                pygame.draw.line(screen, rgb("px.wall.2"), a.center, b.center, 1)
+        here = floorplay.room_of(floor, world.player.x, world.player.y)
+        for room in floor.rooms:
+            if room.id not in known:
+                continue
+            rect = cell(room)
+            screen.fill(rgb("px.outline"), rect.inflate(2, 2))
+            if room.id not in seen:
+                pygame.draw.rect(screen, rgb("px.floor.3"), rect, 1)
+                continue
+            token = "px.floor.3" if room.id in world.cleared else "px.wall.3"
+            if here is not None and room.id == here.id:
+                token = "player.core"
+            screen.fill(rgb(token), rect)
+            if room.id == world.active_room and (world.tick // 10) % 2 == 0:
+                pygame.draw.rect(screen, rgb("hostile.danger"), rect, 1)
+            mark = {"chamber": "hostile.danger", "fuse": "power.blink"}.get(room.kind)
+            if mark:
+                screen.fill(rgb(mark), (rect.centerx - 1, rect.centery - 1, 2, 2))
+
+    def flash_fusion(self) -> None:
+        self.fusion_flash = FUSION_TICKS
 
     def toast(self, message: str, ticks: int) -> None:
         self.notice = (message, ticks)
@@ -251,7 +527,11 @@ class PixelView:
         self.flashes = {k: v - 1 for k, v in self.flashes.items() if v > 1}
         self.ghosts = [(x, y, life - 1) for x, y, life in self.ghosts if life > 1]
         self.blinks = [(x, y, life - 1) for x, y, life in self.blinks if life > 1]
+        self.bursts = [(*b[:5], b[5] - 1) for b in self.bursts if b[5] > 1]
+        self.chains = [(a, b, life - 1) for a, b, life in self.chains if life > 1]
         self.unlock_flash = max(0, self.unlock_flash - 1)
+        self.shake = max(0, self.shake - 1)
+        self.fusion_flash = max(0, self.fusion_flash - 1)  # per tick, so any frame rate
         if self.notice:
             message, ticks = self.notice
             self.notice = (message, ticks - 1) if ticks > 1 else None
@@ -262,7 +542,8 @@ class PixelView:
     def draw(self, screen: pygame.Surface, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         world, tuning = run.world, run.tuning
         player = world.player
-        cam = self.camera_offset()
+        base, jolt = self.camera_offset(), self.jolt()
+        cam = (base[0] + jolt[0], base[1] + jolt[1])
         tick = world.tick
         t = tick / 60
 
@@ -274,7 +555,7 @@ class PixelView:
         self.glow.layer.blit(self.room.light, (-cam[0], -cam[1]))
 
         aim = math.atan2(player.aim_y, player.aim_x)
-        facing_left = player.aim_x < 0
+        facing_left = player.facing < 0
 
         def shadow(x: float, y: float, half: int) -> None:
             screen.blit(_shadow(half), (round(x - half), round(y - 3)))
@@ -283,6 +564,12 @@ class PixelView:
             fx, fy = v(*feet)
             screen.blit(image, (round(fx - image.get_width() / 2), round(fy - image.get_height())))
 
+        self._ripple(screen, world, cam)
+        self._draw_doors(screen, run, v)
+        for warp in world.warps:
+            effects.warp_marker(
+                screen, self.glow.layer, v(warp.x, warp.y), 1 - warp.timer / tuning.warp_tell
+            )
         for hazard in world.hazards:
             arming = tuning.insulate_hazard_tell
             progress = 1.0 - hazard.arming / arming if hazard.arming > 0 else 1.0
@@ -302,28 +589,33 @@ class PixelView:
             )
         for hostile in world.hostiles:
             if hostile.kind == "relay" and hostile.phase == "blink":
-                effects.relay_destination(
-                    screen, v(hostile.dest_x, hostile.dest_y), rules.tell_progress(hostile, tuning)
-                )
+                # On the glow layer too, so the sector light never dims this tell.
+                for surface in (screen, self.glow.layer):
+                    effects.relay_destination(
+                        surface,
+                        v(hostile.dest_x, hostile.dest_y),
+                        rules.tell_progress(hostile, tuning),
+                    )
         for gx, gy, _life in self.blinks:
             effects.blink_ghost(screen, self.glow.layer, v(gx, gy))
 
+        for wave in world.shockwaves:
+            robots_art.shockwave(screen, v(wave.x, wave.y), wave.radius)
+            robots_art.shockwave(self.glow.layer, v(wave.x, wave.y), wave.radius)
+
         for hostile in world.hostiles:
-            relay = hostile.kind == "relay"
-            feet = (hostile.x, hostile.y + (RELAY_FEET if relay else MITE_FEET))
+            feet = (hostile.x, hostile.y + ROBOT_FEET.get(hostile.kind, 6))
             charging = rules.telegraphing(hostile, tuning)
             left = hostile.tell_dx < 0 if charging else player.x < hostile.x
 
-            def draw_machine(
-                hostile=hostile, feet=feet, charging=charging, left=left, relay=relay
-            ) -> None:
-                shadow(*v(*feet), 7 if relay else 6)
-                image = actors.relay(tick, left) if relay else actors.arc_mite(tick, left, charging)
+            def draw_robot(hostile=hostile, feet=feet, charging=charging, left=left) -> None:
+                shadow(*v(*feet), round(hostile.radius) + 1)
+                image = robot_image(hostile, tick, left, charging, run.tuning.breaker_recover)
                 if hostile.id in self.flashes:
                     image = effects.tinted(image, "fx.flash")
                 draw_at_feet(image, feet)
 
-            drawables.append((feet[1], draw_machine))
+            drawables.append((feet[1], draw_robot))
 
         for charge in world.charges:
             effects.charge(screen, self.glow.layer, v(charge.x, charge.y), charge.kind, t)
@@ -337,7 +629,17 @@ class PixelView:
 
             def draw_rival() -> None:
                 shadow(*v(*rival_feet), 18)
-                image = actors.regulator(POSES[rival.protocol], rival_left, needle)
+                fins_lit = (
+                    rival.protocol == "lateral" and rival.action == "tell" and (tick // 4) % 2 == 0
+                )
+                image = robots_art.regulator_mech(
+                    POSES[rival.protocol],
+                    rival_left,
+                    needle,
+                    fins_lit,
+                    kind=rival.kind,
+                    overload=rival.phase == 2,
+                )
                 if RIVAL_FLASH in self.flashes:
                     image = effects.tinted(image, "fx.flash")
                 draw_at_feet(image, rival_feet)
@@ -373,7 +675,7 @@ class PixelView:
             if hit_blink:
                 image = effects.tinted(image, "fx.flash")
             draw_at_feet(image, surge_feet)
-            hand = v(player.x + (-3 if facing_left else 3), player.y + 1)
+            hand = v(*aiming.hand(player, tuning))
             caster = pygame.transform.rotate(actors.caster(), -math.degrees(aim))
             screen.blit(
                 caster,
@@ -382,7 +684,7 @@ class PixelView:
                 ),
             )
             if self.muzzle:
-                tip = (hand[0] + player.aim_x * 9, hand[1] + player.aim_y * 9)
+                tip = v(*aiming.muzzle(player, tuning))
                 for surface in (screen, self.glow.layer):
                     pygame.draw.circle(
                         surface, rgb("player.core"), (round(tip[0]), round(tip[1])), 2
@@ -400,17 +702,43 @@ class PixelView:
 
         for hostile in world.hostiles:
             if rules.telegraphing(hostile, tuning):
-                effects.aim_tell(
-                    screen,
-                    self.glow.layer,
-                    v(hostile.x, hostile.y),
-                    math.atan2(hostile.tell_dy, hostile.tell_dx),
-                    rules.tell_progress(hostile, tuning),
-                    reach=64,
-                )
-            core = v(hostile.x, hostile.y - 2)
-            token = "power.blink" if hostile.kind == "relay" else "power.spark"
-            self.glow.layer.fill(rgb(token), (round(core[0]) - 1, round(core[1]), 2, 2))
+                progress = rules.tell_progress(hostile, tuning)
+                if hostile.kind == "breaker":  # the slam: a ring shows where it will reach
+                    effects.slam_tell(
+                        screen,
+                        self.glow.layer,
+                        v(hostile.x, hostile.y),
+                        tuning.wave_reach,
+                        progress,
+                    )
+                else:
+                    reach = {"sentry": 120, "sweeper": 80}.get(hostile.kind, 64)
+                    effects.aim_tell(
+                        screen,
+                        self.glow.layer,
+                        v(hostile.x, hostile.y),
+                        math.atan2(hostile.tell_dy, hostile.tell_dx),
+                        progress,
+                        reach=reach,
+                    )
+            token = CORE_GLOW.get(hostile.kind)
+            if token:
+                core = v(hostile.x, hostile.y)
+                self.glow.layer.fill(rgb(token), (round(core[0]) - 1, round(core[1]), 2, 2))
+        if rival is not None and rival.health > 0 and rival.sig_action == "tell":
+            boss = BY_KIND[rival.kind]
+            name = boss.overload if rival.phase == 2 else boss.signature
+            _, tell = rules.signature_timing(name, tuning)
+            effects.signature_tell(
+                screen,
+                self.glow.layer,
+                v(rival.x, rival.y),
+                name,
+                1.0 - rival.sig_timer / tell,
+                reach=tuning.quake_reach,
+                aim=math.atan2(rival.aim_y, rival.aim_x),
+                points=[v(x, y) for x, y in rules.summon_points(run.arena)],
+            )
         if rival is not None and rival.health > 0 and rules.rival_telegraphing(rival):
             effects.aim_tell(
                 screen,
@@ -422,10 +750,15 @@ class PixelView:
             )
 
         for shot in world.projectiles:
-            if shot.hostile and shot.radius > tuning.bolt_radius:
-                orb = _orb()
+            if shot.hostile and shot.kind in SHOT_ART:
+                image = SHOT_ART[shot.kind]()
+                if shot.kind == "needle":
+                    image = pygame.transform.rotate(
+                        image, -math.degrees(math.atan2(shot.vy, shot.vx))
+                    )
+                center = tuple(map(round, v(shot.x, shot.y)))
                 for surface in (screen, self.glow.layer):
-                    surface.blit(orb, orb.get_rect(center=tuple(map(round, v(shot.x, shot.y)))))
+                    surface.blit(image, image.get_rect(center=center))
             elif shot.hostile:
                 effects.bolt(screen, self.glow.layer, v(shot.x, shot.y))
             elif shot.kind == "spark":
@@ -437,6 +770,14 @@ class PixelView:
                     screen, self.glow.layer, v(shot.x, shot.y), math.atan2(shot.vy, shot.vx)
                 )
 
+        for x, y, angle, wide, shock, life in self.bursts:
+            reach = tuning.burst_wide_range if wide else tuning.burst_range
+            cone = tuning.burst_wide_cos if wide else tuning.burst_cos
+            effects.burst_cone(
+                screen, self.glow.layer, v(x, y), angle, reach, cone, life / 10, shock
+            )
+        for a, b, _life in self.chains:
+            effects.chain_bolt(screen, self.glow.layer, v(*a), v(*b))
         for spark in self.sparks:
             sx, sy = v(spark.x, spark.y)
             for surface in (screen, self.glow.layer):
@@ -463,6 +804,9 @@ class PixelView:
         if rival is not None and rival.health > 0:
             self.lighting.add(v(rival.x, rival.y), 40, "px.hostile.2", 25)
         self.lighting.apply(screen)
+        tint = tuple(round(c) for c in self.tint)
+        if tint != (255, 255, 255):
+            screen.fill(tint, special_flags=pygame.BLEND_RGB_MULT)
         self.glow.apply(screen)
 
         dodge_total = tuning.dodge_ticks + tuning.dodge_cooldown
@@ -485,8 +829,11 @@ class PixelView:
                 ),
                 rival_health=(max(0, rival.health) / rival.max_health) if rival else None,
                 rival_protocol=POSES[rival.protocol] if rival else None,
+                rival_name=BY_KIND[rival.kind].name if rival else "REGULATOR",
+                tick=tick,
             ),
         )
+        self._minimap(screen, run)
         if self.unlock_flash:
             screen.blit(_flash(VIEW, self.unlock_flash * 8), (0, 0))
         if self.notice:
@@ -508,67 +855,158 @@ class PixelView:
         kit: Kit | None = None,
         selected: int = 0,
         notice: str | None = None,
+        tuning: Tuning = DEFAULT,
+        title: str = "FUSE BOX",
     ) -> None:
-        """Between encounters: the stolen powers, the two slots and the one recipe."""
+        """The loadout screen (art direction, HUD layout): one framed panel like an inventory
+        screen. Header, the stolen powers with evolution pips (left), the equipped slots and
+        the fusion recipes (right), a detail line about the selected power, and one footer
+        line of controls. The Fuse Box adds its status and Continue."""
         kit = kit or Kit()
+        fuse_box = title == "FUSE BOX"
         w, h = screen.get_size()
-        screen.blit(_dim(screen.get_size(), 235), (0, 0))
-        hud.text(screen, "FUSE BOX", (w // 2, 3), "ui.text", "midtop")
-        hud.text(screen, f"ENCOUNTER {encounter} OF 3 NEXT", (w // 2, 12), "ui.dim", "midtop")
+        screen.blit(_dim(screen.get_size(), 210), (0, 0))
+        panel = pygame.Rect(10, 8, w - 20, h - 16)
+        screen.fill(rgb("px.outline"), panel)
+        pygame.draw.rect(screen, rgb("px.wall.2"), panel, 1)
+        left, right, top = panel.x + 6, panel.right - 6, panel.y + 4
 
-        hud.text(screen, "POWERS", (24, 25), "ui.dim")
-        if not kit.unlocked:
-            hud.text(screen, "NONE STOLEN YET", (24, 36), "px.floor.3")
-        for i, ability in enumerate(kit.unlocked):
-            y = 36 + i * 10
-            chosen = i == min(selected, len(kit.unlocked) - 1)
+        # Header.
+        hud.text(screen, title, (left, top), "ui.text")
+        context = f"ENCOUNTER {encounter} OF 3 NEXT" if fuse_box else f"SECTOR {encounter} PAUSED"
+        hud.text(screen, context, (right, top), "ui.dim", "topright")
+        screen.fill(rgb("px.wall.1"), (left, top + 11, right - left, 1))
+
+        # Left column: the stolen powers.
+        col_y = top + 15
+        hud.text(screen, "POWERS", (left, col_y), "ui.dim")
+        rows = list(kit.unlocked)
+        pick = min(selected, len(rows) - 1) if rows else -1
+        if not rows:
+            hud.text(screen, "NONE STOLEN YET", (left, col_y + 12), "px.floor.3")
+        for i, ability in enumerate(rows):
+            y = col_y + 11 + i * 11
+            chosen = i == pick
             if chosen:
-                hud.text(screen, ">", (16, y), "px.hazard.1")
+                screen.fill(rgb("px.wall.1"), (left - 2, y - 1, 104, 10))
             icon = effects.charge_icon(ability)
-            screen.blit(icon, icon.get_rect(midleft=(24, y + 3)))
-            hud.text(screen, NAMES[ability], (36, y), "ui.text" if chosen else "ui.dim")
+            screen.blit(icon, icon.get_rect(midleft=(left + 1, y + 4)))
+            hud.text(screen, NAMES[ability], (left + 12, y), "ui.text" if chosen else "ui.dim")
+            if ability in EVOLUTIONS:
+                count = min(kit.fragments.get(ability, 0), tuning.evolve_at)
+                for p in range(tuning.evolve_at):
+                    token = f"power.{ability}" if p < count else "px.floor.2"
+                    screen.fill(rgb(token), (left + 88 + p * 4, y + 3, 3, 3))
+        divider_x = left + 108
+        screen.fill(rgb("px.wall.1"), (divider_x, col_y, 1, 64))
 
-        hud.text(screen, "LOADOUT", (150, 25), "ui.dim")
+        # Right column: equipped slots, then the recipes.
+        rx = divider_x + 6
+        hud.text(screen, "EQUIPPED", (rx, col_y), "ui.dim")
+        card_w = (right - rx - 4) // 2
         for i, ability in enumerate(kit.slots):
-            x = 150 + i * 26
-            pygame.draw.rect(screen, rgb("px.floor.3"), (x, 35, 20, 20), 1)
-            hud.text(screen, "QE"[i], (x + 10, 56), "ui.dim", "midtop")
+            card = pygame.Rect(rx + i * (card_w + 4), col_y + 10, card_w, 16)
+            pygame.draw.rect(screen, rgb("px.wall.2"), card, 1)
+            hud.key_glyph(screen, "QE"[i], card.x + 2, card.y + 2, "ui.text")
             if ability:
                 icon = effects.charge_icon(ability)
-                screen.blit(icon, icon.get_rect(center=(x + 10, 45)))
+                screen.blit(icon, icon.get_rect(midleft=(card.x + 8, card.centery)))
+                hud.text(screen, hud.SHORT[ability], (card.x + 18, card.y + 4), "ui.text")
+            else:
+                hud.text(screen, "EMPTY", (card.x + 18, card.y + 4), "px.floor.3")
+        hud.text(screen, "FUSIONS", (rx, col_y + 31), "ui.dim")
+        for row, (a, b) in enumerate(RECIPE_ORDER):
+            y = col_y + 42 + row * 11
+            result = RECIPES[frozenset((a, b))]
+            for i, ability in enumerate((a, b, result)):
+                icon = effects.charge_icon(ability)
+                spot = icon.get_rect(center=(rx + 4 + i * 17, y + 4))
+                screen.blit(icon, spot)
+                if ability not in kit.unlocked:
+                    screen.blit(_dim(icon.get_size(), 170), spot)
+            hud.text(screen, "+", (rx + 13, y), "ui.dim", "midtop")
+            hud.text(screen, "=", (rx + 30, y), "ui.dim", "midtop")
+            missing = [p for p in (a, b) if p not in kit.unlocked]
+            if result in kit.unlocked:
+                status, token = "DONE", "power.blink"
+            elif missing:
+                status, token = f"NEED {missing[0].upper()}", "px.floor.3"
+            else:
+                status, token = "F FUSE", "px.hazard.1"
+            hud.text(screen, status, (right, y), token, "topright")
+            if result in kit.unlocked and self.fusion_flash > 0:  # the fusion just made
+                glow = round(255 * self.fusion_flash / FUSION_TICKS)
+                ring = pygame.Rect(rx - 3, y - 2, right - rx + 6, 12)
+                frame = pygame.Surface(ring.size, pygame.SRCALPHA)
+                pygame.draw.rect(frame, rgba("power.spark", glow), frame.get_rect(), 1)
+                screen.blit(frame, ring)
 
-        hud.text(screen, "RECIPE", (150, 65), "ui.dim")
-        for i, ability in enumerate(("spark", "blink", "arc_trail")):
-            icon = effects.charge_icon(ability)
-            screen.blit(icon, icon.get_rect(center=(156 + i * 22, 78)))
-        hud.text(screen, "+", (167, 74), "ui.dim", "midtop")
-        hud.text(screen, "=", (189, 74), "ui.dim", "midtop")
-        if "arc_trail" in kit.unlocked:
-            status, token = "FUSED", "power.blink"
-        elif "spark" in kit.unlocked and "blink" in kit.unlocked:
-            status, token = "F TO FUSE", "px.hazard.1"
+        # Detail line: the Fuse Box status (the approved D7 line always shows), else the
+        # selected power.
+        detail_y = col_y + 70
+        screen.fill(rgb("px.wall.1"), (left, detail_y - 3, right - left, 1))
+        if fuse_box and message:
+            lines, token = _wrap(message.upper(), 38), "px.lamp"
+        elif pick >= 0:
+            ability = rows[pick]
+            name = NAMES[ability]
+            info = DESCRIPTIONS[ability]
+            if evolved(kit.fragments, ability, tuning) and ability in EVOLVED_INFO:
+                info = EVOLVED_INFO[ability]
+            lines, token = _wrap(f"{name}: {info}", 38), "ui.dim"
         else:
-            status, token = "STEAL BOTH", "px.floor.3"
-        hud.text(screen, status, (178, 85), token, "midtop")
+            lines, token = ["DESTROY ROBOTS TO STEAL THEIR POWERS"], "ui.dim"
+        for i, line in enumerate(lines[:2]):
+            hud.text(screen, line, (left, detail_y + i * 9), token)
 
-        lines = [(line, "px.lamp") for line in _wrap(message.upper(), 40)] if message else []
-        if notice:
-            lines.append((notice, "power.spark"))
-        for i, (line, token) in enumerate(lines[:3]):
-            hud.text(screen, line, (w // 2, 96 + i * 9), token, "midtop")
-        hud.text(screen, "W S PICK   Q E EQUIP   F FUSE", (w // 2, 123), "ui.dim", "midtop")
-        prompt = "ENTER TO CONTINUE" if ready else "ROUTING POWER..."
-        hud.text(screen, prompt, (w // 2, 131), "px.hazard.1" if ready else "ui.dim", "midtop")
+        # Footer: one line of controls.
+        footer_y = panel.bottom - 11
+        if fuse_box:
+            end, end_token = (
+                ("ENTER CONTINUE", "px.hazard.1") if ready else ("ROUTING POWER", "ui.dim")
+            )
+        else:
+            end, end_token = "TAB RESUME", "px.hazard.1"
+        if notice:  # the result of the last key, in place of the controls until W or S
+            hud.text(screen, notice, (left, footer_y), "power.spark")
+        else:
+            hud.text(screen, "W/S PICK  Q/E EQUIP  F FUSE", (left, footer_y), "ui.dim")
+        hud.text(screen, end, (right, footer_y), end_token, "topright")
 
-    def draw_ending(self, screen: pygame.Surface, seconds: float, retries: int, shots: int) -> None:
+    def draw_ending(
+        self,
+        screen: pygame.Surface,
+        seconds: float,
+        retries: int,
+        shots: int,
+        powers: dict[str, int] | None = None,
+    ) -> None:
+        """The readout: completion time, short circuits, shots and the powers tried. No score
+        and no ranking (GDD)."""
         w, h = screen.get_size()
-        screen.blit(_dim(screen.get_size()), (0, 0))
-        hud.text(screen, "SECTOR CLEAR", (w // 2, 34), "ui.text", "midtop")
+        screen.blit(_dim(screen.get_size(), 235), (0, 0))
+        hud.text(screen, "SECTOR CLEAR", (w // 2, 14), "ui.text", "midtop")
+        hud.text(screen, "THE GRID IS BACK ONLINE", (w // 2, 25), "ui.dim", "midtop")
         minutes, rest = divmod(int(seconds), 60)
-        lines = (f"TIME {minutes:02d}:{rest:02d}", f"RETRIES {retries}", f"SHOTS {shots}")
-        for i, line in enumerate(lines):
-            hud.text(screen, line, (w // 2, 58 + i * 12), "ui.dim", "midtop")
-        hud.text(screen, "ESC TO QUIT", (w // 2, h - 30), "px.hazard.1", "midtop")
+        rows = (
+            ("TIME", f"{minutes:02d}:{rest:02d}"),
+            ("SHORT CIRCUITS", str(retries)),
+            ("SHOTS", str(shots)),
+        )
+        for i, (label, value) in enumerate(rows):
+            y = 44 + i * 11
+            hud.text(screen, label, (w // 2 - 6, y), "ui.dim", "topright")
+            hud.text(screen, value, (w // 2 + 6, y), "ui.text")
+        hud.text(screen, "POWERS TRIED", (w // 2, 82), "ui.dim", "midtop")
+        tried = [(name, n) for name, n in (powers or {}).items() if n and name in NAMES]
+        if not tried:
+            hud.text(screen, "GUN AND DODGE ONLY", (w // 2, 94), "px.floor.3", "midtop")
+        for i, (name, count) in enumerate(tried):
+            x = w // 2 - (len(tried) * 40) // 2 + i * 40 + 20
+            icon = effects.charge_icon(name)
+            screen.blit(icon, icon.get_rect(center=(x, 97)))
+            hud.text(screen, str(count), (x, 103), "ui.text", "midtop")
+        hud.text(screen, "ESC TO QUIT", (w // 2, h - 22), "px.hazard.1", "midtop")
         hud.text(screen, self.stamp, (4, h - 3), "px.floor.3", "bottomleft")
 
     def _banner(self, screen: pygame.Surface, outcome: str) -> None:

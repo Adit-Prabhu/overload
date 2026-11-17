@@ -109,7 +109,9 @@ def _confusable_pairs():
     groups = {
         "protocol pose parts": [actors.clamp_arm(), actors.insulate_plate(), actors.fin()],
         "protocol icons": [effects.protocol_icon(p) for p in ("clamp", "insulate", "oscillate")],
-        "charges": [effects.charge_icon(p) for p in ("spark", "blink", "burst")],
+        "charges": [
+            effects.charge_icon(p) for p in ("spark", "blink", "arc_trail", "burst", "shock_cone")
+        ],
         "characters": [
             actors.surge_frames()["idle"][0],
             actors.arc_mite_frames()[0],
@@ -126,6 +128,17 @@ def _confusable_pairs():
     yield pytest.param(effects.hostile_bolt(), shot, id="hostile bolt vs player shot")
     yield pytest.param(
         effects.hostile_bolt(), effects.charge_icon("burst"), id="hostile bolt vs Burst charge"
+    )
+
+    def spark(surface, c):
+        effects.spark_shot(surface, pygame.Surface(surface.get_size()), c, 0.0)
+
+    yield pytest.param(effects.hostile_bolt(), spark, id="hostile bolt vs Spark shot")
+    yield pytest.param(shot, spark, id="player shot vs Spark shot")
+    yield pytest.param(
+        effects.charge_icon("arc_trail"),
+        effects.protocol_icon("oscillate"),
+        id="Arc Trail charge vs Oscillate icon",
     )
 
 
@@ -202,3 +215,93 @@ def test_the_unlock_notice_names_the_power_from_the_event(headless_pygame) -> No
     assert view.notice[0] == "BLINK STOLEN"
     view.consume(run, [Event("unlock", 10, 10, 5, "spark"), Event("unlock", 9, 9, 6, "blink")])
     assert view.notice[0] == "SPARK AND BLINK STOLEN"
+
+
+def test_tell_states_look_different_from_rest_states(headless_pygame) -> None:
+    """The Oscillate volley tell lights the fins and the Relay's blink tell flips its lever,
+    so each tell changes the sprite itself, not only the overlay."""
+    rest, lit = actors.regulator("oscillate", False), actors.regulator("oscillate", False, lit=True)
+    assert pygame.image.tobytes(rest, "RGBA") != pygame.image.tobytes(lit, "RGBA")
+    idle, arming = actors.relay(False), actors.relay(False, arming=True)
+    assert pygame.image.tobytes(idle, "RGBA") != pygame.image.tobytes(arming, "RGBA")
+
+
+def test_the_fusion_flash_lasts_a_fixed_number_of_ticks(headless_pygame) -> None:
+    from overload.game.view import FUSION_TICKS, PixelView
+    from overload.sim.campaign import Campaign
+    from overload.sim.powers import Kit
+
+    campaign = Campaign(1)
+    view = PixelView(campaign)
+    view.flash_fusion()
+    screen = pygame.Surface((256, 144))
+    for _ in range(50):  # drawing many frames does not shorten it
+        view.draw_fuse_box(screen, 2, True, None, Kit(), 0, None)
+    assert view.fusion_flash == FUSION_TICKS
+    for _ in range(FUSION_TICKS):
+        view.update(campaign, (128, 72))
+    assert view.fusion_flash == 0
+
+
+def test_every_robot_and_shot_renders(headless_pygame) -> None:
+    from overload.art.pixel import robots
+
+    for left in (False, True):
+        robots.drone(0, left)
+        robots.drone(6, left)
+        robots.relay_bot(left)
+        robots.relay_bot(left, arming=True)
+        robots.breaker(left)
+        robots.breaker(left, raising=True)
+        robots.sweeper(0, left, revving=True)
+        robots.sentry(left)
+        for protocol in ("clamp", "insulate", "oscillate"):
+            robots.regulator_mech(protocol, left, needle=0.5, lit=True)
+    for shot in (robots.shard(), robots.shell(), robots.needle_dart(), robots.orb()):
+        assert shot.get_width() > 0
+    with pytest.raises(KeyError):
+        robots.regulator_mech("berserk", False)
+
+
+def test_robots_never_use_power_colors_except_their_core(headless_pygame) -> None:
+    """Power colors are for powers and power cores only (art direction rule)."""
+    from overload.art.pixel import robots
+
+    for name, rows, allowed in (
+        ("drone", robots._DRONE, {"Y", "y"}),
+        ("relay", robots._RELAY, {"K", "k"}),
+        ("breaker", robots._BREAKER["rest"], {"U", "u"}),
+        ("sweeper", robots._SWEEPER, set()),
+        ("sentry", robots._SENTRY, set()),
+    ):
+        used = {c for row in rows for c in row} & set("YyKkUu")
+        assert used <= allowed, name
+
+
+def test_the_slam_shake_never_moves_the_aim(headless_pygame) -> None:
+    from overload.game.view import PixelView
+    from overload.sim.campaign import Campaign
+
+    view = PixelView(Campaign(1))
+    still = view.camera_offset()
+    view.shake = 10
+    assert view.camera_offset() == still, "aiming converts the cursor with this"
+    assert view.jolt() != (0, 0) and max(map(abs, view.jolt())) <= 2
+
+
+def test_sector_variants_recolor_the_shell_but_not_the_danger_red(headless_pygame) -> None:
+    from overload.art.pixel import robots
+    from overload.game.view import tier_colors
+
+    stock = robots.drone(0, False)
+    for tier in (2, 3):
+        variant = tier_colors(stock, tier)
+        assert variant is tier_colors(stock, tier), "cached per frame"
+        colors = {
+            tuple(variant.get_at((x, y)))[:3]
+            for x in range(variant.get_width())
+            for y in range(variant.get_height())
+        }
+        assert rgb("px.hostile.2") not in colors
+        assert rgb("hostile.danger") in colors
+    assert tier_colors(stock, 1) is stock

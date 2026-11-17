@@ -21,6 +21,7 @@ from overload.agent.tactics import Decision
 from overload.session.trace import TraceWriter
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import InputFrame
+from overload.sim.powers import RECIPE_ORDER, RECIPES, Kit
 from overload.sim.tuning import TICK_RATE
 
 MIN_FUSE_TICKS = round(DEADLINE_SECONDS * TICK_RATE)
@@ -62,13 +63,11 @@ class Session:
                 self.log = ObservationLog(encounter)
                 self._trace("retry", encounter=encounter, retries=campaign.retries[encounter])
                 return
-            rival = campaign.world.rival
-            if rival is not None:
-                observe_world(self.log, campaign.world, (rival.x, rival.y))
+            observe_world(self.log, campaign.world)
             if campaign.stage != "encounter":
                 self._encounter_cleared(encounter)
         else:
-            campaign.step(frame)  # nothing moves, stale events are cleared
+            campaign.step(frame)  # the Surge stands still in the Fuse Box while the menu is open
             if campaign.stage == "fuse_box":
                 self.fuse_ticks += 1
                 self.pending_decision()
@@ -130,16 +129,19 @@ class Session:
         )
         return decision
 
+    def _menu_encounter(self) -> int:
+        """The encounter a loadout change applies to: the next one from the Fuse Box."""
+        campaign = self.campaign
+        return campaign.encounter + (1 if campaign.stage == "fuse_box" else 0)
+
     def equip(self, slot: int, ability: str) -> bool:
         ok = self.campaign.equip(slot, ability)
-        self._trace(
-            "equip", encounter=self.campaign.encounter + 1, slot=slot, ability=ability, ok=ok
-        )
+        self._trace("equip", encounter=self._menu_encounter(), slot=slot, ability=ability, ok=ok)
         return ok
 
     def fuse(self, a: str, b: str) -> str:
         result = self.campaign.fuse(a, b)
-        self._trace("fuse", encounter=self.campaign.encounter + 1, recipe=[a, b], result=result)
+        self._trace("fuse", encounter=self._menu_encounter(), recipe=[a, b], result=result)
         return result
 
     # Traces ------------------------------------------------------------------------------
@@ -165,31 +167,45 @@ class Session:
 
 
 FUSE_NOTICES = {
-    "fused": "ARC TRAIL FUSED. EQUIP IT WITH Q OR E",
-    "already_fused": "ARC TRAIL IS ALREADY FUSED",
-    "missing": "ONLY SPARK + BLINK FUSE. STEAL BOTH",
-    "unsupported": "ONLY SPARK + BLINK FUSE",
+    "fused": "FUSED. Q OR E EQUIPS IT",
+    "already_fused": "EVERY RECIPE IS FUSED",
+    "missing": "STEAL BOTH POWERS FIRST",
+    "unsupported": "STEAL BOTH POWERS FIRST",
 }
+
+
+def next_recipe(kit) -> tuple[str, str]:
+    """The recipe F tries: the first one not fused yet whose ingredients are both stolen,
+    else the first one not fused yet (it will report what is missing), else the last."""
+    open_recipes = [
+        (a, b) for a, b in RECIPE_ORDER if RECIPES[frozenset((a, b))] not in kit.unlocked
+    ]
+    for a, b in open_recipes:
+        if a in kit.unlocked and b in kit.unlocked:
+            return a, b
+    return open_recipes[0] if open_recipes else RECIPE_ORDER[-1]
 
 
 class FuseBoxMenu:
     """The loadout and fusion menu. Keys: up and down pick a power, q and e equip it to
-    that slot, fuse tries the one supported recipe. Returns each simulation-affecting action
+    that slot, fuse tries the next open recipe. Returns each simulation-affecting action
     so the caller can record it for the replay."""
 
     def __init__(self) -> None:
         self.selected = 0
         self.notice: str | None = None
+        self.last_result = ""
 
     def reset(self) -> None:
         self.selected = 0
         self.notice = None
 
     def press(self, session: Session, key: str) -> list | None:
-        rows = session.campaign.kit.unlocked
+        rows = session.campaign.world.unlocked
         if key in ("up", "down") and rows:
             step = -1 if key == "up" else 1
             self.selected = (self.selected + step) % len(rows)
+            self.notice = None  # a new selection replaces the last notice
         elif key in ("q", "e") and rows:
             slot = 0 if key == "q" else 1
             ability = rows[min(self.selected, len(rows) - 1)]
@@ -197,6 +213,12 @@ class FuseBoxMenu:
             self.notice = None
             return ["equip", slot, ability]
         elif key == "fuse":
-            self.notice = FUSE_NOTICES[session.fuse("spark", "blink")]
-            return ["fuse", "spark", "blink"]
+            a, b = next_recipe(Kit.from_world(session.campaign.world))
+            result = session.fuse(a, b)
+            self.last_result = result
+            self.notice = FUSE_NOTICES[result]
+            if result == "fused":
+                name = RECIPES[frozenset((a, b))].replace("_", " ").upper()
+                self.notice = f"{name} FUSED"  # short: it shares the footer line
+            return ["fuse", a, b]
         return None

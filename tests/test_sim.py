@@ -108,17 +108,17 @@ def test_pinned_hashes_match_across_python_versions() -> None:
     If a deliberate rule or tuning change moves these, update them in the same PR and say so
     in its description. An unexplained change means determinism broke.
     """
-    assert DEFAULT.tuning_id() == "8d6904ae"
-    assert run_all(21, scripted_inputs(21, 5000)).state_hash() == "e586ef5b0b639a47"
-    assert run_all(3, scripted_inputs(9, 1200)).state_hash() == "d29ca25e322449cf"
+    assert DEFAULT.tuning_id() == "00176395"
+    assert run_all(21, scripted_inputs(21, 5000)).state_hash() == "bea705f5866c733d"
+    assert run_all(3, scripted_inputs(9, 1200)).state_hash() == "e6b2a49b701d2cce"
 
 
 @pytest.mark.parametrize(
     "change",
     [
-        {"arc_mite_tell": 12},
-        {"arc_mite_recovery": 5},
-        {"arc_mite_fire_interval": 40},
+        {"drone_tell": 12},
+        {"drone_recovery": 5},
+        {"drone_fire_interval": 40},
         {"dodge_speed": 14.0},
         {"shot_speed": 12.0},
     ],
@@ -161,9 +161,9 @@ def test_invariants_hold_through_long_random_play() -> None:
 
 
 def test_tells_meet_the_readability_minimums() -> None:
-    assert DEFAULT.arc_mite_tell >= 0.40 * TICK_RATE
-    assert DEFAULT.arc_mite_fire_interval - DEFAULT.arc_mite_tell >= DEFAULT.arc_mite_recovery
-    assert DEFAULT.arc_mite_recovery >= 0.25 * TICK_RATE
+    assert DEFAULT.drone_tell >= 0.40 * TICK_RATE
+    assert DEFAULT.drone_fire_interval - DEFAULT.drone_tell >= DEFAULT.drone_recovery
+    assert DEFAULT.drone_recovery >= 0.25 * TICK_RATE
 
 
 def test_every_shot_is_preceded_by_a_full_tell() -> None:
@@ -176,7 +176,7 @@ def test_every_shot_is_preceded_by_a_full_tell() -> None:
                 tell_started[event.ref] = run.world.tick
             elif event.kind == "bolt":
                 assert event.ref in tell_started
-                assert run.world.tick - tell_started[event.ref] >= DEFAULT.arc_mite_tell
+                assert run.world.tick - tell_started[event.ref] >= DEFAULT.drone_tell
                 del tell_started[event.ref]
 
 
@@ -186,7 +186,7 @@ def test_every_shot_is_preceded_by_a_full_tell() -> None:
 def test_holding_fire_respects_the_cooldown() -> None:
     run = Run(1)
     run.world.hostiles.clear()
-    rules.spawn_arc_mite(run.world, 380, 200)
+    rules.spawn_drone(run.world, 380, 200)
     run.world.hostiles[0].fire_timer = 10_000
     shots = 0
     for _ in range(100):

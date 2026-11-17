@@ -43,9 +43,11 @@ Use these names everywhere: UI text, logs shown to players, recordings and docs.
 | Clamp protocol | Rival tactic that closes distance | `pressure` |
 | Insulate protocol | Rival tactic that holds you at range | `spacing` |
 | Oscillate protocol | Rival tactic that strafes. The neutral default | `lateral` |
-| Arc Mite | Enemy that carries Spark | `enemy_spark` |
-| Relay | Enemy that carries Blink | `enemy_blink` |
-| Coil | Enemy that carries Burst (ceiling content) | `enemy_burst` |
+| Arc Drone | Robot that carries Spark (was the Arc Mite before the Nov 17 overhaul) | `drone` |
+| Relay Bot | Robot that carries Blink | `relay` |
+| Breaker | Robot that carries Burst (was the Coil) | `breaker` |
+| Sweeper | Robot that rushes and carries nothing | `sweeper` |
+| Sentry | Turret robot that carries nothing | `sentry` |
 | Charge | A power fragment dropped by an enemy | `fragment` |
 | Fuse Box | The safe room for loadout and fusion | `safe_room` |
 | Substation hall | The arena | `arena` |
@@ -112,6 +114,7 @@ Timing standards apply to both comparison conditions identically:
 | --- | --- | --- |
 | Enemy attack | ≥ 0.40 s | ≥ 0.25 s |
 | Regulator attack | ≥ 0.50 s | ≥ 0.60 s after lunges |
+| Chassis signature (ring, quake, summon, spiral) | ≥ 0.50 s, the protocol waits while it runs | the signature's own rest (4 to 7 s) |
 | Relay blink destination | 0.50 s marker before arrival | |
 | Protocol boot at encounter start | 1.5 s pose, sound and icon | |
 
@@ -132,12 +135,13 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | ID | Asset | Look | Motion and tells | Pri | Status |
 | --- | --- | --- | --- | --- | --- |
 | CH-01 | Surge | Lineworker: white hard hat with a headlamp and reflective band, goggles, teal jacket with a reflective strip, utility belt, battery pack with two power sockets, siphon glove, spark caster | 2-frame idle, 4-frame walk, dodge ghosts, hit flicker, headlamp light follows the aim | P0 | Done |
-| CH-02 | Regulator | Orange machine with a big gauge face, ceramic insulator shoulders, vents, status lights, hazard-striped hip, treads. The needle tracks the Surge | Pose per protocol, protocol boot cue | P0 | Done (poses), boot cue pending |
-| CH-02a | Clamp protocol | Pincers forward | Lunge with a filling tell, then recovery | P0 | Pose done |
-| CH-02b | Insulate protocol | Hatched shield plates on both sides | Backs off, lays hatched hazard tiles, slow orbs | P0 | Pose done |
-| CH-02c | Oscillate protocol | Side thruster fins | Strafes, fins flash before a volley | P0 | Pose done |
+| CH-02 | Regulator | Orange machine with a big gauge face, ceramic insulator shoulders, vents, status lights, hazard-striped hip, treads. The needle tracks the Surge | Pose per protocol, protocol boot cue | P0 | Done (poses and boot cue: shield ring, protocol icon and sting) |
+| CH-02d | Regulator chassis (Nov 17) | One mech per sector chamber, same silhouette and protocol arms so it stays the same rival. Linesman: orange shell, one amber beacon. Transformer: brass shell (`px.coil`), coil bands, two ceramic bushings on its head. Grid Core: violet shell (`px.core`), magenta gauge rim and a crown of three magenta pylons. Overloaded, its shell cracks with red light and its eyes go pink | Signature tells: a filling dot ring plus eight growing spokes (ring), a dotted ring at full reach (quake), warp markers (summon), two magenta arms (spiral) | P0 | Done |
+| CH-02a | Clamp protocol | Pincers forward | Lunge with a filling tell, then recovery | P0 | Done |
+| CH-02b | Insulate protocol | Hatched shield plates on both sides | Backs off, lays hatched hazard tiles, slow orbs | P0 | Done |
+| CH-02c | Oscillate protocol | Side thruster fins | Strafes, fins flash before a volley | P0 | Done (fins flash during the volley tell, with the aim line and ring) |
 | CH-03 | Arc Mite | Beetle machine with a shiny shell, a glowing bolt core, a sparking antenna, one eye, jointed legs | Legs cycle, faster while charging. Dotted aim line and filling ring for 0.45 s, then a spiked bolt | P0 | Done |
-| CH-04 | Relay | Boxy machine with a lever switch, visor eyes, a diamond core window, a status light, treads | Lever flips. A hatched landing diamond shows 0.5 s before it blinks | P0 | Drawn, behavior in task 9 |
+| CH-04 | Relay | Boxy machine with a lever switch, visor eyes, a diamond core window, a status light, treads | Lever flips. A hatched landing diamond shows 0.5 s before it blinks | P0 | Done (the lever flips down while the landing diamond shows) |
 | CH-05 | Coil | Coil-spring machine with a ring core | Coils tighten, then a shockwave | P2 | Not started |
 
 ### Abilities
@@ -145,16 +149,16 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | --- | --- | --- | --- | --- |
 | AB-01 | Gun shot | Small white streak with glow | P0 | Done |
 | AB-02 | Dodge | Fading white ghosts of the Surge | P0 | Done |
-| AB-03 | Spark | Bolt projectile | P0 | Symbol done, effect in task 8 |
-| AB-04 | Blink | Diamond at departure and arrival | P0 | Diamond done |
+| AB-03 | Spark | Bolt projectile | P0 | Done |
+| AB-04 | Blink | Diamond at departure and arrival | P0 | Done |
 | AB-05 | Arc Trail | Bolt line between two Blink diamonds | P0 | Done |
-| AB-06 to 08 | Burst, Shock Cone, evolutions | Ring-based effects | P2 | Not started |
+| AB-06 to 08 | Burst, Shock Cone, evolutions | Magenta ray cone (wider when evolved), Shock Cone adds yellow sparks, chain bolts between robots, Overdrive ghost trail | P2 | Done (overhaul step 4) |
 
 ### Pickups, telegraphs and icons
 | ID | Asset | Pri | Status |
 | --- | --- | --- | --- |
 | PK-01 | Charges (bolt, diamond, ring) that float and glow | P0 | Done |
-| PK-02, PK-03 | Unlock and fusion flashes | P0 | Task 8 |
+| PK-02, PK-03 | Unlock and fusion flashes | P0 | Done. The fusion rings and the Relay's arming lever are on the contact sheet. The unlock flash and the white fusion flash are full-screen effects, checked in play |
 | TL-01 | Aim tell (dotted line, filling ring of dots) | P0 | Done |
 | TL-02 | Relay landing diamond (hatched) | P0 | Done |
 | TL-03 | Hazard tile (hatching fills over the tell) | P0 | Done |
@@ -170,10 +174,34 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | EN-05 | Props: transformer, switchgear cabinet, insulator stack, cable reel, crate, oil drum | P0 | Done |
 | EN-06 | Stenciled signage on walls and floors | P0 | Done |
 | EN-07 | Blackout lighting: lamp and overhead pools, headlamp, glow | P0 | Done |
-| EN-08 | Fuse Box room | P0 | Task 8 |
-| EN-09 | Lighting states per encounter (standby, rising, overload) | P1 | Not started |
+| EN-08 | Fuse Box room | P0 | Fuse Box menu screen done over the dimmed room. A separate room is not drawn |
+| EN-09 | Lighting states per encounter (standby, rising, overload) | P1 | Partly done: one light per sector (below) |
+| EN-10 | Sector identity (Nov 17) | P0 | Done, see below |
+
+#### Sector identity (Nov 17)
+Each sector should read as a different part of the station within a second of walking in, without changing the rules.
+
+| Sector | Place | Rooms | Floor | Light | Robots |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Switchyard | Open halls with transformers and a conduit cross | Steel tiles, hazard keep-out paint | Untinted | Stock orange shells |
+| 2 | Cooling plant | Pipe walls that split the room into lanes, a hall of square pillars, drums and crates | Cracked concrete | Cold (`px.tint.2`, multiplied) | Cooled: teal shells (`px.conduit`, `px.jacket`, kept off Blink cyan), stock stats |
+| 3 | Grid core | Bus bars on lit conduit lines, four pillars around a conduit square, grates | Grates and lit conduits | Hot (`px.tint.3`, multiplied) | Overcharged: violet shells (`px.core`), a little tougher and quicker |
+
+The light eases in as the Surge walks into a sector's room (half way in about 0.3 s, nearly all the way in about 1.2 s). Tells, shots and powers are also drawn on the glow layer after the tint, so their danger red and power colors never shift. Sprites themselves take the room's light. Robot recolors swap only the shell ramp: the danger red of eyes stays, and the bright rim around some eyes shares the shell highlight, so it takes the sector color.
 
 ### UI and HUD
+#### HUD layout (Nov 17 redesign)
+The view is only 256 x 144, so every HUD pixel competes with the fight. Rules, after how small-resolution roguelikes handle it (Soul Knight, Enter the Gungeon, Hades):
+
+1. **Footprint under 10 percent, corners only, 4 px margins.** No big panels: elements sit on the scene with the shared 1 px outline and a drop shadow.
+2. **Only what matters mid-fight.** Health, power readiness, where you are, the boss. Control hints live on the title screen's controls page and in the loadout menu footer, not on screen.
+3. **Health, top left:** a battery glyph and one compact pip per point (about 50 x 10 px). Pips turn red at 2 or less and the battery glyph pulses. Dodge readiness is a 1 px line under them.
+4. **Minimap, top right:** a schematic of the 5 x 3 room grid (about 50 x 22 px), not a scaled map. Rooms appear once seen or once a door to them is known. Current room white, cleared grey, the locked room red, a dot for chambers and Fuse Boxes.
+5. **Powers, bottom right:** two 18 px slots with a small Q or E tab above each. A dark fill drains while a power cools, and the border goes bright when it is ready. Names appear in the loadout menu, not here.
+6. **Boss, top center, only during the fight:** the name and a thin bar.
+
+**Loadout and Fuse Box screen:** one framed panel over a darkened scene, laid out like an inventory screen. A header with the title and context. Left: the stolen powers, each with pips toward its evolution. Right: the two equipped slots as cards, then one row per fusion recipe (the two ingredients and the result as icons) with a status of F FUSE, DONE or what is missing, and a brief glow around a recipe just fused. A detail line describes the selected power. One footer line of controls, which the result of the last key (a fusion, or what is missing) replaces until the next pick. The Fuse Box uses the same panel. Its detail line is always the link status (the approved D7 line when the link is down), plus Continue.
+
 | ID | Asset | Pri | Status |
 | --- | --- | --- | --- |
 | UI-01 | Battery charge cells and dodge bar, top left | P0 | Done |
@@ -181,8 +209,8 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | UI-03 | Regulator bar with protocol icon, top center | P0 | Done |
 | UI-04 | Pixel reticle | P0 | Done |
 | UI-05 | Banners ("SHORT CIRCUIT", "SECTOR CLEAR") with the build stamp | P0 | Done, labels approved |
-| UI-06 | Fuse Box link status message | P0 | Task 5 |
-| UI-07 | Title screen and wordmark | P1 | Not started |
+| UI-06 | Fuse Box link status message | P0 | Done (decision D7, live condition only) |
+| UI-07 | Title screen and wordmark | P1 | Done (Start, Controls, Quit over the drifting substation) |
 | UI-08 | Settings (volume, screen shake, flash reduction) | P1 | Not started |
 | UI-10 | Font: Silkscreen (SIL OFL 1.1), native 8 px | P0 | Done |
 
@@ -222,6 +250,7 @@ All sound effects come from the same small synth as the music (saw, square, sine
 | Powers | Spark, Blink depart and arrive, Blink deny, Arc Trail buzz | P0 |
 | Enemies | Arc Mite tell and zap, Relay click and blink, enemy death short-circuit | P0 |
 | Regulator | Tread rumble, three protocol stings (MU-03), lunge thunk, hazard fill, orb fire, hit, defeated | P0 |
+| Regulator chassis | Signature wind-up (`boss_charge`, ducks the music like other tells), ring burst (also the spiral), quake, summon, overload alarm | P0 |
 | Progression | Charge pickup, unlock, fusion | P0 |
 | UI | Hover, confirm, deny, link status blip | P1 |
 | Ambient | Substation hum bed, emergency lamp buzz, Fuse Box room tone | P1 |

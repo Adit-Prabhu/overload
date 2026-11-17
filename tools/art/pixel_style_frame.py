@@ -80,7 +80,7 @@ def compose() -> pygame.Surface:
             lambda: draw_feet(actors.arc_mite(5, facing_left=True, charging=True), mite_feet, 7),
         )
     )
-    drawables.append((relay_feet[1], lambda: draw_feet(actors.relay(0, False), relay_feet, 7)))
+    drawables.append((relay_feet[1], lambda: draw_feet(actors.relay(False), relay_feet, 7)))
 
     def draw_surge():
         sprite = actors.surge("walk", 6, facing_left=False, sockets=("spark", "blink"))

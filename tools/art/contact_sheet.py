@@ -103,6 +103,7 @@ def items() -> list[tuple[str, Draw]]:
         entries.append((f"relay {i + 1}", centered(image)))
     for protocol in ("clamp", "insulate", "oscillate"):
         entries.append((f"reg {protocol}", centered(actors.regulator(protocol, False, -2.4))))
+    entries.append(("reg volley tell", centered(actors.regulator("oscillate", False, -2.4, True))))
     for name, image in (
         ("transformer", tiles.transformer()),
         ("cabinet", tiles.cabinet()),
@@ -112,7 +113,7 @@ def items() -> list[tuple[str, Draw]]:
         ("drum", tiles.drum()),
     ):
         entries.append((name, centered(image)))
-    for power in ("spark", "blink", "burst"):
+    for power in ("spark", "blink", "arc_trail", "burst", "shock_cone"):
         entries.append((f"{power} charge", centered(effects.charge_icon(power))))
     for protocol in ("clamp", "insulate", "oscillate"):
         entries.append((f"{protocol} icon", centered(effects.protocol_icon(protocol))))
@@ -122,7 +123,9 @@ def items() -> list[tuple[str, Draw]]:
 
     entries += [
         ("hostile bolt", centered(effects.hostile_bolt())),
+        ("orb", centered(pygame.transform.scale_by(effects.hostile_bolt(), 2))),
         ("player shot", lambda t, c: effects.player_shot(t, scratch(), c, 0.0)),
+        ("spark shot", lambda t, c: effects.spark_shot(t, scratch(), c, 0.0)),
         (
             "arc trail",
             lambda t, c: effects.arc_trail(
@@ -135,6 +138,8 @@ def items() -> list[tuple[str, Draw]]:
             lambda t, c: effects.aim_tell(t, scratch(), (c[0] - 22, c[1]), 0.0, 0.7, reach=40),
         ),
         ("relay target", lambda t, c: effects.relay_destination(t, c, 0.6)),
+        ("relay arming", centered(actors.relay(False, arming=True))),
+        ("fusion rings", lambda t, c: effects.fusion_rings(t, c, 0.7)),
         ("hazard tile", lambda t, c: effects.hazard_tile(t, scratch(), (c[0] - 8, c[1] - 8), 0.7)),
         ("reticle", centered(effects.reticle())),
     ]

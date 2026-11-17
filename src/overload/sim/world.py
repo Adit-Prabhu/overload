@@ -3,41 +3,63 @@
 Order inside a tick (fixed, so outcomes are deterministic):
 1. aim, 2. dodge start, 3. player movement, 4. firing, 5. powers (Q then E), 6. hostiles
 (tells, Relay blinks, bolts), 7. the Regulator (boot, protocol behavior), 8. hazard tiles,
-9. projectile movement, 10. Arc Trail pulses, 11. hits (destroyed machines drop charges),
-12. absorbing charges, 13. timers and cooldowns, 14. outcome (player down takes precedence
-over clearing the room in the same tick, and a win absorbs every charge left), 15. tick
-counter.
+9. body collision (the Surge is pushed out of the Regulator and machines unless dodging),
+10. projectile movement (a shot stopped by a secret wall cracks it), 11. Arc Trail pulses,
+12. hits (destroyed machines drop charges), 13. absorbing charges, 14. floor rooms (warps,
+locking, waves, clearing), 15. timers and cooldowns, 16. outcome (player down takes
+precedence over clearing the room in the same tick, and a win absorbs every charge left),
+17. tick counter.
 """
 
 from __future__ import annotations
 
 import random
 
+from overload.sim import floorplay, robots
+from overload.sim.aiming import aim, launch_point
 from overload.sim.arena import SUBSTATION, Arena
-from overload.sim.damage import damage_rival
+from overload.sim.bosses import BY_KIND, COS20, RING, SIN20
+from overload.sim.collision import blocked, move_body  # noqa: F401 (move_body re-exported)
+from overload.sim.damage import damage_rival, hurt_player
 from overload.sim.geometry import (
     circle_hits_rect,
     circles_overlap,
-    clamp_inside,
     length,
     normalize,
     outside_bounds,
-    push_out_of_rect,
 )
 from overload.sim.inputs import InputFrame
 from overload.sim.powers import (
+    DROPS,
     absorb_charges,
     drop_charge,
+    spark_chain,
     tick_cooldowns,
     tick_trails,
     use_powers,
 )
-from overload.sim.state import Event, Hazard, Hostile, Player, Projectile, Rival, World
+from overload.sim.spawns import (  # noqa: F401 (re-exported for callers of the rules)
+    PROTOCOLS,
+    spawn_drone,
+    spawn_relay,
+    spawn_rival,
+)
+from overload.sim.state import (
+    Event,
+    Hazard,
+    Hostile,
+    Player,
+    Projectile,
+    Rival,
+    Shockwave,
+    Warp,
+    World,
+)
 from overload.sim.tuning import DEFAULT, Tuning
 
 
 def new_world(seed: int, tuning: Tuning = DEFAULT, arena: Arena = SUBSTATION) -> World:
-    """Fresh practice world: the Surge at its spawn and Arc Mites at the practice spawns."""
+    """Fresh practice world: the Surge at its spawn and Arc Drones at the practice spawns."""
     sx, sy = arena.player_spawn
     world = World(
         seed=seed,
@@ -45,39 +67,8 @@ def new_world(seed: int, tuning: Tuning = DEFAULT, arena: Arena = SUBSTATION) ->
         player=Player(x=sx, y=sy, charge=tuning.player_max_charge),
     )
     for x, y in arena.practice_spawns:
-        spawn_arc_mite(world, x, y, tuning)
+        spawn_drone(world, x, y, tuning)
     return world
-
-
-def spawn_arc_mite(world: World, x: float, y: float, tuning: Tuning = DEFAULT) -> Hostile:
-    interval = tuning.arc_mite_fire_interval
-    hostile = Hostile(
-        id=world.new_id(),
-        kind="arc_mite",
-        x=x,
-        y=y,
-        radius=tuning.arc_mite_radius,
-        health=tuning.arc_mite_health,
-        max_health=tuning.arc_mite_health,
-        fire_timer=interval // 2 + world.rng.randrange(interval // 2),
-    )
-    world.hostiles.append(hostile)
-    return hostile
-
-
-def spawn_relay(world: World, x: float, y: float, tuning: Tuning = DEFAULT) -> Hostile:
-    hostile = Hostile(
-        id=world.new_id(),
-        kind="relay",
-        x=x,
-        y=y,
-        radius=tuning.relay_radius,
-        health=tuning.relay_health,
-        max_health=tuning.relay_health,
-        fire_timer=tuning.relay_idle + world.rng.randrange(tuning.relay_idle),
-    )
-    world.hostiles.append(hostile)
-    return hostile
 
 
 def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena = SUBSTATION):
@@ -85,18 +76,20 @@ def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena =
     world.events.clear()
     if world.outcome != "playing":
         return
-    _aim(world.player, inp)
+    aim(world.player, inp, tuning)
     _dodge(world, inp, tuning)
-    _move_player(world.player, inp, tuning, arena)
-    _fire(world, inp, tuning)
+    _move_player(world, inp, tuning, arena)
+    _fire(world, inp, tuning, arena)
     use_powers(world, inp, tuning, arena)
-    _hostiles(world, tuning, arena)
+    robots.tick(world, tuning, arena)
     _rival(world, tuning, arena)
     _hazards(world, tuning)
-    _move_projectiles(world, arena)
+    _separate(world, tuning, arena)
+    _move_projectiles(world, tuning, arena)
     tick_trails(world, tuning)
     _hits(world, tuning)
     absorb_charges(world, tuning)
+    floorplay.tick(world, tuning, arena)
     _timers(world.player)
     tick_cooldowns(world)
     _outcome(world, tuning)
@@ -104,27 +97,13 @@ def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena =
 
 
 def telegraphing(hostile: Hostile, tuning: Tuning = DEFAULT) -> bool:
-    """True while a shot is being aimed (the dotted line and filling ring)."""
-    if hostile.kind == "relay":
-        return hostile.phase == "aim"
-    return 0 < hostile.fire_timer <= tuning.arc_mite_tell
+    """True while a robot lines up an attack (see overload.sim.robots)."""
+    return robots.telegraphing(hostile, tuning)
 
 
 def tell_progress(hostile: Hostile, tuning: Tuning = DEFAULT) -> float:
-    """0 when a tell starts, 1 at the moment of firing (or, for a Relay's landing marker,
-    of arriving)."""
-    if hostile.kind == "relay":
-        total = {"aim": tuning.relay_aim_tell, "blink": tuning.relay_blink_tell}.get(hostile.phase)
-        return 1.0 - hostile.fire_timer / total if total else 0.0
-    if not telegraphing(hostile, tuning):
-        return 0.0
-    return 1.0 - hostile.fire_timer / tuning.arc_mite_tell
-
-
-def _aim(player: Player, inp: InputFrame) -> None:
-    ax, ay = normalize(inp.aim_x - player.x, inp.aim_y - player.y)
-    if ax or ay:
-        player.aim_x, player.aim_y = ax, ay
+    """0 when a tell starts, 1 when the attack (or a Relay Bot's landing) happens."""
+    return robots.tell_progress(hostile, tuning)
 
 
 def _dodge(world: World, inp: InputFrame, tuning: Tuning) -> None:
@@ -140,25 +119,31 @@ def _dodge(world: World, inp: InputFrame, tuning: Tuning) -> None:
     world.events.append(Event("dodge", player.x, player.y))
 
 
-def _move_player(player: Player, inp: InputFrame, tuning: Tuning, arena: Arena) -> None:
+def _move_player(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> None:
+    player = world.player
     if player.dodging:
         vx, vy = player.dodge_dx * tuning.dodge_speed, player.dodge_dy * tuning.dodge_speed
     else:
         nx, ny = normalize(inp.move_x, inp.move_y)
-        vx, vy = nx * tuning.player_speed, ny * tuning.player_speed
-    player.x, player.y = move_body(player.x, player.y, vx, vy, tuning.player_radius, arena)
+        speed = tuning.player_speed * (tuning.boost_factor if player.boost > 0 else 1.0)
+        vx, vy = nx * speed, ny * speed
+    player.x, player.y = move_body(player.x, player.y, vx, vy, tuning.player_radius, arena, world)
 
 
-def _fire(world: World, inp: InputFrame, tuning: Tuning) -> None:
+def _fire(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> None:
     player = world.player
     if not inp.fire or player.gun_cooldown > 0 or player.dodging:
         return
-    offset = tuning.player_radius + tuning.shot_radius + 2.0
+    player.gun_cooldown = tuning.gun_cooldown
+    world.events.append(Event("shot", player.x, player.y))  # a visible shot, even a fizzle
+    start = launch_point(world, tuning, arena)
+    if start is None:
+        return
     world.projectiles.append(
         Projectile(
             id=world.new_id(),
-            x=player.x + player.aim_x * offset,
-            y=player.y + player.aim_y * offset,
+            x=start[0],
+            y=start[1],
             vx=player.aim_x * tuning.shot_speed,
             vy=player.aim_y * tuning.shot_speed,
             radius=tuning.shot_radius,
@@ -167,124 +152,21 @@ def _fire(world: World, inp: InputFrame, tuning: Tuning) -> None:
             ttl=tuning.shot_ttl,
         )
     )
-    player.gun_cooldown = tuning.gun_cooldown
-    world.events.append(Event("shot", player.x, player.y))
 
 
-def _hostiles(world: World, tuning: Tuning, arena: Arena) -> None:
-    player = world.player
-    for hostile in world.hostiles:
-        if hostile.kind == "relay":
-            _relay(world, hostile, tuning, arena)
-            continue
-        hostile.fire_timer -= 1
-        if hostile.fire_timer == tuning.arc_mite_tell:
-            dx, dy = normalize(player.x - hostile.x, player.y - hostile.y)
-            hostile.tell_dx, hostile.tell_dy = (dx, dy) if (dx or dy) else (1.0, 0.0)
-            world.events.append(Event("tell", hostile.x, hostile.y, hostile.id))
-        if hostile.fire_timer <= 0:
-            offset = hostile.radius + tuning.bolt_radius + 1.0
-            world.projectiles.append(
-                Projectile(
-                    id=world.new_id(),
-                    x=hostile.x + hostile.tell_dx * offset,
-                    y=hostile.y + hostile.tell_dy * offset,
-                    vx=hostile.tell_dx * tuning.bolt_speed,
-                    vy=hostile.tell_dy * tuning.bolt_speed,
-                    radius=tuning.bolt_radius,
-                    damage=tuning.bolt_damage,
-                    hostile=True,
-                    ttl=tuning.bolt_ttl,
-                    kind="bolt",
-                )
-            )
-            hostile.fire_timer = tuning.arc_mite_fire_interval
-            world.events.append(Event("bolt", hostile.x, hostile.y, hostile.id))
-
-
-# Eight hop directions for the Relay (unit vectors, exact constants, no runtime trig).
-_DIAG = 0.7071067811865476
-_HOPS = (
-    (1.0, 0.0),
-    (_DIAG, _DIAG),
-    (0.0, 1.0),
-    (-_DIAG, _DIAG),
-    (-1.0, 0.0),
-    (-_DIAG, -_DIAG),
-    (0.0, -1.0),
-    (_DIAG, -_DIAG),
-)
-
-
-def _relay(world: World, relay: Hostile, tuning: Tuning, arena: Arena) -> None:
-    """Idle, then mark a landing spot (0.5 s), blink there, aim (0.5 s) and fire one bolt."""
-    player = world.player
-    relay.fire_timer -= 1
-    if relay.fire_timer > 0:
-        return
-    if relay.phase == "":
-        start = world.rng.randrange(len(_HOPS))
-        distance = tuning.relay_hop_min + world.rng.random() * (
-            tuning.relay_hop_max - tuning.relay_hop_min
-        )
-        relay.dest_x, relay.dest_y = relay.x, relay.y
-        for i in range(len(_HOPS)):
-            hx, hy = _HOPS[(start + i) % len(_HOPS)]
-            spot = (relay.x + hx * distance, relay.y + hy * distance)
-            on_player = circles_overlap(
-                spot,
-                relay.radius + tuning.relay_landing_gap,
-                (player.x, player.y),
-                tuning.player_radius,
-            )
-            if (
-                not on_player
-                and not outside_bounds(spot, relay.radius, arena.bounds)
-                and not any(circle_hits_rect(spot, relay.radius, rect) for rect in arena.obstacles)
-            ):
-                relay.dest_x, relay.dest_y = spot
-                break
-        relay.phase, relay.fire_timer = "blink", tuning.relay_blink_tell
-        world.events.append(Event("relay_mark", relay.dest_x, relay.dest_y, relay.id))
-    elif relay.phase == "blink":
-        world.events.append(Event("relay_from", relay.x, relay.y, relay.id))
-        relay.x, relay.y = relay.dest_x, relay.dest_y
-        dx, dy = normalize(player.x - relay.x, player.y - relay.y)
-        relay.tell_dx, relay.tell_dy = (dx, dy) if (dx or dy) else (1.0, 0.0)
-        relay.phase, relay.fire_timer = "aim", tuning.relay_aim_tell
-        world.events.append(Event("relay_blink", relay.x, relay.y, relay.id))
-        world.events.append(Event("tell", relay.x, relay.y, relay.id))
-    else:
-        offset = relay.radius + tuning.bolt_radius + 1.0
-        world.projectiles.append(
-            Projectile(
-                id=world.new_id(),
-                x=relay.x + relay.tell_dx * offset,
-                y=relay.y + relay.tell_dy * offset,
-                vx=relay.tell_dx * tuning.bolt_speed,
-                vy=relay.tell_dy * tuning.bolt_speed,
-                radius=tuning.bolt_radius,
-                damage=tuning.bolt_damage,
-                hostile=True,
-                ttl=tuning.bolt_ttl,
-                kind="bolt",
-            )
-        )
-        relay.phase, relay.fire_timer = "", tuning.relay_idle
-        world.events.append(Event("bolt", relay.x, relay.y, relay.id))
-
-
-def _move_projectiles(world: World, arena: Arena) -> None:
+def _move_projectiles(world: World, tuning: Tuning, arena: Arena) -> None:
     survivors = []
     for shot in world.projectiles:
         shot.x += shot.vx
         shot.y += shot.vy
         shot.ttl -= 1
         center = (shot.x, shot.y)
-        blocked = outside_bounds(center, shot.radius, arena.bounds) or any(
-            circle_hits_rect(center, shot.radius, rect) for rect in arena.obstacles
+        hit_wall = outside_bounds(center, shot.radius, arena.bounds) or blocked(
+            world, arena, center, shot.radius
         )
-        if shot.ttl <= 0 or blocked:
+        if shot.ttl <= 0 or hit_wall:
+            if hit_wall and not shot.hostile:
+                floorplay.shot_hits_wall(world, tuning, arena, center, shot.radius)
             world.events.append(Event("fizzle", shot.x, shot.y, shot.id))
             continue
         survivors.append(shot)
@@ -322,12 +204,22 @@ def _hits(world: World, tuning: Tuning) -> None:
             if target is not None:
                 target.health -= shot.damage
                 world.events.append(Event("hostile_hit", target.x, target.y, target.id))
+                if shot.kind == "spark":
+                    spark_chain(world, tuning, target)
                 continue
         survivors.append(shot)
     world.projectiles = survivors
     for hostile in world.hostiles:
         if hostile.health <= 0:
-            world.events.append(Event("hostile_destroyed", hostile.x, hostile.y, hostile.id))
+            world.events.append(
+                Event(
+                    "hostile_destroyed",
+                    hostile.x,
+                    hostile.y,
+                    hostile.id,
+                    DROPS.get(hostile.kind, ""),
+                )
+            )
             drop_charge(world, hostile.kind, hostile.x, hostile.y)
     world.hostiles = [h for h in world.hostiles if h.health > 0]
 
@@ -337,6 +229,7 @@ def _timers(player: Player) -> None:
     player.dodge_ticks = max(0, player.dodge_ticks - 1)
     player.dodge_cooldown = max(0, player.dodge_cooldown - 1)
     player.invulnerable = max(0, player.invulnerable - 1)
+    player.boost = max(0, player.boost - 1)
 
 
 def _outcome(world: World, tuning: Tuning) -> None:
@@ -346,57 +239,50 @@ def _outcome(world: World, tuning: Tuning) -> None:
     if world.player.charge <= 0:
         world.outcome = "down"
         world.events.append(Event("player_down", world.player.x, world.player.y))
+    elif world.mode == "floor":
+        return  # on the floor, rooms clear one by one and the campaign tracks progress
     elif rival_beaten or (world.rival is None and not world.hostiles):
         world.outcome = "clear"
         absorb_charges(world, tuning, everything=True)
         world.events.append(Event("clear"))
 
 
-def hurt_player(world: World, damage: int, tuning: Tuning) -> None:
-    """Apply damage unless the Surge is dodging or recently hit."""
+def _separate(world: World, tuning: Tuning, arena: Arena) -> None:
+    """Bodies are solid: the Surge cannot stand inside the Regulator or a machine. It is the
+    one pushed (it is the lightest body), then kept out of walls. A dodge slips through."""
     player = world.player
-    if player.protected:
+    if player.dodging:
         return
-    player.charge = max(0, player.charge - damage)
-    player.invulnerable = tuning.hit_invulnerability
-    world.events.append(Event("player_hit", player.x, player.y))
-
-
-def move_body(x: float, y: float, vx: float, vy: float, radius: float, arena: Arena):
-    """Move a circle and push it out of walls and props. Speeds stay below the thinnest
-    obstacle, so nothing tunnels."""
-    pos = (x + vx, y + vy)
-    for _ in range(2):
-        for rect in arena.obstacles:
-            pos = push_out_of_rect(pos, radius, rect)
-        pos = clamp_inside(pos, radius, arena.bounds)
-    return pos
+    bodies = [(h.x, h.y, h.radius) for h in world.hostiles if h.health > 0]
+    rival = world.rival
+    if rival is not None and rival.health > 0:
+        bodies.append((rival.x, rival.y, rival.radius))
+    # A few passes settle a Surge squeezed between two bodies. Pinned between a body and a
+    # wall it may still overlap a little: walls always win, so it never ends up inside one.
+    for _ in range(3):
+        moved = False
+        for bx, by, radius in bodies:
+            dx, dy = player.x - bx, player.y - by
+            reach = radius + tuning.player_radius
+            if dx * dx + dy * dy >= reach * reach:
+                continue
+            nx, ny = normalize(dx, dy)
+            if not (nx or ny):
+                nx, ny = -player.aim_x, -player.aim_y
+            player.x, player.y = bx + nx * reach, by + ny * reach
+            moved = True
+        player.x, player.y = move_body(
+            player.x, player.y, 0.0, 0.0, tuning.player_radius, arena, world
+        )
+        if not moved:
+            break
 
 
 # The Regulator ----------------------------------------------------------------------------
 
-PROTOCOLS = ("pressure", "spacing", "lateral")
 # Volley fan for Oscillate: rotation by 15 degrees as exact constants (no runtime trig).
 _COS15 = 0.9659258262890683
 _SIN15 = 0.25881904510252074
-
-
-def spawn_rival(world: World, x: float, y: float, protocol: str, tuning: Tuning = DEFAULT):
-    if protocol not in PROTOCOLS:
-        raise ValueError(f"unknown protocol {protocol!r}")
-    world.rival = Rival(
-        x=x,
-        y=y,
-        radius=tuning.rival_radius,
-        health=tuning.rival_health,
-        max_health=tuning.rival_health,
-        protocol=protocol,
-        boot=tuning.rival_boot,
-        cooldown=tuning.clamp_rest,
-        timer=tuning.oscillate_interval if protocol == "lateral" else tuning.insulate_orb_interval,
-    )
-    world.events.append(Event("protocol_boot", x, y))
-    return world.rival
 
 
 def rival_telegraphing(rival: Rival) -> bool:
@@ -442,7 +328,7 @@ def _rival_shoot(
             damage=tuning.bolt_damage,
             hostile=True,
             ttl=ttl,
-            kind="orb" if radius > tuning.bolt_radius else "bolt",
+            kind="orb" if radius > tuning.bolt_radius else "needle",
         )
     )
 
@@ -451,9 +337,26 @@ def _rival(world: World, tuning: Tuning, arena: Arena) -> None:
     rival = world.rival
     if rival is None or rival.health <= 0:
         return
+    boss = BY_KIND[rival.kind]
+    if boss.overload and rival.phase == 1 and rival.health * 2 <= rival.max_health:
+        # Phase 2: a shield flicker (the boot shield), then the overload signature.
+        rival.phase, rival.boot = 2, tuning.overload_shield
+        first = (
+            tuning.oscillate_interval
+            if rival.protocol == "lateral"
+            else tuning.insulate_orb_interval
+        )
+        rest = (
+            tuning.clamp_rest if rival.protocol == "pressure" else tuning.insulate_hazard_interval
+        )
+        rival.action, rival.timer, rival.cooldown = "move", first // 2, rest // 2
+        rival.sig_action, rival.sig_timer = "idle", tuning.spiral_every // 2
+        world.events.append(Event("overload", rival.x, rival.y))
     if rival.boot > 0:
         rival.boot -= 1
         return
+    if _signature(world, rival, boss, tuning, arena):
+        return  # the protocol waits while a signature attack runs
     player = world.player
     if rival.protocol == "pressure":
         _clamp(world, rival, player, tuning, arena)
@@ -461,6 +364,129 @@ def _rival(world: World, tuning: Tuning, arena: Arena) -> None:
         _insulate(world, rival, player, tuning, arena)
     else:
         _oscillate(world, rival, player, tuning, arena)
+
+
+def _rest(rival: Rival, ticks: int) -> int:
+    """The protocol's rest between attacks, scaled by the chassis pace."""
+    boss = BY_KIND[rival.kind]
+    pace = boss.overload_pace if rival.phase == 2 else boss.pace
+    return max(1, round(ticks * pace))
+
+
+def _signature_name(rival: Rival, boss) -> str:
+    return boss.overload if rival.phase == 2 else boss.signature
+
+
+def signature_timing(name: str, tuning: Tuning) -> tuple[int, int]:
+    """(ticks between, tell ticks) for a chassis signature."""
+    return {
+        "ring": (tuning.ring_every, tuning.ring_tell),
+        "quake": (tuning.quake_every, tuning.quake_tell),
+        "summon": (tuning.summon_every, tuning.summon_tell),
+        "spiral": (tuning.spiral_every, tuning.spiral_tell),
+    }[name]
+
+
+def _signature(world: World, rival: Rival, boss, tuning: Tuning, arena: Arena) -> bool:
+    """Run the chassis signature on its own timer. It starts only between protocol attacks
+    (action "move"), shows its tell, fires, then stays quiet while its bolts or wave are out.
+    True while it is busy (the protocol waits)."""
+    name = _signature_name(rival, boss)
+    if not name:
+        return False
+    every, tell = signature_timing(name, tuning)
+    if rival.sig_action == "idle":
+        rival.sig_timer -= 1
+        if rival.sig_timer <= 0 and rival.action == "move":
+            if name == "summon" and not _can_summon(world, arena, tuning):
+                rival.sig_timer = every // 3  # the room is busy, look again soon
+                return False
+            _lock_aim(rival, world.player)  # the spiral's first arm shows during the tell
+            rival.sig_action, rival.sig_timer = "tell", tell
+            world.events.append(Event("boss_tell", rival.x, rival.y))
+            return True
+        return False
+    if rival.sig_action == "tell":
+        rival.sig_timer -= 1
+        if rival.sig_timer > 0:
+            return True
+        if name == "ring":
+            for dx, dy in RING:
+                _rival_shoot(
+                    world,
+                    rival,
+                    dx,
+                    dy,
+                    tuning.bolt_speed,
+                    tuning.bolt_radius,
+                    tuning.bolt_ttl,
+                    tuning,
+                )
+            world.events.append(Event("boss_ring", rival.x, rival.y))
+        elif name == "quake":
+            world.shockwaves.append(
+                Shockwave(world.new_id(), rival.x, rival.y, rival.radius, False, tuning.quake_reach)
+            )
+            world.events.append(Event("quake", rival.x, rival.y))
+        elif name == "summon":
+            _summon(world, arena, tuning)
+            world.events.append(Event("summon", rival.x, rival.y))
+        elif name == "spiral":
+            rival.spin_x, rival.spin_y = rival.aim_x, rival.aim_y
+            rival.sig_action, rival.sig_timer = "fire", tuning.spiral_ticks
+            world.events.append(Event("boss_spiral", rival.x, rival.y))
+            return True
+        rival.sig_action, rival.sig_timer = "quiet", tuning.signature_quiet
+        return True
+    if rival.sig_action == "quiet":
+        rival.sig_timer -= 1
+        if rival.sig_timer <= 0:
+            rival.sig_action, rival.sig_timer = "idle", every
+        return True
+    # "fire": the spiral streams two opposite bolts every few ticks, turning 20 degrees.
+    if rival.sig_timer % tuning.spiral_gap == 0:
+        sx, sy = rival.spin_x, rival.spin_y
+        for dx, dy in ((sx, sy), (-sx, -sy)):
+            _rival_shoot(
+                world,
+                rival,
+                dx,
+                dy,
+                tuning.bolt_speed,
+                tuning.bolt_radius,
+                tuning.bolt_ttl,
+                tuning,
+            )
+        rival.spin_x, rival.spin_y = sx * COS20 - sy * SIN20, sx * SIN20 + sy * COS20
+    rival.sig_timer -= 1
+    if rival.sig_timer <= 0:
+        rival.sig_action, rival.sig_timer = "quiet", tuning.signature_quiet
+    return True
+
+
+def summon_points(arena: Arena) -> list[tuple[float, float]]:
+    """Where the Grid Core warps its drones in: either side of the chamber's middle row."""
+    floor = arena.floor
+    if floor is None:
+        return []
+    points = []
+    for room in floor.rooms:
+        if room.kind == "chamber" and room.sector == 3:
+            x, y, w, _ = room.rect
+            for tx in (x + 6, x + w - 7):
+                points.append((tx * 16 + 8.0, (y + 9) * 16 + 8.0))
+    return points
+
+
+def _can_summon(world: World, arena: Arena, tuning: Tuning) -> bool:
+    alive = sum(1 for h in world.hostiles if h.health > 0) + len(world.warps)
+    return bool(summon_points(arena)) and alive < tuning.summon_cap
+
+
+def _summon(world: World, arena: Arena, tuning: Tuning) -> None:
+    for x, y in summon_points(arena):
+        world.warps.append(Warp(world.new_id(), "drone", x, y, tuning.warp_tell))
+        world.events.append(Event("warp", x, y))
 
 
 def _clamp(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Arena) -> None:
@@ -477,6 +503,7 @@ def _clamp(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Ar
                 ny * tuning.clamp_speed,
                 rival.radius,
                 arena,
+                world,
             )
         if rival.cooldown > 0:
             rival.cooldown -= 1
@@ -497,6 +524,7 @@ def _clamp(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Ar
             rival.aim_y * tuning.clamp_dash_speed,
             rival.radius,
             arena,
+            world,
         )
         if circles_overlap(
             (rival.x, rival.y), rival.radius, (player.x, player.y), tuning.player_radius
@@ -508,7 +536,7 @@ def _clamp(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Ar
     elif rival.action == "recover":
         rival.timer -= 1
         if rival.timer <= 0:
-            rival.action, rival.cooldown = "move", tuning.clamp_rest
+            rival.action, rival.cooldown = "move", _rest(rival, tuning.clamp_rest)
 
 
 def _insulate(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Arena) -> None:
@@ -524,10 +552,17 @@ def _insulate(world: World, rival: Rival, player: Player, tuning: Tuning, arena:
             -ny * tuning.rival_speed,
             rival.radius,
             arena,
+            world,
         )
     elif distance > tuning.insulate_max_distance:
         rival.x, rival.y = move_body(
-            rival.x, rival.y, nx * tuning.rival_speed, ny * tuning.rival_speed, rival.radius, arena
+            rival.x,
+            rival.y,
+            nx * tuning.rival_speed,
+            ny * tuning.rival_speed,
+            rival.radius,
+            arena,
+            world,
         )
     rival.cooldown -= 1
     if rival.cooldown <= 0:
@@ -544,7 +579,7 @@ def _insulate(world: World, rival: Rival, player: Player, tuning: Tuning, arena:
                 tuning.insulate_hazard_active,
             )
         )
-        rival.cooldown = tuning.insulate_hazard_interval
+        rival.cooldown = _rest(rival, tuning.insulate_hazard_interval)
         world.events.append(Event("hazard_armed", hx, hy))
     if rival.action == "move":
         rival.timer -= 1
@@ -565,7 +600,7 @@ def _insulate(world: World, rival: Rival, player: Player, tuning: Tuning, arena:
                 tuning.orb_ttl,
                 tuning,
             )
-            rival.action, rival.timer = "move", tuning.insulate_orb_interval
+            rival.action, rival.timer = "move", _rest(rival, tuning.insulate_orb_interval)
             world.events.append(Event("rival_orb", rival.x, rival.y))
 
 
@@ -574,7 +609,7 @@ def _oscillate(world: World, rival: Rival, player: Player, tuning: Tuning, arena
     nx, ny = normalize(player.x - rival.x, player.y - rival.y)
     vx, vy = -ny * rival.strafe * tuning.oscillate_speed, nx * rival.strafe * tuning.oscillate_speed
     before = (rival.x, rival.y)
-    rival.x, rival.y = move_body(rival.x, rival.y, vx, vy, rival.radius, arena)
+    rival.x, rival.y = move_body(rival.x, rival.y, vx, vy, rival.radius, arena, world)
     rival.strafe_timer -= 1
     moved = abs(rival.x - before[0]) + abs(rival.y - before[1])
     if rival.strafe_timer <= 0 or ((vx or vy) and moved < 0.25):
@@ -604,7 +639,7 @@ def _oscillate(world: World, rival: Rival, player: Player, tuning: Tuning, arena
                     tuning.bolt_ttl,
                     tuning,
                 )
-            rival.action, rival.timer = "move", tuning.oscillate_interval
+            rival.action, rival.timer = "move", _rest(rival, tuning.oscillate_interval)
             world.events.append(Event("rival_volley", rival.x, rival.y))
 
 

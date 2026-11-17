@@ -6,15 +6,16 @@ import dataclasses
 import math
 
 import pytest
+from floorbot import enter, play_campaign, skip_sector
 
 from overload.session.replay import Recording, play
-from overload.sim.arena import SUBSTATION, Arena, arena_id
+from overload.sim.arena import FLOOR_ARENA, SUBSTATION, Arena, arena_id
 from overload.sim.campaign import Campaign, encounter_world
 from overload.sim.inputs import IDLE, InputFrame
 from overload.sim.powers import Kit, blink_destination, equip, fuse
 from overload.sim.state import Charge, Trail, state_hash
 from overload.sim.tuning import DEFAULT, TICK_RATE
-from overload.sim.world import spawn_arc_mite, spawn_relay, step
+from overload.sim.world import spawn_drone, spawn_relay, step
 
 # A plain 160 x 120 room with one wall across the middle (x 96 to 112, y 0 to 80).
 WALL = (96.0, 0.0, 16.0, 80.0)
@@ -36,7 +37,7 @@ def bare_world(kit: Kit | None = None, arena: Arena = ROOM):
     world.hostiles.clear()
     world.rival = None
     world.player.x, world.player.y = arena.player_spawn
-    spawn_arc_mite(world, 150, 110).fire_timer = 1_000_000
+    spawn_drone(world, 150, 110).fire_timer = 1_000_000
     return world
 
 
@@ -55,7 +56,7 @@ def press(world, arena=ROOM, **fields) -> None:
 
 def test_machines_drop_the_power_they_carry() -> None:
     world = bare_world()
-    mite = spawn_arc_mite(world, 60, 40)
+    mite = spawn_drone(world, 60, 40)
     relay = spawn_relay(world, 60, 90)
     mite.health = relay.health = 0
     step(world, IDLE, arena=ROOM)
@@ -74,15 +75,16 @@ def test_first_charge_unlocks_and_equips_later_ones_only_count() -> None:
     assert "absorb" in {e.kind for e in world.events}
 
 
-def test_winning_absorbs_every_charge_left() -> None:
+def test_clearing_a_room_absorbs_every_charge_left() -> None:
     campaign = Campaign(1)
     world = campaign.world
-    for hostile in world.hostiles:
-        hostile.health = 0
-    world.rival.health = 0
-    campaign.step(IDLE)
-    assert campaign.stage == "fuse_box"
-    assert campaign.kit.unlocked == ["spark"] and campaign.kit.fragments == {"spark": 2}
+    enter(campaign, "s1_hall")
+    while world.active_room == "s1_hall":
+        for hostile in world.hostiles:
+            hostile.health = 0
+        campaign.step(IDLE)
+    assert world.unlocked == ["spark"] and world.fragments == {"spark": 3}  # 3 Drones, 2 Sweepers
+    assert world.charges == []
 
 
 # Use -----------------------------------------------------------------------------------------
@@ -146,14 +148,14 @@ def test_blink_stays_inside_the_room() -> None:
 def test_arc_trail_blinks_and_leaves_a_damaging_line() -> None:
     world = bare_world(kit_with("spark", "blink", "arc_trail", slots=("arc_trail", "")))
     world.player.x, world.player.y = 30.0, 100.0
-    mite = spawn_arc_mite(world, 55, 100)
+    mite = spawn_drone(world, 55, 100)
     mite.fire_timer = 10_000
     press(world, power_q=True, aim_x=80, aim_y=100)
     assert len(world.trails) == 1
     assert world.player.cooldowns["teleport"] == DEFAULT.arc_trail_cooldown - 1
     for _ in range(DEFAULT.trail_interval * 3):
         step(world, IDLE, arena=ROOM)
-    assert mite.health == DEFAULT.arc_mite_health - 3 * DEFAULT.trail_damage
+    assert mite.health == DEFAULT.drone_health - 3 * DEFAULT.trail_damage
     for _ in range(DEFAULT.trail_ttl):
         step(world, IDLE, arena=ROOM)
     assert world.trails == []
@@ -216,12 +218,17 @@ def test_equip_swaps_and_rejects_what_is_not_unlocked() -> None:
     assert equip(kit, 0, "") and kit.slots == ["", "spark"]
 
 
-def test_fuse_box_actions_only_in_the_fuse_box() -> None:
+def test_the_loadout_changes_any_time_the_surge_is_up() -> None:
+    """Adit, Nov 17: equip and fuse whenever you want, not only in the Fuse Box."""
     campaign = Campaign(1)
-    with pytest.raises(RuntimeError):
-        campaign.fuse("spark", "blink")
-    with pytest.raises(RuntimeError):
-        campaign.equip(0, "spark")
+    world = campaign.world
+    world.unlocked = ["spark", "blink"]
+    assert campaign.fuse("spark", "blink") == "fused"
+    assert campaign.equip(0, "arc_trail") and world.player.slots[0] == "arc_trail"
+    world.player.charge = 0
+    campaign.step(IDLE)
+    with pytest.raises(RuntimeError):  # not while down
+        campaign.equip(1, "spark")
 
 
 # The Relay -----------------------------------------------------------------------------------
@@ -244,7 +251,7 @@ def test_relay_marks_its_landing_before_blinking_and_aims_before_firing() -> Non
             assert world.tick - marked >= 0.50 * TICK_RATE
             assert (relay.x, relay.y) == target
             blinked = aimed = world.tick
-        if "bolt" in kinds:
+        if "shards" in kinds:
             assert aimed is not None and world.tick - aimed >= 0.40 * TICK_RATE
             return
     pytest.fail(f"no full Relay cycle (marked {marked}, blinked {blinked})")
@@ -255,10 +262,10 @@ def test_relay_marks_its_landing_before_blinking_and_aims_before_firing() -> Non
 
 def test_the_kit_carries_over_and_a_retry_restores_the_entry_kit() -> None:
     campaign = Campaign(1)
-    campaign.world.hostiles[0].health = 0
-    campaign.step(IDLE)  # the charge drops and stays on the floor
-    campaign.world.rival.health = 0
+    world = campaign.world
+    world.charges.append(Charge(400, "spark", world.player.x, world.player.y))
     campaign.step(IDLE)
+    skip_sector(campaign)
     assert campaign.kit.unlocked == ["spark"]
     assert campaign.fuse("spark", "blink") == "missing"
     campaign.begin_next("pressure")
@@ -276,79 +283,38 @@ def test_the_kit_carries_over_and_a_retry_restores_the_entry_kit() -> None:
     assert campaign.world.unlocked == ["spark"], "a retry restores the entry loadout"
 
 
-def target_of(world):
-    """Shoot the nearest machine first (to steal its power), then the Regulator."""
-    player = world.player
-    living = [h for h in world.hostiles if h.health > 0]
-    if living:
-        return min(living, key=lambda h: (h.x - player.x) ** 2 + (h.y - player.y) ** 2)
-    return world.rival
-
-
-def looting_player(world, tick: int) -> InputFrame:
-    player, target = world.player, target_of(world)
-    if target is None or target.health <= 0:
-        return IDLE
-    dx, dy = target.x - player.x, target.y - player.y
-    distance = math.sqrt(dx * dx + dy * dy) or 1.0
-    ux, uy = dx / distance, dy / distance
-    side = 1 if (tick // 150) % 2 == 0 else -1
-    if distance < 70:
-        mx, my = -ux, -uy
-    elif distance > 120:
-        mx, my = ux, uy
-    else:
-        mx, my = -uy * side, ux * side
-    for hazard in world.hazards:
-        cx, cy = hazard.x + hazard.size / 2, hazard.y + hazard.size / 2
-        if abs(player.x - cx) < 16 and abs(player.y - cy) < 16:
-            mx, my = player.x - cx, player.y - cy
-    sx = 0 if abs(mx) < 0.3 else (1 if mx > 0 else -1)
-    sy = 0 if abs(my) < 0.3 else (1 if my > 0 else -1)
-    rival = world.rival
-    dodge = rival is not None and rival.action == "tell" and rival.timer <= 4
-    return InputFrame(
-        sx,
-        sy,
-        int(target.x),
-        int(target.y),
-        fire=True,
-        dodge=dodge,
-        power_q=tick % 7 == 0,
-        power_e=tick % 11 == 0,
-    )
-
-
 def full_loop(seed: int) -> tuple[Campaign, Recording, set[str]]:
-    """Collect in encounters 1 and 2, fuse and equip in the Fuse Box, use in encounter 3."""
+    """Steal Spark in sector 1 and Blink in sector 2, fuse and equip in the second Fuse Box,
+    use both in sector 3. Real inputs throughout, so the recording replays exactly."""
     campaign = Campaign(seed)
     recording = Recording(
         seed=seed,
         tuning_id=DEFAULT.tuning_id(),
-        arena_id=arena_id(SUBSTATION),
+        arena_id=arena_id(FLOOR_ARENA),
         mode="campaign",
         protocols=["lateral"],
     )
     used: set[str] = set()
-    for tick in range(12_000):
-        if campaign.stage == "fuse_box":
-            if campaign.encounter == 2:
-                assert campaign.fuse("spark", "blink") == "fused"
-                recording.fuse_box("fuse", "spark", "blink")
-                assert campaign.equip(0, "arc_trail")
-                recording.fuse_box("equip", 0, "arc_trail")
-                assert campaign.equip(1, "spark")
-                recording.fuse_box("equip", 1, "spark")
-            protocol = "pressure" if campaign.encounter == 1 else "spacing"
-            campaign.begin_next(protocol)
-            recording.begin_next(protocol)
-        if campaign.stage == "ending":
-            break
-        frame = looting_player(campaign.world, tick)
-        campaign.step(frame)
-        recording.frames.append(frame)
+
+    def fuse_box(campaign: Campaign, recording: Recording) -> None:
+        if campaign.encounter == 2:
+            assert campaign.fuse("spark", "blink") == "fused"
+            recording.fuse_box("fuse", "spark", "blink")
+            assert campaign.equip(0, "arc_trail")
+            recording.fuse_box("equip", 0, "arc_trail")
+            assert campaign.equip(1, "spark")
+            recording.fuse_box("equip", 1, "spark")
+
+    original_step = campaign.step
+
+    def step(frame: InputFrame) -> None:
+        original_step(frame)
         if campaign.encounter == 3:
-            used |= {e.kind for e in campaign.world.events if e.kind.startswith("power_")}
+            used.update(e.kind for e in campaign.world.events if e.kind.startswith("power_"))
+
+    campaign.step = step
+    play_campaign(campaign, recording=recording, on_fuse_box=fuse_box)
+    campaign.step = original_step
     recording.final_hash = campaign.state_hash()
     return campaign, recording, used
 
@@ -356,18 +322,17 @@ def full_loop(seed: int) -> tuple[Campaign, Recording, set[str]]:
 def test_full_loop_collect_equip_fuse_use(tmp_path) -> None:
     campaign, recording, used = full_loop(2)
     assert campaign.stage == "ending"
-    assert campaign.kit.unlocked == ["spark", "blink", "arc_trail"]
+    assert {"spark", "blink", "arc_trail"} <= set(campaign.kit.unlocked)
     assert {"power_arc_trail", "power_spark"} <= used
     path = tmp_path / "loop.json"
     recording.save(path)
     assert play(Recording.load(path)).state_hash() == recording.final_hash
-    assert recording.final_hash == "2a3a95a0e4057a8d", "pinned on Python 3.11 and 3.12"
+    assert recording.final_hash == "8886a8e6c9df7025", "pinned on Python 3.11 and 3.12"
 
 
 @pytest.mark.parametrize(
     "menu",
     [
-        [[5, "equip", 0, "spark"]],  # outside the Fuse Box
         [[0, "teleport", 0, "spark"]],  # unknown action
         [[3, "fuse", "a", "b"], [2, "fuse", "a", "b"]],  # out of order
         [[99, "fuse", "spark", "blink"]],  # beyond the frames
@@ -384,7 +349,7 @@ def test_malformed_fuse_box_actions_are_rejected(menu) -> None:
     recording = Recording(
         seed=1,
         tuning_id=DEFAULT.tuning_id(),
-        arena_id=arena_id(SUBSTATION),
+        arena_id=arena_id(FLOOR_ARENA),
         mode="campaign",
         protocols=["lateral"],
         frames=[IDLE] * 10,
@@ -407,7 +372,7 @@ def test_a_saved_file_with_a_malformed_menu_is_rejected(tmp_path) -> None:
     recording = Recording(
         seed=1,
         tuning_id=DEFAULT.tuning_id(),
-        arena_id=arena_id(SUBSTATION),
+        arena_id=arena_id(FLOOR_ARENA),
         mode="campaign",
         protocols=["lateral"],
         frames=[IDLE] * 10,

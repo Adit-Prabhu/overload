@@ -31,7 +31,7 @@ def parse_args(argv: list[str] | None) -> Options:
         "--replay", type=Path, help="Play back a replay file and check its final state hash."
     )
     parser.add_argument(
-        "--practice", action="store_true", help="Practice arena: two Arc Mites, no Regulator."
+        "--practice", action="store_true", help="Practice arena: two Arc Drones, no Regulator."
     )
     parser.add_argument(
         "--condition",
@@ -42,6 +42,10 @@ def parse_args(argv: list[str] | None) -> Options:
         "--schedule", choices=("A", "B"), default="A", help="Order for the fixed condition."
     )
     parser.add_argument("--trace", type=Path, help="Write the session trace to this file.")
+    parser.add_argument(
+        "--mute", action="store_true", help="No sound. The game is fully playable muted."
+    )
+    parser.add_argument("--skip-title", action="store_true", help="Start playing at once.")
     args = parser.parse_args(argv)
     return Options(
         seed=args.seed,
@@ -53,6 +57,8 @@ def parse_args(argv: list[str] | None) -> Options:
         condition=args.condition,
         schedule=args.schedule,
         trace=args.trace,
+        mute=args.mute,
+        skip_title=args.skip_title,
     )
 
 

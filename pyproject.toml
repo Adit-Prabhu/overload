@@ -16,9 +16,11 @@ dev = [
     "pytest==9.2.0",
     "ruff==0.17.5",
 ]
-# Review tools (contact sheet color-vision simulation). Not needed to play or test.
+# Asset tools (contact sheet color-vision simulation, the audio synth). Not needed to play or
+# test. soundfile only encodes the rendered OGG files.
 tools = [
     "numpy==2.5.4; python_version >= '3.12'",
+    "soundfile==0.13.1; python_version >= '3.12'",
 ]
 
 [build-system]

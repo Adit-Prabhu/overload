@@ -11,7 +11,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from overload.sim.arena import SUBSTATION, Arena, arena_id
+from overload.sim.arena import FLOOR_ARENA, SUBSTATION, Arena, arena_id
 from overload.sim.campaign import NEUTRAL, Campaign
 from overload.sim.inputs import InputFrame
 from overload.sim.run import Run
@@ -123,8 +123,9 @@ def menu_by_frame(recording: Recording) -> dict[int, list[list]]:
 
 
 def apply_menu(campaign: Campaign, entry: list) -> None:
-    """Replay one Fuse Box action. Invalid choices replay as the same harmless no-op they
-    were when recorded. An action outside the Fuse Box means the recording is corrupt."""
+    """Replay one loadout action (Fuse Box or the paused menu). Invalid choices replay as the
+    same harmless no-op they were when recorded. An action while the Surge is down or after
+    the ending means the recording is corrupt."""
     if not _well_formed(entry):
         raise ValueError(f"malformed Fuse Box action {entry!r}")
     index, op, a, b = entry
@@ -134,14 +135,18 @@ def apply_menu(campaign: Campaign, entry: list) -> None:
         else:
             campaign.fuse(a, b)
     except RuntimeError as error:
-        raise ValueError(f"Fuse Box action at tick {index} outside the Fuse Box") from error
+        raise ValueError(
+            f"loadout action at tick {index} while the loadout cannot change"
+        ) from error
 
 
 def play(
-    recording: Recording, tuning: Tuning = DEFAULT, arena: Arena = SUBSTATION
+    recording: Recording, tuning: Tuning = DEFAULT, arena: Arena | None = None
 ) -> Run | Campaign:
-    """Re-run a recording from scratch. Refuses a recording made with a different tuning or
-    a different arena."""
+    """Re-run a recording from scratch. Practice runs use the hall, campaigns the floor.
+    Refuses a recording made with a different tuning or a different arena."""
+    if arena is None:
+        arena = SUBSTATION if recording.mode == "practice" else FLOOR_ARENA
     if recording.tuning_id != tuning.tuning_id():
         raise ValueError(
             f"recording uses tuning {recording.tuning_id}, this build is {tuning.tuning_id()}"

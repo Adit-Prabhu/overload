@@ -1,10 +1,10 @@
 """What the Regulator saw: the only game data that ever reaches the model.
 
 ObservationLog never receives the World. The caller hands it visible facts only: where the
-Surge and the Regulator stand, and the Surge's visible actions, including powers it used.
-Hidden state (charge, cooldowns, inventory and loadout, RNG, other entities) cannot reach the
-summary by construction. Power use is counted only when it happens on screen, so an unused
-or unequipped power is never revealed.
+Surge and the nearest fighting hostile stand, and the Surge's visible actions, including the
+powers it used. Hidden state (charge, cooldowns, inventory and loadout, RNG, other entities)
+cannot reach the summary by construction. Power use is counted only when it happens on screen,
+so an unused or unequipped power is never revealed.
 """
 
 from __future__ import annotations
@@ -29,7 +29,15 @@ NEAR = 40.0  # px, about 2.5 tiles
 FAR = 104.0  # px, about 6.5 tiles
 # Visible actions only: a gun shot, a dodge, and a power the Surge actually used (a rejected
 # Blink shows nothing and is not counted).
-VISIBLE_ACTIONS = ("shot", "dodge", "power_spark", "power_blink", "power_arc_trail")
+VISIBLE_ACTIONS = (
+    "shot",
+    "dodge",
+    "power_spark",
+    "power_blink",
+    "power_arc_trail",
+    "power_burst",
+    "power_shock_cone",
+)
 TICKS_PER_MINUTE = 60 * 60
 
 
@@ -55,7 +63,7 @@ class ObservationLog:
                 self.actions[action] += 1
 
     def summary(self, previous_tactic: str) -> dict:
-        """The request summary: eight evidence items with stable IDs, under 1 KB."""
+        """The request summary: ten evidence items with stable IDs, under 1 KB."""
         e = f"e{self.encounter}"
         total = max(1, self.ticks)
         minutes = max(total / TICKS_PER_MINUTE, 1 / 60)
@@ -68,6 +76,8 @@ class ObservationLog:
             "spark_uses": self.actions["power_spark"],
             "blink_uses": self.actions["power_blink"],
             "arc_trail_uses": self.actions["power_arc_trail"],
+            "burst_uses": self.actions["power_burst"],
+            "shock_cone_uses": self.actions["power_shock_cone"],
         }
         labels = evidence_labels()
         items = [
@@ -77,7 +87,21 @@ class ObservationLog:
         return {"items": items, "previous_tactic": previous_tactic}
 
 
-def observe_world(log: ObservationLog, world, rival: tuple[float, float]) -> None:
-    """The one place the World is read for the rival: the Surge's position and the kinds of
-    visible events this tick. Nothing else from the World is passed on."""
-    log.observe((world.player.x, world.player.y), rival, (event.kind for event in world.events))
+def nearest_threat(world) -> tuple[float, float] | None:
+    """The nearest visible hostile, robot or Regulator, that is fighting right now."""
+    player = world.player
+    threats = [(h.x, h.y) for h in world.hostiles if h.health > 0]
+    if world.rival is not None and world.rival.health > 0:
+        threats.append((world.rival.x, world.rival.y))
+    if not threats:
+        return None
+    return min(threats, key=lambda p: (p[0] - player.x) ** 2 + (p[1] - player.y) ** 2)
+
+
+def observe_world(log: ObservationLog, world) -> None:
+    """The one place the World is read for the rival: during a fight, the Surge's distance to
+    the nearest visible hostile and the kinds of visible events this tick. Walking between
+    rooms is not a fight and is not observed. Nothing else from the World is passed on."""
+    threat = nearest_threat(world)
+    if threat is not None:
+        log.observe((world.player.x, world.player.y), threat, (e.kind for e in world.events))
