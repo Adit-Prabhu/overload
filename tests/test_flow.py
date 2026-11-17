@@ -147,3 +147,30 @@ def test_trace_records_the_session(tmp_path) -> None:
     session.confirm()
     events = [json.loads(line)["event"] for line in (tmp_path / "t.jsonl").read_text().splitlines()]
     assert events == ["decision", "encounter_start", "encounter_end", "decision", "encounter_start"]
+
+
+def test_menu_ticks_do_not_repeat_the_clearing_events() -> None:
+    session = Session(Campaign(1), NeutralSelector())
+    session.campaign.world.rival.health = 0
+    session.tick(InputFrame(fire=True))
+    assert session.campaign.world.events, "the clearing tick reports its events once"
+    session.tick(InputFrame(fire=True))
+    assert session.campaign.world.events == []
+
+
+def test_the_fuse_box_hold_covers_the_request_deadline() -> None:
+    from overload.agent.client import DEADLINE_SECONDS
+    from overload.sim.tuning import TICK_RATE
+
+    assert MIN_FUSE_TICKS >= DEADLINE_SECONDS * TICK_RATE
+
+
+def test_baseline_traces_never_claim_a_summary_was_sent(tmp_path) -> None:
+    trace = TraceWriter(tmp_path / "t.jsonl", condition="fixed", tuning_id="t", arena_id="a")
+    session = Session(Campaign(1), FixedSchedule("A"), trace, "anon")
+    clear_encounter(session)
+    wait_in_fuse_box(session, MIN_FUSE_TICKS)
+    session.close()
+    rows = [json.loads(line) for line in (tmp_path / "t.jsonl").read_text().splitlines()]
+    assert all(row.get("context_hash") is None for row in rows if row["event"] == "decision")
+    assert rows[-1]["event"] == "session_end"

@@ -58,8 +58,10 @@ class Campaign:
         self.checkpoint = copy.deepcopy(self.world)
 
     def step(self, inp: InputFrame) -> None:
-        """Advance one tick. Outside an encounter (Fuse Box, ending) nothing moves."""
+        """Advance one tick. Outside an encounter (Fuse Box, ending) nothing moves, and the
+        last encounter tick's events are not reported again."""
         if self.stage != "encounter":
+            self.world.events.clear()
             return
         if inp.restart and self.world.outcome == "down":
             self.world = copy.deepcopy(self.checkpoint)

@@ -5,13 +5,16 @@ Per simulation tick:
   restarts the observation record, because a retry reuses the encounter's entry checkpoint.
 - When an encounter is cleared: send the summary to the selector (the live condition starts
   its one request here, the fixed schedule ignores it) and open the Fuse Box.
-- In the Fuse Box: wait at least MIN_FUSE_TICKS in every condition, so a live request's wait
-  does not reveal the condition, and poll the selector without blocking.
+- In the Fuse Box: hold for MIN_FUSE_TICKS in every condition, poll the selector without
+  blocking. The hold equals the request deadline, which starts at the same moment, so by the
+  time any condition may continue the live reply has always arrived or been abandoned. The
+  wait never reveals the condition.
 `confirm` starts the next encounter with the frozen protocol.
 """
 
 from __future__ import annotations
 
+from overload.agent.client import DEADLINE_SECONDS
 from overload.agent.observations import ObservationLog, observe_world
 from overload.agent.selector import Selector
 from overload.agent.tactics import Decision
@@ -20,7 +23,7 @@ from overload.sim.campaign import Campaign
 from overload.sim.inputs import InputFrame
 from overload.sim.tuning import TICK_RATE
 
-MIN_FUSE_TICKS = 2 * TICK_RATE
+MIN_FUSE_TICKS = round(DEADLINE_SECONDS * TICK_RATE)
 FALLBACK_LINE = "Grid link unstable. Regulator running default protocol."
 
 
@@ -64,9 +67,11 @@ class Session:
                 observe_world(self.log, campaign.world, (rival.x, rival.y))
             if campaign.stage != "encounter":
                 self._encounter_cleared(encounter)
-        elif campaign.stage == "fuse_box":
-            self.fuse_ticks += 1
-            self.pending_decision()
+        else:
+            campaign.step(frame)  # nothing moves, stale events are cleared
+            if campaign.stage == "fuse_box":
+                self.fuse_ticks += 1
+                self.pending_decision()
 
     def _encounter_cleared(self, encounter: int) -> None:
         self._trace(
@@ -131,6 +136,17 @@ class Session:
         if self.trace is not None:
             self.trace.write(event, session_id=self.session_id, **fields)
 
+    def close(self) -> None:
+        """Mark the end of the session in the trace, wherever the player stopped."""
+        self._trace(
+            "session_end",
+            stage=self.campaign.stage,
+            encounter=self.campaign.encounter,
+            retries=self.campaign.retries,
+        )
+
     def _trace_decision(self, decision: Decision, summary: dict | None) -> None:
+        """Only the live condition sends a summary, so only it records one's hash."""
         if self.trace is not None:
-            self.trace.decision(decision, self.session_id, summary)
+            sent = summary if self.selector.condition == "live" else None
+            self.trace.decision(decision, self.session_id, sent)

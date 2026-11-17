@@ -166,7 +166,12 @@ def play(options: Options) -> int:
                 tuning_id=run.tuning.tuning_id(),
                 arena_id=arena_id(run.arena),
             )
-        session = Session(run, selector, trace, session_id)
+        try:
+            session = Session(run, selector, trace, session_id)
+        except Exception:
+            if isinstance(selector, LiveSelector):
+                selector.client.close()
+            raise
     room = arena_id(run.arena)
     if replay and replay.tuning_id != run.tuning.tuning_id():
         print(f"Replay uses tuning {replay.tuning_id}, this build is {run.tuning.tuning_id()}")
@@ -224,15 +229,18 @@ def play(options: Options) -> int:
                         break
                 else:
                     frame = reader.frame(view.camera_offset()) if not options.headless else IDLE
-                playing = getattr(run, "stage", "encounter") == "encounter"
+                playing = (
+                    getattr(run, "stage", "encounter") == "encounter"
+                    and run.world.outcome == "playing"
+                )
                 if session is not None:
                     session.tick(frame)
                 else:
                     run.step(frame)
                 recording.frames.append(frame)
-                if playing and run.world.outcome == "playing":
+                if playing:  # a tick of actual fighting, never a retry or a menu tick
                     stats["ticks"] += 1
-                stats["shots"] += sum(1 for e in run.world.events if e.kind == "shot")
+                    stats["shots"] += sum(1 for e in run.world.events if e.kind == "shot")
                 if scripted is not None:
                     cam = view.camera_offset()
                     cursor = (frame.aim_x - cam[0], frame.aim_y - cam[1])
@@ -256,6 +264,8 @@ def play(options: Options) -> int:
             if options.frames and frames >= options.frames:
                 break
     finally:
+        if session is not None:
+            session.close()
         pygame.quit()
         hud.forget()
         tiles.forget_fonts()
