@@ -99,3 +99,13 @@ def test_a_locked_door_is_solid() -> None:
     assert blocked(world, FLOOR_ARENA, center, 2.0)
     moved = move_body(center[0], center[1], 0.0, 0.0, 5.0, FLOOR_ARENA, world)
     assert moved != center, "a body inside a door that shuts is pushed out"
+
+
+def test_a_corridor_through_decor_is_refused() -> None:
+    from overload import floor as plan
+
+    room = FLOOR.get("hidden")
+    decor = [list(".V.."), list("....")]
+    plan._clear(decor, 0, 0, room, room)  # bare floor is fine
+    with pytest.raises(ValueError, match="erase decor"):
+        plan._clear(decor, 1, 0, room, room)

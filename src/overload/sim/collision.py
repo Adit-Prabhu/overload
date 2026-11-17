@@ -23,8 +23,9 @@ def build_index(rects: Iterable[Rect]) -> dict[tuple[int, int], tuple[Rect, ...]
 
 
 def solids(world, arena, center: Point, reach: float) -> list[Rect]:
-    """Walls, props and locked doors within `reach` of `center`, each once, in a fixed
-    order (index order, then doors in the arena's order), so results stay deterministic."""
+    """Walls and props within `reach` of `center` plus every locked door (there are few),
+    each once, in a fixed order (index order, then doors in the arena's order), so results
+    stay deterministic."""
     x, y = center
     seen: set[Rect] = set()
     found: list[Rect] = []

@@ -409,7 +409,7 @@ def move_body(
     """Move a circle and push it out of walls, props and locked doors. Speeds stay below the
     thinnest obstacle, so nothing tunnels."""
     pos = (x + vx, y + vy)
-    nearby = solids(world, arena, pos, radius + 2.0)
+    nearby = solids(world, arena, pos, radius + abs(vx) + abs(vy) + 2.0)
     for _ in range(2):
         for rect in nearby:
             pos = push_out_of_rect(pos, radius, rect)

@@ -138,7 +138,7 @@ def arena_id(arena: Arena) -> str:
             "player": arena.player_spawn,
             "practice": arena.practice_spawns,
             "rival": arena.rival_spawn,
-            "doors": arena.doors,
+            **({"doors": arena.doors} if arena.doors else {}),
         },
         sort_keys=True,
         separators=(",", ":"),

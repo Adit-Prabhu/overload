@@ -258,7 +258,7 @@ _HIDDEN = (
     ),
     (
         "............",
-        "..L..VV..L..",
+        ".VL.......L.",
         "............",
         "............",
         "............",
@@ -268,8 +268,9 @@ _HIDDEN = (
     ),
 )
 
-# Sector looks: steel control hall, concrete transformer yard, the conduit-lit core.
-_THEMES = {1: {}, 2: {".": ",", "g": "g"}, 3: {"g": "-", ",": "."}}
+# Sector looks: steel control hall, concrete transformer yard (concrete floor), the core
+# (cable grates become lit conduit runs).
+_THEMES = {1: {}, 2: {".": ","}, 3: {"g": "-"}}
 
 
 @dataclass(frozen=True)
@@ -418,8 +419,8 @@ def _carve(terrain, decor, a: FloorRoom, b: FloorRoom, secret: bool) -> list[Doo
         cy = _mid_row(left, right)
         for y in range(cy - half, cy + half + 1):
             for x in range(lx + lw - 1, rx + 1):
+                _clear(decor, x, y, left, right)
                 terrain[y][x] = "=" if not secret else "."
-                decor[y][x] = "."
         gaps = (
             (left, (lx + lw - 1, cy - half, 1, CORRIDOR)),
             (right, (rx, cy - half, 1, CORRIDOR)),
@@ -431,8 +432,8 @@ def _carve(terrain, decor, a: FloorRoom, b: FloorRoom, secret: bool) -> list[Doo
         cx = _mid_col(top, bottom)
         for x in range(cx - half, cx + half + 1):
             for y in range(ty + th - 1, bot_y + 2):
+                _clear(decor, x, y, top, bottom)
                 terrain[y][x] = "=" if not secret else "."
-                decor[y][x] = "."
         gaps = (
             (top, (cx - half, ty + th - 1, CORRIDOR, 1)),
             (bottom, (cx - half, bot_y, CORRIDOR, 2)),
@@ -441,6 +442,12 @@ def _carve(terrain, decor, a: FloorRoom, b: FloorRoom, secret: bool) -> list[Doo
         Door(f"{room.id}>{other.id}", room.id, other.id, rect, secret)
         for (room, rect), other in zip(gaps, (gaps[1][0], gaps[0][0]), strict=True)
     ]
+
+
+def _clear(decor, x: int, y: int, a: FloorRoom, b: FloorRoom) -> None:
+    """Corridors and door gaps must cut through bare wall and floor, never decor."""
+    if decor[y][x] != ".":
+        raise ValueError(f"the corridor {a.id} to {b.id} would erase decor at ({x}, {y})")
 
 
 def _mid_row(a: FloorRoom, b: FloorRoom) -> int:
