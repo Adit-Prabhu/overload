@@ -2,8 +2,9 @@
 
 Order inside a tick (fixed, so outcomes are deterministic):
 1. aim, 2. dodge start, 3. player movement, 4. firing, 5. hostiles (tells and bolts),
-6. projectile movement, 7. hits, 8. timers, 9. outcome (player down takes precedence over
-clearing the room in the same tick), 10. tick counter.
+6. the Regulator (boot, protocol behavior), 7. hazard tiles, 8. projectile movement,
+9. hits, 10. timers, 11. outcome (player down takes precedence over clearing the room in the
+same tick), 12. tick counter.
 """
 
 from __future__ import annotations
@@ -15,12 +16,13 @@ from overload.sim.geometry import (
     circle_hits_rect,
     circles_overlap,
     clamp_inside,
+    length,
     normalize,
     outside_bounds,
     push_out_of_rect,
 )
 from overload.sim.inputs import InputFrame
-from overload.sim.state import Event, Hostile, Player, Projectile, World
+from overload.sim.state import Event, Hazard, Hostile, Player, Projectile, Rival, World
 from overload.sim.tuning import DEFAULT, Tuning
 
 
@@ -63,6 +65,8 @@ def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena =
     _move_player(world.player, inp, tuning, arena)
     _fire(world, inp, tuning)
     _hostiles(world, tuning)
+    _rival(world, tuning, arena)
+    _hazards(world, tuning)
     _move_projectiles(world, arena)
     _hits(world, tuning)
     _timers(world.player)
@@ -106,12 +110,7 @@ def _move_player(player: Player, inp: InputFrame, tuning: Tuning, arena: Arena) 
     else:
         nx, ny = normalize(inp.move_x, inp.move_y)
         vx, vy = nx * tuning.player_speed, ny * tuning.player_speed
-    pos = (player.x + vx, player.y + vy)
-    for _ in range(2):
-        for rect in arena.obstacles:
-            pos = push_out_of_rect(pos, tuning.player_radius, rect)
-        pos = clamp_inside(pos, tuning.player_radius, arena.bounds)
-    player.x, player.y = pos
+    player.x, player.y = move_body(player.x, player.y, vx, vy, tuning.player_radius, arena)
 
 
 def _fire(world: World, inp: InputFrame, tuning: Tuning) -> None:
@@ -189,11 +188,23 @@ def _hits(world: World, tuning: Tuning) -> None:
             if not player.protected and circles_overlap(
                 center, shot.radius, (player.x, player.y), tuning.player_radius
             ):
-                player.charge = max(0, player.charge - shot.damage)
-                player.invulnerable = tuning.hit_invulnerability
-                world.events.append(Event("player_hit", player.x, player.y))
+                hurt_player(world, shot.damage, tuning)
                 continue
         else:
+            rival = world.rival
+            if (
+                rival is not None
+                and rival.health > 0
+                and circles_overlap(center, shot.radius, (rival.x, rival.y), rival.radius)
+            ):
+                if rival.boot > 0:
+                    world.events.append(Event("rival_shielded", shot.x, shot.y))
+                else:
+                    rival.health -= shot.damage
+                    world.events.append(Event("rival_hit", rival.x, rival.y))
+                    if rival.health <= 0:
+                        world.events.append(Event("rival_destroyed", rival.x, rival.y))
+                continue
             target = next(
                 (
                     h
@@ -222,9 +233,283 @@ def _timers(player: Player) -> None:
 
 
 def _outcome(world: World) -> None:
+    """Going down takes precedence. With a Regulator present, beating it clears the encounter.
+    Without one (practice), clearing every hostile does."""
+    rival_beaten = world.rival is not None and world.rival.health <= 0
     if world.player.charge <= 0:
         world.outcome = "down"
         world.events.append(Event("player_down", world.player.x, world.player.y))
-    elif not world.hostiles:
+    elif rival_beaten or (world.rival is None and not world.hostiles):
         world.outcome = "clear"
         world.events.append(Event("clear"))
+
+
+def hurt_player(world: World, damage: int, tuning: Tuning) -> None:
+    """Apply damage unless the Surge is dodging or recently hit."""
+    player = world.player
+    if player.protected:
+        return
+    player.charge = max(0, player.charge - damage)
+    player.invulnerable = tuning.hit_invulnerability
+    world.events.append(Event("player_hit", player.x, player.y))
+
+
+def move_body(x: float, y: float, vx: float, vy: float, radius: float, arena: Arena):
+    """Move a circle and push it out of walls and props. Speeds stay below the thinnest
+    obstacle, so nothing tunnels."""
+    pos = (x + vx, y + vy)
+    for _ in range(2):
+        for rect in arena.obstacles:
+            pos = push_out_of_rect(pos, radius, rect)
+        pos = clamp_inside(pos, radius, arena.bounds)
+    return pos
+
+
+# The Regulator ----------------------------------------------------------------------------
+
+PROTOCOLS = ("pressure", "spacing", "lateral")
+# Volley fan for Oscillate: rotation by 15 degrees as exact constants (no runtime trig).
+_COS15 = 0.9659258262890683
+_SIN15 = 0.25881904510252074
+
+
+def spawn_rival(world: World, x: float, y: float, protocol: str, tuning: Tuning = DEFAULT):
+    if protocol not in PROTOCOLS:
+        raise ValueError(f"unknown protocol {protocol!r}")
+    world.rival = Rival(
+        x=x,
+        y=y,
+        radius=tuning.rival_radius,
+        health=tuning.rival_health,
+        max_health=tuning.rival_health,
+        protocol=protocol,
+        boot=tuning.rival_boot,
+        cooldown=tuning.clamp_rest,
+        timer=tuning.oscillate_interval if protocol == "lateral" else tuning.insulate_orb_interval,
+    )
+    world.events.append(Event("protocol_boot", x, y))
+    return world.rival
+
+
+def rival_telegraphing(rival: Rival) -> bool:
+    return rival.action == "tell"
+
+
+def rival_tell_progress(rival: Rival, tuning: Tuning = DEFAULT) -> float:
+    """0 when a Regulator tell starts, 1 when the attack lands."""
+    if rival.action != "tell":
+        return 0.0
+    total = {
+        "pressure": tuning.clamp_tell,
+        "spacing": tuning.insulate_orb_tell,
+        "lateral": tuning.oscillate_tell,
+    }[rival.protocol]
+    return 1.0 - rival.timer / total
+
+
+def _lock_aim(rival: Rival, player: Player) -> None:
+    dx, dy = normalize(player.x - rival.x, player.y - rival.y)
+    rival.aim_x, rival.aim_y = (dx, dy) if (dx or dy) else (1.0, 0.0)
+
+
+def _rival_shoot(
+    world: World,
+    rival: Rival,
+    dx: float,
+    dy: float,
+    speed: float,
+    radius: float,
+    ttl: int,
+    tuning: Tuning,
+) -> None:
+    offset = rival.radius + radius + 1.0
+    world.projectiles.append(
+        Projectile(
+            id=world.new_id(),
+            x=rival.x + dx * offset,
+            y=rival.y + dy * offset,
+            vx=dx * speed,
+            vy=dy * speed,
+            radius=radius,
+            damage=tuning.bolt_damage,
+            hostile=True,
+            ttl=ttl,
+        )
+    )
+
+
+def _rival(world: World, tuning: Tuning, arena: Arena) -> None:
+    rival = world.rival
+    if rival is None or rival.health <= 0:
+        return
+    if rival.boot > 0:
+        rival.boot -= 1
+        return
+    player = world.player
+    if rival.protocol == "pressure":
+        _clamp(world, rival, player, tuning, arena)
+    elif rival.protocol == "spacing":
+        _insulate(world, rival, player, tuning, arena)
+    else:
+        _oscillate(world, rival, player, tuning, arena)
+
+
+def _clamp(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Arena) -> None:
+    """Close the distance, telegraph a lunge, dash, then recover in the open."""
+    if rival.action == "move":
+        dx, dy = player.x - rival.x, player.y - rival.y
+        nx, ny = normalize(dx, dy)
+        distance = length(dx, dy)
+        if distance > tuning.clamp_range:
+            rival.x, rival.y = move_body(
+                rival.x,
+                rival.y,
+                nx * tuning.clamp_speed,
+                ny * tuning.clamp_speed,
+                rival.radius,
+                arena,
+            )
+        if rival.cooldown > 0:
+            rival.cooldown -= 1
+        elif distance <= tuning.clamp_range:
+            _lock_aim(rival, player)
+            rival.action, rival.timer = "tell", tuning.clamp_tell
+            world.events.append(Event("rival_tell", rival.x, rival.y))
+    elif rival.action == "tell":
+        rival.timer -= 1
+        if rival.timer <= 0:
+            rival.action, rival.timer = "dash", tuning.clamp_dash_ticks
+            world.events.append(Event("rival_lunge", rival.x, rival.y))
+    elif rival.action == "dash":
+        rival.x, rival.y = move_body(
+            rival.x,
+            rival.y,
+            rival.aim_x * tuning.clamp_dash_speed,
+            rival.aim_y * tuning.clamp_dash_speed,
+            rival.radius,
+            arena,
+        )
+        if circles_overlap(
+            (rival.x, rival.y), rival.radius, (player.x, player.y), tuning.player_radius
+        ):
+            hurt_player(world, tuning.rival_contact_damage, tuning)
+        rival.timer -= 1
+        if rival.timer <= 0:
+            rival.action, rival.timer = "recover", tuning.clamp_recovery
+    elif rival.action == "recover":
+        rival.timer -= 1
+        if rival.timer <= 0:
+            rival.action, rival.cooldown = "move", tuning.clamp_rest
+
+
+def _insulate(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Arena) -> None:
+    """Hold the Surge at range, lay hazard tiles under them and lob slow orbs."""
+    dx, dy = player.x - rival.x, player.y - rival.y
+    nx, ny = normalize(dx, dy)
+    distance = length(dx, dy)
+    if distance < tuning.insulate_min_distance:
+        rival.x, rival.y = move_body(
+            rival.x,
+            rival.y,
+            -nx * tuning.rival_speed,
+            -ny * tuning.rival_speed,
+            rival.radius,
+            arena,
+        )
+    elif distance > tuning.insulate_max_distance:
+        rival.x, rival.y = move_body(
+            rival.x, rival.y, nx * tuning.rival_speed, ny * tuning.rival_speed, rival.radius, arena
+        )
+    rival.cooldown -= 1
+    if rival.cooldown <= 0:
+        size = 16.0
+        hx = (player.x // size) * size
+        hy = (player.y // size) * size
+        world.hazards.append(
+            Hazard(
+                world.new_id(),
+                hx,
+                hy,
+                size,
+                tuning.insulate_hazard_tell,
+                tuning.insulate_hazard_active,
+            )
+        )
+        rival.cooldown = tuning.insulate_hazard_interval
+        world.events.append(Event("hazard_armed", hx, hy))
+    if rival.action == "move":
+        rival.timer -= 1
+        if rival.timer <= 0:
+            _lock_aim(rival, player)
+            rival.action, rival.timer = "tell", tuning.insulate_orb_tell
+            world.events.append(Event("rival_tell", rival.x, rival.y))
+    elif rival.action == "tell":
+        rival.timer -= 1
+        if rival.timer <= 0:
+            _rival_shoot(
+                world,
+                rival,
+                rival.aim_x,
+                rival.aim_y,
+                tuning.orb_speed,
+                tuning.orb_radius,
+                tuning.orb_ttl,
+                tuning,
+            )
+            rival.action, rival.timer = "move", tuning.insulate_orb_interval
+            world.events.append(Event("rival_orb", rival.x, rival.y))
+
+
+def _oscillate(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Arena) -> None:
+    """Strafe across the Surge's line of fire and answer with a three-bolt fan."""
+    nx, ny = normalize(player.x - rival.x, player.y - rival.y)
+    vx, vy = -ny * rival.strafe * tuning.oscillate_speed, nx * rival.strafe * tuning.oscillate_speed
+    before = (rival.x, rival.y)
+    rival.x, rival.y = move_body(rival.x, rival.y, vx, vy, rival.radius, arena)
+    rival.strafe_timer -= 1
+    moved = abs(rival.x - before[0]) + abs(rival.y - before[1])
+    if rival.strafe_timer <= 0 or ((vx or vy) and moved < 0.25):
+        rival.strafe, rival.strafe_timer = -rival.strafe, tuning.oscillate_turn
+    if rival.action == "move":
+        rival.timer -= 1
+        if rival.timer <= 0:
+            _lock_aim(rival, player)
+            rival.action, rival.timer = "tell", tuning.oscillate_tell
+            world.events.append(Event("rival_tell", rival.x, rival.y))
+    elif rival.action == "tell":
+        rival.timer -= 1
+        if rival.timer <= 0:
+            ax, ay = rival.aim_x, rival.aim_y
+            for dx, dy in (
+                (ax, ay),
+                (ax * _COS15 - ay * _SIN15, ax * _SIN15 + ay * _COS15),
+                (ax * _COS15 + ay * _SIN15, -ax * _SIN15 + ay * _COS15),
+            ):
+                _rival_shoot(
+                    world,
+                    rival,
+                    dx,
+                    dy,
+                    tuning.bolt_speed,
+                    tuning.bolt_radius,
+                    tuning.bolt_ttl,
+                    tuning,
+                )
+            rival.action, rival.timer = "move", tuning.oscillate_interval
+            world.events.append(Event("rival_volley", rival.x, rival.y))
+
+
+def _hazards(world: World, tuning: Tuning) -> None:
+    player = world.player
+    survivors = []
+    for hazard in world.hazards:
+        if hazard.arming > 0:
+            hazard.arming -= 1
+        else:
+            rect = (hazard.x, hazard.y, hazard.size, hazard.size)
+            if circle_hits_rect((player.x, player.y), tuning.player_radius, rect):
+                hurt_player(world, tuning.hazard_damage, tuning)
+            hazard.active -= 1
+        if hazard.arming > 0 or hazard.active > 0:
+            survivors.append(hazard)
+    world.hazards = survivors

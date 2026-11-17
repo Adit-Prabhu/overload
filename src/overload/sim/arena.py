@@ -24,6 +24,7 @@ class Arena:
     obstacles: tuple[Rect, ...]
     player_spawn: Point
     practice_spawns: tuple[Point, ...]
+    rival_spawn: Point
 
 
 def wall_rects(room: Room) -> list[Rect]:
@@ -61,7 +62,10 @@ def prop_rects(room: Room) -> list[Rect]:
 
 
 def from_room(
-    room: Room, player_tile: tuple[int, int], practice_tiles: tuple[tuple[int, int], ...]
+    room: Room,
+    player_tile: tuple[int, int],
+    practice_tiles: tuple[tuple[int, int], ...],
+    rival_tile: tuple[int, int],
 ) -> Arena:
     w, h = room.size
     obstacles = tuple(wall_rects(room) + prop_rects(room))
@@ -80,10 +84,13 @@ def from_room(
         obstacles=obstacles,
         player_spawn=center(player_tile),
         practice_spawns=tuple(center(tile) for tile in practice_tiles),
+        rival_spawn=center(rival_tile),
     )
 
 
-SUBSTATION = from_room(SUBSTATION_HALL, player_tile=(8, 10), practice_tiles=((19, 4), (17, 11)))
+SUBSTATION = from_room(
+    SUBSTATION_HALL, player_tile=(8, 10), practice_tiles=((19, 4), (17, 11)), rival_tile=(21, 9)
+)
 
 
 def arena_id(arena: Arena) -> str:
@@ -95,6 +102,7 @@ def arena_id(arena: Arena) -> str:
             "decor": arena.room.decor,
             "player": arena.player_spawn,
             "practice": arena.practice_spawns,
+            "rival": arena.rival_spawn,
         },
         sort_keys=True,
         separators=(",", ":"),
