@@ -2,14 +2,16 @@
 
 Overload is a top-down shooter where you steal and fuse enemy powers to feel inventive and capable of surprising a rival that learns how you fight. COMS E6998 section 014 (AI in Practice: Game Design and Development), Columbia University, individual final project.
 
-G1 was approved. The repository now holds the project scaffold: a game window that opens, a placeholder rival service with a health route, CI and the agent team configuration. There is no gameplay, deployed service, paid model call or playtest yet.
+G1 was approved. The repository holds a playable practice build (move, aim, shoot, dodge, retry and replay against two Arc Mites), the code-drawn art, a placeholder rival service with a health route, CI and the agent team configuration. There are no powers, Regulator, deployed service, paid model call or playtest yet.
 
 ## Run and test
 Requirements: [uv](https://docs.astral.sh/uv/) and Python 3.11 or 3.12 for the game, Node.js 22 for the rival service.
 
 ```sh
 uv sync --frozen
-uv run overload                          # opens the game window, Esc quits
+uv run overload                          # play
+uv run overload --record logs/run.json   # play and save a replay on exit
+uv run overload --replay logs/run.json   # watch it back and verify the final state hash
 uv run pytest                            # deterministic client tests
 uv run ruff check . && uv run ruff format --check .
 
@@ -18,6 +20,10 @@ npm ci
 npm test                                 # Worker tests run locally in workerd, no deployment
 npm run typecheck
 ```
+
+Controls: WASD or arrow keys move, the mouse aims, hold left click to fire, Space dodges, R retries after going down, Esc quits. This is the practice build: two Arc Mites in the substation, no powers or Regulator yet.
+
+Review renders of the art live in [`docs/art/`](docs/art/). Regenerate them with `uv run python tools/art/style_frame.py` and `uv run --group tools python tools/art/contact_sheet.py` (Python 3.12).
 
 CI runs the same checks on every pull request ([`.github/workflows/overload-checks.yml`](.github/workflows/overload-checks.yml)). Development agent roles live in [`.agents/`](.agents/) and the common manifest is [`agent-config.json`](agent-config.json).
 

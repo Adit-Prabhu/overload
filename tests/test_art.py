@@ -8,7 +8,7 @@ import os
 import pygame
 import pytest
 
-from overload.art import palette, scene, sprites
+from overload.art import fonts, palette, scene, sprites
 from overload.art import primitives as p
 from overload.art.fonts import font
 from overload.paths import ROOT
@@ -23,6 +23,7 @@ def headless_pygame():
     pygame.init()
     yield
     pygame.quit()
+    fonts.forget()
 
 
 def silhouette(draw) -> pygame.Mask:
