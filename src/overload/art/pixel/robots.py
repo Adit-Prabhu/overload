@@ -129,6 +129,20 @@ _BREAKER = {
         ".....dHHmmUuUmmHHd.....",
         ".....dddHHmmmHHddd.....",
     ],
+    # The impact: crouched, both fists driven into the floor, dust kicking up.
+    "slam": [
+        ".......................",
+        ".......................",
+        ".........dXWXd.........",
+        "........dXvvvMd........",
+        "........dvEEEvd........",
+        "...dHHHdMMMMMMMdHHHd...",
+        "..dHd.dHHmmUmmHHd.dHd..",
+        "..dHd.dHmmUuUmmHd.dHd..",
+        ".dXWXddHmUuuuUmHddXMXd.",
+        "wdXXXddHHmmUmmHHddXXXdw",
+        "w..w..dHHHmmmHHHd..w..w",
+    ],
 }
 
 # Sweeper: a small white dome with a red stripe and a striped bumper. Rushes. Carries
@@ -187,8 +201,8 @@ def breaker_frames() -> dict[str, pygame.Surface]:
     return {pose: render(rows + _BREAKER_LEGS, LEGEND) for pose, rows in _BREAKER.items()}
 
 
-def breaker(facing_left: bool, raising: bool = False) -> pygame.Surface:
-    image = breaker_frames()["raise" if raising else "rest"]
+def breaker(facing_left: bool, raising: bool = False, slamming: bool = False) -> pygame.Surface:
+    image = breaker_frames()["slam" if slamming else "raise" if raising else "rest"]
     return flipped(image) if facing_left else image
 
 

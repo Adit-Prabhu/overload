@@ -80,7 +80,8 @@ def robot_image(robot, tick: int, left: bool, charging: bool) -> pygame.Surface:
     if robot.kind == "relay":
         return robots_art.relay_bot(left, arming=robot.phase == "blink")
     if robot.kind == "breaker":
-        return robots_art.breaker(left, raising=robot.phase == "raise")
+        slamming = robot.phase == "recover" and robot.fire_timer > DEFAULT.breaker_recover - 14
+        return robots_art.breaker(left, raising=robot.phase == "raise", slamming=slamming)
     if robot.kind == "sweeper":
         return robots_art.sweeper(tick, left, revving=robot.phase in ("rev", "rush"))
     if robot.kind == "sentry":
@@ -161,6 +162,7 @@ class Spark:
 class PixelView:
     def __init__(self, run: Run | Campaign) -> None:
         self.room = tiles.render_room(run.arena.room)
+        self.room_data = run.arena.room
         self.room_size = run.arena.size
         self.glow = Glow(VIEW)
         self.lighting = Lighting(VIEW)
@@ -175,6 +177,7 @@ class PixelView:
         self.chains: list[tuple] = []
         self.notice: tuple[str, int] | None = None
         self.unlock_flash = 0
+        self.shake = 0
         self.fusion_flash = 0
         self.walking = 0
         self.last_player = (run.world.player.x, run.world.player.y)
@@ -198,7 +201,15 @@ class PixelView:
                 self.camera[axis] = min(max(self.camera[axis], 0.0), float(spare))
 
     def camera_offset(self) -> tuple[int, int]:
-        return (round(self.camera[0]), round(self.camera[1]))
+        """The camera, plus a slam's screen shake (2 px at most, art direction)."""
+        jolt = (0, 0)
+        if self.shake > 0:
+            amount = 2 if self.shake > 5 else 1
+            jolt = (
+                amount * (1 if self.shake % 2 else -1),
+                amount * (1 if self.shake % 4 < 2 else -1),
+            )
+        return (round(self.camera[0]) + jolt[0], round(self.camera[1]) + jolt[1])
 
     def update(self, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         """Advance cosmetic state by one simulation tick. Called once per tick, never per
@@ -211,6 +222,19 @@ class PixelView:
         before the next input is read)."""
         self.consume(run, run.world.events)
         self._tick_cosmetics()
+        for wave in run.world.shockwaves:  # dust kicked up along the running ring
+            for _ in range(3):
+                a = self.cosmetic.uniform(0, math.tau)
+                self.sparks.append(
+                    Spark(
+                        wave.x + math.cos(a) * wave.radius,
+                        wave.y + math.sin(a) * wave.radius,
+                        math.cos(a) * 0.3,
+                        -0.4,
+                        self.cosmetic.randint(6, 12),
+                        "px.wall.3",
+                    )
+                )
         floor = run.arena.floor
         if floor is not None:
             room = floorplay.room_of(floor, run.world.player.x, run.world.player.y)
@@ -290,6 +314,10 @@ class PixelView:
             elif event.kind == "fully_evolved":
                 self._burst(event.x, event.y, 10, f"power.{event.power}", 1.4)
                 self.toast("FULLY EVOLVED", 60)
+            elif event.kind == "slam":
+                self.shake = 10
+                self._burst(event.x, event.y + 6, 18, "px.wall.3", 1.6)
+                self._burst(event.x, event.y + 6, 8, "px.dial.0", 1.2)
             elif event.kind == "room_lock":
                 self.toast("LOCKDOWN", 60)
             elif event.kind == "room_clear":
@@ -313,6 +341,28 @@ class PixelView:
         self.last_player = (player.x, player.y)
         if player.dodging or (player.boost > 0 and run.world.tick % 3 == 0):
             self.ghosts.append((player.x, player.y, 10))  # dodge and Overdrive trails
+
+    def _ripple(self, screen: pygame.Surface, world, cam: tuple[int, int]) -> None:
+        """A shockwave lifts the floor tiles it passes over by up to 2 px, with a dark gap
+        under each lifted tile, so the ground visibly rolls as the ring runs out."""
+        room = self.room.background
+        for wave in world.shockwaves:
+            reach = wave.radius + 12
+            x0, x1 = int((wave.x - reach) // TILE), int((wave.x + reach) // TILE)
+            y0, y1 = int((wave.y - reach) // TILE), int((wave.y + reach) // TILE)
+            for ty in range(y0, y1 + 1):
+                for tx in range(x0, x1 + 1):
+                    if self.room_data.is_wall(tx, ty):
+                        continue
+                    cx, cy = tx * TILE + TILE / 2, ty * TILE + TILE / 2
+                    off = abs(math.hypot(cx - wave.x, cy - wave.y) - wave.radius)
+                    lift = round(3 * (1 - off / 12)) if off < 12 else 0
+                    if lift <= 0:
+                        continue
+                    sx, sy = tx * TILE - cam[0], ty * TILE - cam[1]
+                    screen.fill(rgb("px.outline"), (sx, sy + TILE - lift, TILE, lift))
+                    screen.blit(room, (sx, sy - lift), (tx * TILE, ty * TILE, TILE, TILE - lift))
+                    screen.fill(rgb("px.wall.4"), (sx, sy - lift, TILE, 1))  # the lifted edge
 
     def _draw_doors(self, screen: pygame.Surface, run: Run | Campaign, v) -> None:
         """Locked doors: hazard-striped shutters. A locked secret wall looks like cracked wall,
@@ -424,6 +474,7 @@ class PixelView:
         self.bursts = [(*b[:5], b[5] - 1) for b in self.bursts if b[5] > 1]
         self.chains = [(a, b, life - 1) for a, b, life in self.chains if life > 1]
         self.unlock_flash = max(0, self.unlock_flash - 1)
+        self.shake = max(0, self.shake - 1)
         self.fusion_flash = max(0, self.fusion_flash - 1)  # per tick, so any frame rate
         if self.notice:
             message, ticks = self.notice
@@ -456,6 +507,7 @@ class PixelView:
             fx, fy = v(*feet)
             screen.blit(image, (round(fx - image.get_width() / 2), round(fy - image.get_height())))
 
+        self._ripple(screen, world, cam)
         self._draw_doors(screen, run, v)
         for warp in world.warps:
             effects.warp_marker(
