@@ -4,7 +4,9 @@ own health, pace and signature attack, layered on top of the protocol it runs.
 The protocol (pressure, spacing or lateral) stays the only thing the rival model chooses. The
 chassis is fixed per sector and identical in both comparison conditions, so the experiment
 still compares protocol choice alone. A signature attack has its own tell (at least 0.5 s,
-validated in Tuning) and the protocol waits while it runs, so the two never overlap.
+validated in Tuning). The protocol waits through the tell, the attack and a short quiet spell
+after it (`signature_quiet`), while the bolts or the wave are still out, so a protocol attack
+never lands on top of a signature.
 
 - Linesman (sector 1): the gentlest. Every so often it stops and throws a ring of 8 bolts.
 - Transformer (sector 2): tougher and quicker. It stomps a wide shockwave that runs along the

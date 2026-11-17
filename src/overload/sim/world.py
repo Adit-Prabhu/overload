@@ -341,7 +341,15 @@ def _rival(world: World, tuning: Tuning, arena: Arena) -> None:
     if boss.overload and rival.phase == 1 and rival.health * 2 <= rival.max_health:
         # Phase 2: a shield flicker (the boot shield), then the overload signature.
         rival.phase, rival.boot = 2, tuning.overload_shield
-        rival.action, rival.timer, rival.cooldown = "move", tuning.oscillate_interval // 2, 0
+        first = (
+            tuning.oscillate_interval
+            if rival.protocol == "lateral"
+            else tuning.insulate_orb_interval
+        )
+        rest = (
+            tuning.clamp_rest if rival.protocol == "pressure" else tuning.insulate_hazard_interval
+        )
+        rival.action, rival.timer, rival.cooldown = "move", first // 2, rest // 2
         rival.sig_action, rival.sig_timer = "idle", tuning.spiral_every // 2
         world.events.append(Event("overload", rival.x, rival.y))
     if rival.boot > 0:
@@ -381,7 +389,8 @@ def signature_timing(name: str, tuning: Tuning) -> tuple[int, int]:
 
 def _signature(world: World, rival: Rival, boss, tuning: Tuning, arena: Arena) -> bool:
     """Run the chassis signature on its own timer. It starts only between protocol attacks
-    (action "move"), shows its tell, then fires. True while it is busy."""
+    (action "move"), shows its tell, fires, then stays quiet while its bolts or wave are out.
+    True while it is busy (the protocol waits)."""
     name = _signature_name(rival, boss)
     if not name:
         return False
@@ -427,7 +436,12 @@ def _signature(world: World, rival: Rival, boss, tuning: Tuning, arena: Arena) -
             rival.sig_action, rival.sig_timer = "fire", tuning.spiral_ticks
             world.events.append(Event("boss_spiral", rival.x, rival.y))
             return True
-        rival.sig_action, rival.sig_timer = "idle", every
+        rival.sig_action, rival.sig_timer = "quiet", tuning.signature_quiet
+        return True
+    if rival.sig_action == "quiet":
+        rival.sig_timer -= 1
+        if rival.sig_timer <= 0:
+            rival.sig_action, rival.sig_timer = "idle", every
         return True
     # "fire": the spiral streams two opposite bolts every few ticks, turning 20 degrees.
     if rival.sig_timer % tuning.spiral_gap == 0:
@@ -446,7 +460,7 @@ def _signature(world: World, rival: Rival, boss, tuning: Tuning, arena: Arena) -
         rival.spin_x, rival.spin_y = sx * COS20 - sy * SIN20, sx * SIN20 + sy * COS20
     rival.sig_timer -= 1
     if rival.sig_timer <= 0:
-        rival.sig_action, rival.sig_timer = "idle", tuning.spiral_every
+        rival.sig_action, rival.sig_timer = "quiet", tuning.signature_quiet
     return True
 
 

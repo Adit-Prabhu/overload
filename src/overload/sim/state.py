@@ -90,7 +90,7 @@ class Rival:
     # The chassis (sim/bosses.py) and its signature attack, on a timer of its own.
     kind: str = "regulator"
     phase: int = 1
-    sig_action: str = "idle"  # idle, tell or fire
+    sig_action: str = "idle"  # idle, tell, fire (the spiral) or quiet
     sig_timer: int = 0
     spin_x: float = 1.0
     spin_y: float = 0.0

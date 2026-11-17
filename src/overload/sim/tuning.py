@@ -165,6 +165,7 @@ class Tuning:
     spiral_ticks: int = 60
     spiral_gap: int = 5
     overload_shield: int = 60
+    signature_quiet: int = 66  # the protocol rests this long after a signature (a quake's run)
 
     # Rooms (overhaul): robots warp in after a visible marker, secret walls crack open.
     warp_tell: int = 36

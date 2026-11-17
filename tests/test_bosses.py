@@ -25,7 +25,7 @@ def chamber(sector: int, seed: int = 1) -> Campaign:
 
 
 def run_until(campaign: Campaign, kind: str, limit: int = 2000) -> list[str]:
-    """Step until an event of this kind; return every event kind seen on the way."""
+    """Step until an event of this kind. Returns every event kind seen on the way."""
     seen = []
     for _ in range(limit):
         campaign.world.player.invulnerable = 10**9
@@ -100,7 +100,7 @@ def test_the_grid_core_summons_drones_on_clear_tiles_up_to_a_cap() -> None:
         campaign.world.player.invulnerable = 10**9
         campaign.step(IDLE)
         alive = [h for h in campaign.world.hostiles if h.health > 0]
-        assert len(alive) + len(campaign.world.warps) <= 4
+        assert len(alive) + len(campaign.world.warps) <= DEFAULT.summon_cap + 1
 
 
 def test_the_grid_core_overloads_at_half_health() -> None:
@@ -137,3 +137,16 @@ def test_chassis_tells_respect_the_readability_minimum() -> None:
         with pytest.raises(ValueError):
             Tuning(**{name: 20})
     assert dataclasses.replace(DEFAULT).ring_tell >= 30
+
+
+def test_the_protocol_stays_quiet_while_a_quake_is_still_running() -> None:
+    campaign = chamber(2)
+    run_until(campaign, "quake")
+    rival = campaign.world.rival
+    for _ in range(DEFAULT.signature_quiet - 1):
+        campaign.world.player.invulnerable = 10**9
+        campaign.step(IDLE)
+        kinds = {e.kind for e in campaign.world.events}
+        assert not kinds & {"rival_tell", "rival_lunge", "rival_orb", "rival_volley"}
+    reach = DEFAULT.quake_reach - DEFAULT.wave_width - DEFAULT.player_radius
+    assert DEFAULT.signature_quiet * DEFAULT.wave_speed >= reach - rival.radius
