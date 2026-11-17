@@ -1,7 +1,7 @@
 """Entry point: `uv run overload`.
 
 Controls: WASD or arrows move, mouse aims, hold left click to fire, Space dodges,
-R retries after going down or clearing, Esc quits.
+R retries after going down, Enter continues from the Fuse Box, Esc quits.
 """
 
 from __future__ import annotations
@@ -30,6 +30,18 @@ def parse_args(argv: list[str] | None) -> Options:
     parser.add_argument(
         "--replay", type=Path, help="Play back a replay file and check its final state hash."
     )
+    parser.add_argument(
+        "--practice", action="store_true", help="Practice arena: two Arc Mites, no Regulator."
+    )
+    parser.add_argument(
+        "--condition",
+        choices=("live", "fixed", "off"),
+        help="Rival condition. Default: live when OVERLOAD_RIVAL_URL is set, otherwise off.",
+    )
+    parser.add_argument(
+        "--schedule", choices=("A", "B"), default="A", help="Order for the fixed condition."
+    )
+    parser.add_argument("--trace", type=Path, help="Write the session trace to this file.")
     args = parser.parse_args(argv)
     return Options(
         seed=args.seed,
@@ -37,6 +49,10 @@ def parse_args(argv: list[str] | None) -> Options:
         frames=args.frames,
         record=args.record,
         replay=args.replay,
+        practice=args.practice,
+        condition=args.condition,
+        schedule=args.schedule,
+        trace=args.trace,
     )
 
 
