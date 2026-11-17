@@ -15,16 +15,20 @@ from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 
+from overload import __version__
+
 DEADLINE_SECONDS = 5.0
+USER_AGENT = f"overload-game/{__version__}"
 
 Transport = Callable[[str, str, dict | None, float], tuple[int, dict]]
 
 
 def urllib_transport(method: str, url: str, body: dict | None, timeout: float) -> tuple[int, dict]:
     data = json.dumps(body).encode() if body is not None else None
-    request = urllib.request.Request(
-        url, data=data, method=method, headers={"content-type": "application/json"}
-    )
+    # Cloudflare's edge refuses the default Python-urllib user agent (error 1010), so the
+    # game names itself. The string identifies the build only, never the player.
+    headers = {"content-type": "application/json", "user-agent": USER_AGENT}
+    request = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.status, json.loads(response.read() or b"{}")
@@ -51,17 +55,23 @@ class TacticClient:
         transport: Transport = urllib_transport,
         clock: Callable[[], float] = time.monotonic,
         deadline: float = DEADLINE_SECONDS,
+        session_timeout: float = DEADLINE_SECONDS,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.transport = transport
         self.clock = clock
         self.deadline = deadline
+        self.session_timeout = (
+            session_timeout  # setup happens before play, apart from tactic deadlines
+        )
         self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="rival")
 
     def start_session(self) -> str | None:
         """Blocking, called once before play starts. None means live mode is unavailable."""
         try:
-            status, body = self.transport("POST", f"{self.base_url}/sessions", None, self.deadline)
+            status, body = self.transport(
+                "POST", f"{self.base_url}/sessions", None, self.session_timeout
+            )
         except Exception:  # unreachable, malformed or anything else: live mode is unavailable
             return None
         if status != 201 or not isinstance(body, dict):

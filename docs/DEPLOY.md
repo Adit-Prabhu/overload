@@ -33,7 +33,7 @@ npx wrangler deploy --var PROVIDER:vertex --var MODEL:gemini-3.5-flash-lite \
 npx wrangler secret put GCP_SERVICE_ACCOUNT_JSON < ~/overload-rival-key.json
 rm ~/overload-rival-key.json
 ```
-Deploy prints the service URL, `https://overload-rival.<your-subdomain>.workers.dev`. If Vertex rejects `THINKING_BUDGET:0` for this model, deploy again with `--var THINKING_BUDGET:""`. Until then the game falls back to the neutral tactic.
+Deploy prints the service URL, `https://overload-rival.<your-subdomain>.workers.dev`. Keep it out of the repository: set it in your shell as `OVERLOAD_RIVAL_URL` and pass it to tools from there, so the public repo does not advertise a spend-capped endpoint. If Vertex rejects `THINKING_BUDGET:0` for this model, deploy again with `--var THINKING_BUDGET:""`. Until then the game falls back to the neutral tactic.
 
 The Worker enforces these limits itself:
 - 2 attempts per session
