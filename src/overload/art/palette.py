@@ -20,6 +20,7 @@ TOKENS = MappingProxyType(
         "power.burst": "#FF4FB4",
         "hostile.line": "#FF6B35",
         "hostile.danger": "#FF3B3B",
+        "hostile.body": "#151925",
         "rival.body": "#1C1F2B",
         "ui.text": "#E6ECF5",
         "ui.dim": "#7D8AA3",
@@ -32,3 +33,10 @@ def rgb(token: str) -> tuple[int, int, int]:
     """Return the RGB triple for a palette token. Unknown tokens raise KeyError."""
     value = TOKENS[token]
     return (int(value[1:3], 16), int(value[3:5], 16), int(value[5:7], 16))
+
+
+def rgba(token: str, alpha: int) -> tuple[int, int, int, int]:
+    """Return a palette token with an alpha channel (0 to 255)."""
+    if not 0 <= alpha <= 255:
+        raise ValueError(f"alpha out of range: {alpha}")
+    return (*rgb(token), alpha)

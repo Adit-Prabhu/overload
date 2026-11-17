@@ -49,17 +49,31 @@ def _color_aliases(tree: ast.AST) -> set[str]:
     return aliases
 
 
+def _unpacked_values(tree: ast.AST) -> set[int]:
+    """Tuples on the right of `a, b, c = 1, 2, 3` are separate numbers, not colors."""
+    ids = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Tuple)
+            and any(isinstance(target, ast.Tuple) for target in node.targets)
+        ):
+            ids.add(id(node.value))
+    return ids
+
+
 def color_literals(source: str) -> list[int]:
     """Return the line numbers of color literals in Python source."""
     tree = ast.parse(source)
     skip = _docstring_ids(tree)
+    unpacked = _unpacked_values(tree)
     aliases = _color_aliases(tree)
     lines = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in skip:
             if HEX_IN_STRING.search(node.value) or node.value.lower() in COLOR_NAMES:
                 lines.add(node.lineno)
-        elif isinstance(node, ast.Tuple | ast.List):
+        elif isinstance(node, ast.Tuple | ast.List) and id(node) not in unpacked:
             if len(node.elts) in (3, 4) and all(_is_byte(e) for e in node.elts):
                 lines.add(node.lineno)
         elif isinstance(node, ast.Call):
@@ -116,6 +130,7 @@ def test_scanner_catches_color_literals(snippet: str) -> None:
         "point = (300, 400, 500)",
         'name = "Regulator"',
         "frames = [1, 2]",
+        "width, height, gap = 16, 18, 4",
     ],
 )
 def test_scanner_ignores_non_colors(snippet: str) -> None:

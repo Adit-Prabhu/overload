@@ -66,6 +66,7 @@ All colors come from `src/overload/art/palette.py`. No other file may contain a 
 | `power.burst` | `#FF4FB4` | Burst, Coil core, Burst charge |
 | `hostile.line` | `#FF6B35` | Outline of every hostile thing |
 | `hostile.danger` | `#FF3B3B` | Telegraph fills and hazard hatching |
+| `hostile.body` | `#151925` | Housing fill for enemies and hostile blocks |
 | `rival.body` | `#1C1F2B` | Regulator housing |
 | `ui.text` | `#E6ECF5` | Text and icons |
 | `ui.dim` | `#7D8AA3` | Secondary text, empty slots |
