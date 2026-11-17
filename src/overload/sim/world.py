@@ -27,6 +27,7 @@ from overload.sim.geometry import (
 )
 from overload.sim.inputs import InputFrame
 from overload.sim.powers import (
+    DROPS,
     absorb_charges,
     drop_charge,
     tick_cooldowns,
@@ -329,7 +330,15 @@ def _hits(world: World, tuning: Tuning) -> None:
     world.projectiles = survivors
     for hostile in world.hostiles:
         if hostile.health <= 0:
-            world.events.append(Event("hostile_destroyed", hostile.x, hostile.y, hostile.id))
+            world.events.append(
+                Event(
+                    "hostile_destroyed",
+                    hostile.x,
+                    hostile.y,
+                    hostile.id,
+                    DROPS.get(hostile.kind, ""),
+                )
+            )
             drop_charge(world, hostile.kind, hostile.x, hostile.y)
     world.hostiles = [h for h in world.hostiles if h.health > 0]
 

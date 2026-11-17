@@ -85,6 +85,7 @@ class Campaign:
             return
         if inp.restart and self.world.outcome == "down":
             self.world = copy.deepcopy(self.checkpoint)
+            self.world.events.clear()  # the checkpoint's spawn events belong to the first entry
             self.retries[self.encounter] += 1
             return
         if self.world.outcome != "playing":

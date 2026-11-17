@@ -183,7 +183,7 @@ class PixelView:
                 self._burst(event.x, event.y, 4, "px.spark.light", 1.2)
             elif event.kind == "hostile_destroyed":
                 self._burst(event.x, event.y, 14, "px.hostile.3", 1.8)
-                self._burst(event.x, event.y, 8, "power.spark", 1.4)
+                self._burst(event.x, event.y, 8, f"power.{event.power or 'spark'}", 1.4)
             elif event.kind == "player_hit":
                 self._burst(event.x, event.y, 10, "player.core", 1.6)
             elif event.kind == "rival_hit":

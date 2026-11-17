@@ -23,7 +23,8 @@ import pygame
 from overload.agent.client import TacticClient
 from overload.agent.selector import FixedSchedule, LiveSelector, NeutralSelector, Selector
 from overload.art.pixel import hud, tiles
-from overload.game.flow import FuseBoxMenu, Session
+from overload.game.audio import Audio
+from overload.game.flow import FUSE_NOTICES, FuseBoxMenu, Session
 from overload.game.view import VIEW, PixelView
 from overload.paths import ROOT
 from overload.session.replay import Recording, apply_menu, check_campaign, menu_by_frame
@@ -49,6 +50,7 @@ class Options:
     condition: str | None = None  # live, fixed or off. Default: live if a service URL is set
     schedule: str = "A"
     trace: Path | None = None
+    mute: bool = False
 
 
 class InputReader:
@@ -141,25 +143,36 @@ def fuse_box_frame(
     reader: InputReader,
     recording: Recording,
     was_in_fuse_box: bool,
-) -> None:
+) -> list[str]:
     """Menu keys and Enter, once per rendered frame after the tick batch. Keys only count if
     the Fuse Box was already open when the frame began, so a press made while the last
     encounter was ending never becomes a menu choice. Leaving the Fuse Box drops any Q or E
-    press still latched, so it cannot fire a power on the next encounter's first tick."""
+    press still latched, so it cannot fire a power on the next encounter's first tick.
+    Returns the interface sounds to play."""
     keys = reader.take_menu()
     confirmed = reader.take_confirm()
+    sounds: list[str] = []
     if not (was_in_fuse_box and session.campaign.stage == "fuse_box"):
-        return
+        return sounds
     for key in keys:
         action = menu.press(session, key)
-        if action is not None:
-            recording.fuse_box(*action)
+        if action is None:
+            continue
+        recording.fuse_box(*action)
+        if action[0] == "equip":
+            sounds.append("confirm")
+        else:
+            sounds.append("fusion" if menu.notice == FUSE_NOTICES["fused"] else "deny")
     if confirmed:
         decision = session.confirm()
         if decision is not None:
             recording.begin_next(decision.tactic)
             menu.reset()
             reader.drop_power_latches()
+            sounds.append("confirm")
+        else:
+            sounds.append("deny")
+    return sounds
 
 
 def _open_window(headless: bool) -> pygame.Surface:
@@ -256,6 +269,7 @@ def play(options: Options) -> int:
         view = PixelView(run)
         reader = InputReader()
         menu = FuseBoxMenu()
+        audio = Audio(enabled=not (options.mute or options.headless))
         clock = pygame.time.Clock()
         accumulated = 0.0
         frames = 0
@@ -303,12 +317,17 @@ def play(options: Options) -> int:
                 else:
                     run.step(frame)
                 recording.frames.append(frame)
+                audio.events(run.world.events, run.world)
                 if scripted is not None:
                     cam = view.camera_offset()
                     cursor = (frame.aim_x - cam[0], frame.aim_y - cam[1])
                 view.update(run, cursor)
             if session is not None:
-                fuse_box_frame(session, menu, reader, recording, in_fuse_box)
+                for sound in fuse_box_frame(session, menu, reader, recording, in_fuse_box):
+                    audio.play(sound)
+            audio.update(
+                getattr(run, "stage", None), getattr(run, "encounter", 1), run.world.outcome
+            )
             view.draw(screen, run, cursor)
             stage = getattr(run, "stage", None)
             if stage == "fuse_box":
