@@ -42,6 +42,9 @@ def parse_args(argv: list[str] | None) -> Options:
         "--schedule", choices=("A", "B"), default="A", help="Order for the fixed condition."
     )
     parser.add_argument("--trace", type=Path, help="Write the session trace to this file.")
+    parser.add_argument(
+        "--mute", action="store_true", help="No sound. The game is fully playable muted."
+    )
     args = parser.parse_args(argv)
     return Options(
         seed=args.seed,
@@ -53,6 +56,7 @@ def parse_args(argv: list[str] | None) -> Options:
         condition=args.condition,
         schedule=args.schedule,
         trace=args.trace,
+        mute=args.mute,
     )
 
 

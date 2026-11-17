@@ -12,6 +12,7 @@ uv sync --frozen
 uv run overload                          # play the campaign (live rival if OVERLOAD_RIVAL_URL is set, else neutral)
 uv run overload --condition fixed --schedule B   # the fixed-schedule baseline, order B
 uv run overload --practice               # practice arena: two Arc Mites, no Regulator
+uv run overload --mute                   # no sound (every sound has a visual twin)
 uv run overload --record logs/run.json   # play and save a replay on exit
 uv run overload --replay logs/run.json   # watch it back and verify the final state hash
 uv run pytest                            # deterministic client tests
