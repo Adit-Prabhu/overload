@@ -11,7 +11,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from overload.sim.arena import SUBSTATION, Arena, arena_id
+from overload.sim.arena import FLOOR_ARENA, SUBSTATION, Arena, arena_id
 from overload.sim.campaign import NEUTRAL, Campaign
 from overload.sim.inputs import InputFrame
 from overload.sim.run import Run
@@ -138,10 +138,12 @@ def apply_menu(campaign: Campaign, entry: list) -> None:
 
 
 def play(
-    recording: Recording, tuning: Tuning = DEFAULT, arena: Arena = SUBSTATION
+    recording: Recording, tuning: Tuning = DEFAULT, arena: Arena | None = None
 ) -> Run | Campaign:
-    """Re-run a recording from scratch. Refuses a recording made with a different tuning or
-    a different arena."""
+    """Re-run a recording from scratch. Practice runs use the hall, campaigns the floor.
+    Refuses a recording made with a different tuning or a different arena."""
+    if arena is None:
+        arena = SUBSTATION if recording.mode == "practice" else FLOOR_ARENA
     if recording.tuning_id != tuning.tuning_id():
         raise ValueError(
             f"recording uses tuning {recording.tuning_id}, this build is {tuning.tuning_id()}"

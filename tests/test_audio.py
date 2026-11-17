@@ -71,10 +71,13 @@ def test_muted_audio_is_inert() -> None:
 
 
 def test_the_protocol_sting_plays_once_as_each_fight_starts() -> None:
+    from floorbot import enter
+
     from overload.sim.campaign import Campaign
     from overload.sim.inputs import IDLE, InputFrame
 
     campaign = Campaign(1)
+    enter(campaign, "s1_chamber")  # the chamber locks and the Regulator boots
     stings = []
     for _ in range(120):
         campaign.step(IDLE)
@@ -83,6 +86,7 @@ def test_the_protocol_sting_plays_once_as_each_fight_starts() -> None:
     campaign.world.player.charge = 0
     campaign.step(IDLE)
     campaign.step(InputFrame(restart=True))
+    enter(campaign, "s1_chamber")
     campaign.step(IDLE)
     assert boot_sting(campaign.world) == "sting_oscillate", "a retry restarts the fight"
 
@@ -146,12 +150,14 @@ def test_effects_never_take_a_music_channel(live_audio) -> None:
 
 def test_the_boot_sting_reaches_the_mixer(live_audio) -> None:
     import pygame
+    from floorbot import enter
 
     from overload.sim.campaign import Campaign
     from overload.sim.inputs import IDLE
 
     audio = live_audio
     campaign = Campaign(1)
+    enter(campaign, "s1_chamber")
     campaign.step(IDLE)
     audio.events(campaign.world.events, campaign.world)
     playing = {pygame.mixer.Channel(i).get_sound() for i in range(5, 32)}

@@ -173,6 +173,57 @@ def spark_shot(target: pygame.Surface, light: pygame.Surface, pos: Point, angle:
         pygame.draw.lines(surface, rgb("px.spark.light"), False, points, 1)
 
 
+def warp_marker(target: pygame.Surface, light: pygame.Surface, pos: Point, progress: float):
+    """A robot is about to warp in here: a ring of dots closes in while a beam brightens
+    (shape and motion, not color alone)."""
+    cx, cy = round(pos[0]), round(pos[1])
+    radius = 12 - round(8 * max(0.0, min(1.0, progress)))
+    for i in range(10):
+        a = math.tau * i / 10 + progress * 2
+        x, y = round(cx + math.cos(a) * radius), round(cy + math.sin(a) * radius * 0.6)
+        for surface in (target, light):
+            surface.set_at((x, y), rgb("hostile.danger"))
+    height = round(18 * progress)
+    for surface in (target, light):
+        pygame.draw.line(surface, rgb("px.hostile.3"), (cx, cy), (cx, cy - height), 1)
+
+
+def shutter(target: pygame.Surface, light: pygame.Surface, rect: pygame.Rect, blink: bool):
+    """A locked blast door: a dark slab with hazard stripes and a red lock light."""
+    target.fill(rgb("px.bot.1"), rect)
+    clip = target.get_clip()
+    target.set_clip(rect.clip(clip))
+    for i in range(-rect.h, rect.w, 6):
+        pygame.draw.line(
+            target,
+            rgb("px.hazard.1"),
+            (rect.x + i, rect.bottom - 1),
+            (rect.x + i + rect.h, rect.y),
+            2,
+        )
+    target.set_clip(clip)
+    pygame.draw.rect(target, rgb("px.outline"), rect, 1)
+    if blink:
+        lamp = (rect.centerx - 1, rect.centery - 1, 3, 3)
+        for surface in (target, light):
+            surface.fill(rgb("hostile.danger"), lamp)
+
+
+def cracked_wall(target: pygame.Surface, rect: pygame.Rect, hits: int) -> None:
+    """A secret wall: plain wall that shows more cracks each time it is shot."""
+    target.fill(rgb("px.wall.1"), rect)
+    pygame.draw.rect(target, rgb("px.wall.2"), (rect.x, rect.y, rect.w, 3))
+    cracks = (
+        (4, 5, 9, 10),
+        (rect.w - 10, 6, rect.w - 4, 12),
+        (rect.w // 2, 3, rect.w // 2 + 4, 11),
+    )
+    for x0, y0, x1, y1 in cracks[: hits + 1]:
+        pygame.draw.line(
+            target, rgb("px.outline"), (rect.x + x0, rect.y + y0), (rect.x + x1, rect.y + y1), 1
+        )
+
+
 def fusion_rings(target: pygame.Surface, center: Point, progress: float) -> None:
     """PK-03: a Spark ring and a Blink ring expand from the recipe as Arc Trail is fused."""
     cx, cy = round(center[0]), round(center[1])

@@ -29,6 +29,7 @@ class Arena:
     rival_spawn: Point
     doors: tuple[tuple[str, Rect], ...] = ()  # door id and its rectangle, solid when locked
     index: dict = field(default_factory=dict, compare=False, hash=False, repr=False)
+    floor: Floor | None = field(default=None, compare=False, hash=False, repr=False)
 
     def __post_init__(self) -> None:
         if not self.index:
@@ -122,6 +123,7 @@ def from_floor(floor: Floor) -> Arena:
         practice_spawns=(),
         rival_spawn=center(chamber.center),
         doors=tuple((door.id, tile_rect_px(door.rect)) for door in floor.doors),
+        floor=floor,
     )
 
 

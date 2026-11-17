@@ -18,6 +18,7 @@ from overload.art.palette import rgb, rgba
 from overload.art.pixel import actors, effects, hud, tiles
 from overload.art.pixel.light import Glow
 from overload.art.pixel.lighting import Lighting, pool, quantize
+from overload.floor import TILE
 from overload.sim import aiming
 from overload.sim import world as rules
 from overload.sim.arena import arena_id
@@ -218,6 +219,17 @@ class PixelView:
                 stolen.append(NAMES.get(event.power, event.power.upper()))
             elif event.kind == "absorb":
                 self._burst(event.x, event.y, 10, f"power.{event.power}", 1.4)
+            elif event.kind == "room_lock":
+                self.toast("LOCKDOWN", 60)
+            elif event.kind == "room_clear":
+                self.toast("ROOM CLEAR", 60)
+            elif event.kind == "warp_in":
+                self._burst(event.x, event.y, 10, "hostile.danger", 1.4)
+            elif event.kind == "secret_hit":
+                self._burst(event.x, event.y, 4, "px.wall.3", 1.0)
+            elif event.kind == "secret_open":
+                self._burst(event.x, event.y, 20, "px.wall.3", 2.0)
+                self.toast("A HIDDEN ROOM", 90)
             elif event.kind == "relay_from":
                 self.blinks.append((event.x, event.y, 12))
             elif event.kind == "fizzle":
@@ -230,6 +242,32 @@ class PixelView:
         self.last_player = (player.x, player.y)
         if player.dodging:
             self.ghosts.append((player.x, player.y, 10))
+
+    def _draw_doors(self, screen: pygame.Surface, run: Run | Campaign, v) -> None:
+        """Locked doors: hazard-striped shutters. A locked secret wall looks like cracked wall,
+        and the passage behind it stays dark until it opens."""
+        floor = run.arena.floor
+        if floor is None:
+            return
+        world = run.world
+        locked = set(world.locked)
+        secrets = [d for d in floor.doors if d.secret]
+        if secrets and secrets[0].id in locked:
+            top, bottom = sorted(secrets, key=lambda d: d.rect[1])
+            x, y = top.rect[0], top.rect[1] + top.rect[3]
+            hidden = (x * TILE, y * TILE, top.rect[2] * TILE, (bottom.rect[1] - y) * TILE)
+            sx, sy = v(hidden[0], hidden[1])
+            screen.fill(rgb("px.void"), (round(sx), round(sy), hidden[2], hidden[3]))
+        for door in floor.doors:
+            if door.id not in locked:
+                continue
+            x, y, w, h = door.rect
+            sx, sy = v(x * TILE, y * TILE)
+            rect = pygame.Rect(round(sx), round(sy), w * TILE, h * TILE)
+            if door.secret:
+                effects.cracked_wall(screen, rect, world.secret_hits.get(door.id, 0))
+            else:
+                effects.shutter(screen, self.glow.layer, rect, (world.tick // 8) % 2 == 0)
 
     def flash_fusion(self) -> None:
         self.fusion_flash = FUSION_TICKS
@@ -296,6 +334,11 @@ class PixelView:
             fx, fy = v(*feet)
             screen.blit(image, (round(fx - image.get_width() / 2), round(fy - image.get_height())))
 
+        self._draw_doors(screen, run, v)
+        for warp in world.warps:
+            effects.warp_marker(
+                screen, self.glow.layer, v(warp.x, warp.y), 1 - warp.timer / tuning.warp_tell
+            )
         for hazard in world.hazards:
             arming = tuning.insulate_hazard_tell
             progress = 1.0 - hazard.arming / arming if hazard.arming > 0 else 1.0

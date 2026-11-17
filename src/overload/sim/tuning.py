@@ -105,6 +105,10 @@ class Tuning:
     relay_hop_max: float = 80.0
     relay_landing_gap: float = 12.0  # never lands this close to the Surge
 
+    # Rooms (overhaul): robots warp in after a visible marker, secret walls crack open.
+    warp_tell: int = 36
+    secret_wall_hits: int = 3
+
     def __post_init__(self) -> None:
         """Reject values that would break readability rules or the tell logic."""
         if self.arc_mite_tell < 0.40 * TICK_RATE:
@@ -129,6 +133,8 @@ class Tuning:
             raise ValueError("Sparks could tunnel through the thinnest obstacle")
         if self.relay_blink_tell < 0.50 * TICK_RATE or self.relay_aim_tell < 0.40 * TICK_RATE:
             raise ValueError("Relay tells are below the readability minimums")
+        if self.warp_tell < 0.50 * TICK_RATE:
+            raise ValueError("Robots must show their warp marker for at least 0.50 s")
         if self.blink_min_distance > self.blink_distance:
             raise ValueError("Blink minimum distance exceeds its range")
         if (abs(self.hand_x) + abs(self.hand_y) + self.barrel) / 4 > 4.0:

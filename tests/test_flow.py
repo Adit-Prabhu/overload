@@ -5,17 +5,20 @@ from __future__ import annotations
 import json
 import threading
 
+from floorbot import FloorBot, enter, skip_sector
+
 from overload.agent.client import TacticClient
 from overload.agent.selector import FixedSchedule, LiveSelector, NeutralSelector
 from overload.game.flow import FALLBACK_LINE, FUSE_NOTICES, MIN_FUSE_TICKS, FuseBoxMenu, Session
 from overload.session.trace import TraceWriter
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import IDLE, InputFrame
+from overload.sim.tuning import DEFAULT
 
 
 def clear_encounter(session: Session) -> None:
-    session.campaign.world.rival.health = 0
-    session.tick(IDLE)
+    """Finish the current sector and stand in its Fuse Box (or reach the ending)."""
+    skip_sector(session.campaign, session.tick)
 
 
 def wait_in_fuse_box(session: Session, ticks: int) -> None:
@@ -34,7 +37,7 @@ def test_fixed_schedule_runs_the_whole_campaign() -> None:
         assert session.ready()
         decision = session.confirm()
         assert decision.tactic == selector.order[encounter - 1]
-        assert session.campaign.world.rival.protocol == decision.tactic
+        assert session.campaign.world.protocol == decision.tactic
     clear_encounter(session)
     assert session.campaign.stage == "ending"
 
@@ -55,8 +58,10 @@ def test_summary_goes_to_the_selector_when_an_encounter_ends() -> None:
             seen[encounter] = summary
 
     session = Session(Campaign(1), Recorder())
-    for _ in range(30):
-        session.tick(InputFrame(move_x=1, fire=True, aim_x=300, aim_y=150))
+    enter(session.campaign, "s1_hall", session.tick)
+    for _ in range(DEFAULT.warp_tell + 20):  # robots warp in, then a fight is observed
+        session.tick(InputFrame(fire=True, aim_x=300, aim_y=150))
+    fought = session.log.ticks
     clear_encounter(session)
     assert list(seen) == [2]
     ids = {item["id"] for item in seen[2]["items"]}
@@ -67,7 +72,7 @@ def test_summary_goes_to_the_selector_when_an_encounter_ends() -> None:
         "e1.shots_per_minute",
         "e1.dodges",
     }
-    assert session.log.ticks == 31
+    assert fought > 0, "fighting in a room is observed, walking between rooms is not"
 
 
 def test_retry_restarts_the_observation_record() -> None:
@@ -149,12 +154,11 @@ def test_trace_records_the_session(tmp_path) -> None:
     assert events == ["decision", "encounter_start", "encounter_end", "decision", "encounter_start"]
 
 
-def test_menu_ticks_do_not_repeat_the_clearing_events() -> None:
+def test_fuse_box_ticks_never_repeat_old_events() -> None:
     session = Session(Campaign(1), NeutralSelector())
-    session.campaign.world.rival.health = 0
-    session.tick(InputFrame(fire=True))
-    assert session.campaign.world.events, "the clearing tick reports its events once"
-    session.tick(InputFrame(fire=True))
+    clear_encounter(session)
+    assert session.campaign.stage == "fuse_box"
+    session.tick(IDLE)
     assert session.campaign.world.events == []
 
 
@@ -238,14 +242,14 @@ def press_keys(reader, *keys) -> None:
 def live_menu_setup():
     from overload.game.app import InputReader
     from overload.session.replay import Recording
-    from overload.sim.arena import SUBSTATION, arena_id
+    from overload.sim.arena import FLOOR_ARENA, arena_id
     from overload.sim.tuning import DEFAULT
 
     session = Session(Campaign(1), NeutralSelector())
     recording = Recording(
         seed=1,
         tuning_id=DEFAULT.tuning_id(),
-        arena_id=arena_id(SUBSTATION),
+        arena_id=arena_id(FLOOR_ARENA),
         mode="campaign",
         protocols=["lateral"],
     )
@@ -289,10 +293,11 @@ def test_a_live_fuse_box_session_replays_exactly() -> None:
 
     session, menu, reader, recording = live_menu_setup()
     campaign = session.campaign
-    from test_campaign import scripted_player
-
-    for tick in range(4000):  # win encounter 1 with real inputs, as a player would
-        frame = scripted_player(campaign.world, tick)
+    bot = FloorBot(campaign)
+    for tick in range(20_000):  # clear sector 1 with real inputs, as a player would
+        frame = bot.frame(tick)
+        if campaign.world.outcome == "down":
+            frame = InputFrame(restart=True)
         session.tick(frame)
         recording.frames.append(frame)
         if campaign.stage == "fuse_box":

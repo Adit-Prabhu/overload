@@ -332,9 +332,9 @@ def test_summary_matches_the_service_schema() -> None:
 
 def test_hidden_state_never_changes_the_summary() -> None:
     """Over a whole stretch of play, worlds that differ only in hidden state (charge,
-    cooldowns, invulnerability, RNG, other entities) produce identical summaries."""
+    cooldowns, invulnerability, RNG, the robots' health and timers, projectiles in flight,
+    the kit) produce identical summaries. Where the robots stand is visible, so it stays."""
     run = Run(4)
-    rival = (300.0, 100.0)
     logs = (ObservationLog(1), ObservationLog(1))
     for tick in range(180):
         run.step(
@@ -351,10 +351,15 @@ def test_hidden_state_never_changes_the_summary() -> None:
         twin.player.gun_cooldown = 7
         twin.player.invulnerable = 33
         twin.rng.seed(999)
-        twin.hostiles.clear()
+        twin.unlocked = ["spark", "blink", "arc_trail"]
+        twin.fragments = {"spark": 5, "blink": 3}
+        twin.player.slots = ["arc_trail", "blink"]
+        twin.player.cooldowns = {"teleport": 40}
+        for hostile in twin.hostiles:
+            hostile.health, hostile.fire_timer = 1, 5
         twin.projectiles.clear()
-        observe_world(logs[0], run.world, rival)
-        observe_world(logs[1], twin, rival)
+        observe_world(logs[0], run.world)
+        observe_world(logs[1], twin)
     first, second = (log.summary("lateral") for log in logs)
     assert first == second
     assert logs[0].ticks == 180 and logs[0].actions["dodge"] >= 1

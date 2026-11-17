@@ -275,12 +275,14 @@ _THEMES = {1: {}, 2: {".": ","}, 3: {"g": "-"}}
 
 @dataclass(frozen=True)
 class FloorRoom:
-    """`rect` is in tiles and includes the walls. `interior` excludes them."""
+    """`rect` is in tiles and includes the walls. `interior` excludes them. `spawns` are the
+    tiles (absolute) where robots warp in."""
 
     id: str
     kind: str  # entry, combat, chamber, fuse or hidden
     sector: int
     rect: tuple[int, int, int, int]
+    spawns: tuple[tuple[int, int], ...] = ()
 
     @property
     def interior(self) -> tuple[int, int, int, int]:
@@ -325,23 +327,65 @@ class Floor:
         return tuple(d for d in self.doors if d.room == room_id)
 
 
+# Where robots warp in, per combat template, in tiles from the room's top-left corner. Kept
+# clear of props and away from the doors (tests check both).
+_SPAWNS = {
+    "combat_a": ((5, 6), (16, 6), (5, 12), (16, 12), (10, 4), (11, 13), (3, 9), (18, 9)),
+    "combat_b": ((9, 3), (13, 3), (4, 7), (17, 6), (6, 13), (15, 13), (9, 9), (14, 9)),
+    "combat_c": ((5, 3), (17, 3), (5, 7), (16, 7), (11, 8), (4, 13), (17, 13), (11, 12)),
+}
+
+# Robot waves per combat room: each wave is a list of (robot kind, spawn index). The next wave
+# warps in when the last robot of the previous one is down. Sector 1 robots carry Spark,
+# sector 2 adds Blink, sector 3 mixes them.
+WAVES: dict[str, tuple[tuple[tuple[str, int], ...], ...]] = {
+    "s1_hall": (
+        (("arc_mite", 0), ("arc_mite", 3)),
+        (("arc_mite", 4), ("arc_mite", 6), ("arc_mite", 7)),
+    ),
+    "s1_bay": (
+        (("arc_mite", 0), ("arc_mite", 1), ("arc_mite", 4)),
+        (("arc_mite", 2), ("arc_mite", 3), ("arc_mite", 6), ("arc_mite", 7)),
+    ),
+    "s2_yard": ((("relay", 2), ("arc_mite", 3)), (("relay", 0), ("relay", 5), ("arc_mite", 6))),
+    "s2_tanks": ((("relay", 2), ("relay", 3)), (("arc_mite", 0), ("relay", 4), ("arc_mite", 1))),
+    "s3_core": (
+        (("arc_mite", 2), ("relay", 4), ("arc_mite", 3)),
+        (("relay", 0), ("arc_mite", 5), ("relay", 1), ("arc_mite", 6)),
+    ),
+    "s3_bus": (
+        (("arc_mite", 0), ("arc_mite", 1), ("relay", 5)),
+        (("relay", 2), ("relay", 3), ("arc_mite", 6), ("arc_mite", 7)),
+    ),
+}
+
+TEMPLATES = {
+    "entry": _ENTRY,
+    "combat_a": _COMBAT_A,
+    "combat_b": _COMBAT_B,
+    "combat_c": _COMBAT_C,
+    "chamber": _CHAMBER,
+    "fuse": _FUSE,
+    "hidden": _HIDDEN,
+}
+
 # (id, kind, sector, grid cell, template)
 _PLAN = (
-    ("s1_entry", "entry", 1, (0, 0), _ENTRY),
-    ("s1_hall", "combat", 1, (1, 0), _COMBAT_A),
-    ("s1_bay", "combat", 1, (2, 0), _COMBAT_B),
-    ("s1_chamber", "chamber", 1, (3, 0), _CHAMBER),
-    ("fuse_1", "fuse", 1, (4, 0), _FUSE),
-    ("s2_entry", "entry", 2, (4, 1), _ENTRY),
-    ("s2_yard", "combat", 2, (3, 1), _COMBAT_B),
-    ("s2_tanks", "combat", 2, (2, 1), _COMBAT_C),
-    ("s2_chamber", "chamber", 2, (1, 1), _CHAMBER),
-    ("fuse_2", "fuse", 2, (0, 1), _FUSE),
-    ("s3_entry", "entry", 3, (0, 2), _ENTRY),
-    ("s3_core", "combat", 3, (1, 2), _COMBAT_C),
-    ("s3_bus", "combat", 3, (2, 2), _COMBAT_A),
-    ("s3_chamber", "chamber", 3, (3, 2), _CHAMBER),
-    ("hidden", "hidden", 2, (4, 2), _HIDDEN),
+    ("s1_entry", "entry", 1, (0, 0), "entry"),
+    ("s1_hall", "combat", 1, (1, 0), "combat_a"),
+    ("s1_bay", "combat", 1, (2, 0), "combat_b"),
+    ("s1_chamber", "chamber", 1, (3, 0), "chamber"),
+    ("fuse_1", "fuse", 1, (4, 0), "fuse"),
+    ("s2_entry", "entry", 2, (4, 1), "entry"),
+    ("s2_yard", "combat", 2, (3, 1), "combat_b"),
+    ("s2_tanks", "combat", 2, (2, 1), "combat_c"),
+    ("s2_chamber", "chamber", 2, (1, 1), "chamber"),
+    ("fuse_2", "fuse", 2, (0, 1), "fuse"),
+    ("s3_entry", "entry", 3, (0, 2), "entry"),
+    ("s3_core", "combat", 3, (1, 2), "combat_c"),
+    ("s3_bus", "combat", 3, (2, 2), "combat_a"),
+    ("s3_chamber", "chamber", 3, (3, 2), "chamber"),
+    ("hidden", "hidden", 2, (4, 2), "hidden"),
 )
 _LINKS = (
     ("s1_entry", "s1_hall"),
@@ -371,7 +415,8 @@ def build() -> Floor:
     terrain = [["#"] * width for _ in range(height)]
     decor = [["."] * width for _ in range(height)]
     rooms: dict[str, FloorRoom] = {}
-    for room_id, kind, sector, (cx, cy), (t_rows, d_rows) in _PLAN:
+    for room_id, kind, sector, (cx, cy), template in _PLAN:
+        t_rows, d_rows = TEMPLATES[template]
         w, h = len(t_rows[0]), len(t_rows)
         x0 = cx * CELL[0] + (CELL[0] - w) // 2
         y0 = cy * CELL[1] + (CELL[1] - h) // 2
@@ -379,7 +424,8 @@ def build() -> Floor:
             for dx, (t, d) in enumerate(zip(t_row, d_row, strict=True)):
                 terrain[y0 + dy][x0 + dx] = t
                 decor[y0 + dy][x0 + dx] = d
-        rooms[room_id] = FloorRoom(room_id, kind, sector, (x0, y0, w, h))
+        spawns = tuple((x0 + sx, y0 + sy) for sx, sy in _SPAWNS.get(template, ()))
+        rooms[room_id] = FloorRoom(room_id, kind, sector, (x0, y0, w, h), spawns)
 
     doors: list[Door] = []
     for links, secret in ((_LINKS, False), (_SECRET_LINKS, True)):

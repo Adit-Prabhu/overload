@@ -123,6 +123,17 @@ class Trail:
 
 
 @dataclass(slots=True)
+class Warp:
+    """A robot about to warp in: the marker shows for the whole timer (the tell)."""
+
+    id: int
+    kind: str
+    x: float
+    y: float
+    timer: int
+
+
+@dataclass(slots=True)
 class Event:
     """Something that happened this tick, for rendering, audio and traces. Not hashed."""
 
@@ -151,6 +162,14 @@ class World:
     unlocked: list[str] = field(default_factory=list)  # abilities, in unlock order
     fragments: dict[str, int] = field(default_factory=dict)  # charges absorbed per power
     locked: list[str] = field(default_factory=list)  # ids of doors that are shut right now
+    # The floor (overhaul): rooms lock while robots are active and clear for good.
+    mode: str = "room"  # "room": one arena, cleared when empty. "floor": rooms and sectors
+    protocol: str = "lateral"  # the Regulator's protocol in the current sector
+    active_room: str = ""
+    wave: int = 0
+    cleared: list[str] = field(default_factory=list)
+    warps: list[Warp] = field(default_factory=list)
+    secret_hits: dict[str, int] = field(default_factory=dict)
     events: list[Event] = field(default_factory=list)
 
     def new_id(self) -> int:
@@ -178,6 +197,13 @@ def state_hash(world: World) -> str:
         "unlocked": world.unlocked,
         "fragments": world.fragments,
         "locked": world.locked,
+        "mode": world.mode,
+        "protocol": world.protocol,
+        "active_room": world.active_room,
+        "wave": world.wave,
+        "cleared": world.cleared,
+        "warps": [asdict(w) for w in world.warps],
+        "secret_hits": world.secret_hits,
         "rng": rng_state,
     }
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))

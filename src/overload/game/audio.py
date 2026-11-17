@@ -50,6 +50,12 @@ EVENT_SOUNDS = {
     "rival_destroyed": "regulator_defeated",
     "absorb": "pickup",
     "unlock": "unlock",
+    "room_lock": "deny",
+    "room_clear": "confirm",
+    "warp": "relay_click",
+    "warp_in": "relay_blink",
+    "secret_hit": "regulator_hit",
+    "secret_open": "unlock",
 }
 # Each sound's visual twin: the game is fully playable muted.
 VISUAL_TWINS = {
@@ -77,13 +83,19 @@ VISUAL_TWINS = {
     "absorb": "burst in the power color",
     "unlock": "screen flash and a SPARK STOLEN or BLINK STOLEN notice",
     "protocol_boot": "protocol pose, shield ring and protocol icon",
+    "room_lock": "hazard-striped shutters close over the doors and LOCKDOWN",
+    "room_clear": "the shutters open and ROOM CLEAR",
+    "warp": "a closing ring of red dots where a robot will appear",
+    "warp_in": "a red burst as the robot appears",
+    "secret_hit": "another crack in the wall",
+    "secret_open": "the wall breaks and A HIDDEN ROOM",
     "fusion": "FUSED status and the Arc Trail icon in the menu",
     "confirm": "the slot icon changes, or the Fuse Box closes",
     "deny": "a notice naming the supported recipe, or ROUTING POWER while the link is busy",
     "low_health": "two or fewer battery cells left in the HUD",
 }
 STINGS = {"pressure": "sting_clamp", "spacing": "sting_insulate", "lateral": "sting_oscillate"}
-TELLS = {"mite_tell", "hazard_fill", "relay_click"}
+TELLS = {"mite_tell", "hazard_fill", "relay_click"}  # a warp marker uses relay_click too
 STEMS = ("hum", "pulse", "arc", "lead", "fuse_box")
 # Stem levels leave headroom so a full battle mix plus an effect stays out of clipping.
 LEVELS = {"hum": 0.42, "pulse": 0.38, "arc": 0.22, "lead": 0.3, "fuse_box": 0.5}
