@@ -21,6 +21,7 @@ from overload.agent.tactics import Decision
 from overload.session.trace import TraceWriter
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import InputFrame
+from overload.sim.powers import RECIPE_ORDER, RECIPES
 from overload.sim.tuning import TICK_RATE
 
 MIN_FUSE_TICKS = round(DEADLINE_SECONDS * TICK_RATE)
@@ -163,11 +164,23 @@ class Session:
 
 
 FUSE_NOTICES = {
-    "fused": "ARC TRAIL FUSED. EQUIP IT WITH Q OR E",
-    "already_fused": "ARC TRAIL IS ALREADY FUSED",
-    "missing": "ONLY SPARK + BLINK FUSE. STEAL BOTH",
-    "unsupported": "ONLY SPARK + BLINK FUSE",
+    "fused": "FUSED. EQUIP IT WITH Q OR E",
+    "already_fused": "EVERY RECIPE IS FUSED",
+    "missing": "RECIPES: SPARK + BLINK, SPARK + BURST",
+    "unsupported": "RECIPES: SPARK + BLINK, SPARK + BURST",
 }
+
+
+def next_recipe(kit) -> tuple[str, str]:
+    """The recipe F tries: the first one not fused yet whose ingredients are both stolen,
+    else the first one not fused yet (it will report what is missing), else the last."""
+    open_recipes = [
+        (a, b) for a, b in RECIPE_ORDER if RECIPES[frozenset((a, b))] not in kit.unlocked
+    ]
+    for a, b in open_recipes:
+        if a in kit.unlocked and b in kit.unlocked:
+            return a, b
+    return open_recipes[0] if open_recipes else RECIPE_ORDER[-1]
 
 
 class FuseBoxMenu:
@@ -195,6 +208,11 @@ class FuseBoxMenu:
             self.notice = None
             return ["equip", slot, ability]
         elif key == "fuse":
-            self.notice = FUSE_NOTICES[session.fuse("spark", "blink")]
-            return ["fuse", "spark", "blink"]
+            a, b = next_recipe(session.campaign.kit)
+            result = session.fuse(a, b)
+            self.notice = FUSE_NOTICES[result]
+            if result == "fused":
+                name = RECIPES[frozenset((a, b))].replace("_", " ").upper()
+                self.notice = f"{name} FUSED. EQUIP IT WITH Q OR E"
+            return ["fuse", a, b]
         return None

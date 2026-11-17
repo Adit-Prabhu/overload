@@ -19,6 +19,7 @@ class Player:
     aim_x: float = 1.0
     aim_y: float = 0.0
     facing: int = 1  # 1 right, -1 left: the side the caster is held on
+    boost: int = 0  # Overdrive Blink: ticks of extra speed left
     gun_cooldown: int = 0
     dodge_ticks: int = 0
     dodge_cooldown: int = 0

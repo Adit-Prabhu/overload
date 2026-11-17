@@ -335,7 +335,7 @@ def test_pinned_campaign_hash_matches_across_python_versions() -> None:
     campaign = Campaign(9)
     play_campaign(campaign)
     assert (campaign.stage, campaign.encounter) == ("ending", 3)
-    assert campaign.state_hash() == "4c4408d8ea6a3bd7"
+    assert campaign.state_hash() == "ad4dcbbc635bae31"
 
 
 def test_no_path_along_the_walls_skips_a_room() -> None:

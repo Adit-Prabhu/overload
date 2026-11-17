@@ -109,7 +109,9 @@ def _confusable_pairs():
     groups = {
         "protocol pose parts": [actors.clamp_arm(), actors.insulate_plate(), actors.fin()],
         "protocol icons": [effects.protocol_icon(p) for p in ("clamp", "insulate", "oscillate")],
-        "charges": [effects.charge_icon(p) for p in ("spark", "blink", "arc_trail", "burst")],
+        "charges": [
+            effects.charge_icon(p) for p in ("spark", "blink", "arc_trail", "burst", "shock_cone")
+        ],
         "characters": [
             actors.surge_frames()["idle"][0],
             actors.arc_mite_frames()[0],

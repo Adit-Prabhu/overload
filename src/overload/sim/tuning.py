@@ -136,6 +136,21 @@ class Tuning:
     shell_radius: float = 3.5
     shell_ttl: int = 300
 
+    # Burst, evolutions and Shock Cone (overhaul step 4).
+    evolve_at: int = 3  # charges of one power: the first unlocks it, two more evolve it
+    burst_range: float = 44.0
+    burst_cos: float = 0.82  # cone half-angle of about 35 degrees
+    burst_wide_range: float = 56.0
+    burst_wide_cos: float = 0.55  # evolved: about 57 degrees
+    burst_damage: int = 2
+    burst_knock: float = 12.0
+    burst_cooldown: int = 60
+    shock_cone_cooldown: int = 110
+    spark_chain_range: float = 52.0
+    spark_chain_damage: int = 2
+    boost_ticks: int = 60
+    boost_factor: float = 1.5
+
     # Rooms (overhaul): robots warp in after a visible marker, secret walls crack open.
     warp_tell: int = 36
     secret_wall_hits: int = 3
@@ -171,6 +186,10 @@ class Tuning:
                 raise ValueError(f"{name}: robot tells must last at least 0.50 s")
         if self.sentry_interval // 2 <= self.sentry_tell:
             raise ValueError("A Sentry's first shot could start inside its tell window")
+        if self.burst_knock / 2 >= THINNEST_OBSTACLE:
+            raise ValueError("Burst knockback steps could push a robot through a prop")
+        if self.player_speed * self.boost_factor >= self.player_radius:
+            raise ValueError("Overdrive speed must stay below the player radius")
         if self.sweeper_rush_speed >= THINNEST_OBSTACLE:
             raise ValueError("A Sweeper's rush could tunnel through the thinnest obstacle")
         if self.blink_min_distance > self.blink_distance:

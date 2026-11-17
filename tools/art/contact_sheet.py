@@ -113,7 +113,7 @@ def items() -> list[tuple[str, Draw]]:
         ("drum", tiles.drum()),
     ):
         entries.append((name, centered(image)))
-    for power in ("spark", "blink", "arc_trail", "burst"):
+    for power in ("spark", "blink", "arc_trail", "burst", "shock_cone"):
         entries.append((f"{power} charge", centered(effects.charge_icon(power))))
     for protocol in ("clamp", "insulate", "oscillate"):
         entries.append((f"{protocol} icon", centered(effects.protocol_icon(protocol))))

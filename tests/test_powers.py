@@ -317,12 +317,12 @@ def full_loop(seed: int) -> tuple[Campaign, Recording, set[str]]:
 def test_full_loop_collect_equip_fuse_use(tmp_path) -> None:
     campaign, recording, used = full_loop(2)
     assert campaign.stage == "ending"
-    assert campaign.kit.unlocked == ["spark", "blink", "arc_trail"]
+    assert {"spark", "blink", "arc_trail"} <= set(campaign.kit.unlocked)
     assert {"power_arc_trail", "power_spark"} <= used
     path = tmp_path / "loop.json"
     recording.save(path)
     assert play(Recording.load(path)).state_hash() == recording.final_hash
-    assert recording.final_hash == "c09a593ef4df996e", "pinned on Python 3.11 and 3.12"
+    assert recording.final_hash == "5c8a9bf811c7a0b8", "pinned on Python 3.11 and 3.12"
 
 
 @pytest.mark.parametrize(

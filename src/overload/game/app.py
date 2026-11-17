@@ -341,7 +341,14 @@ def play(options: Options) -> int:
                 ready = session.ready() if session else False
                 message = session.fuse_message() if session else None
                 view.draw_fuse_box(
-                    screen, run.encounter + 1, ready, message, run.kit, menu.selected, menu.notice
+                    screen,
+                    run.encounter + 1,
+                    ready,
+                    message,
+                    run.kit,
+                    menu.selected,
+                    menu.notice,
+                    run.tuning,
                 )
             elif stage == "ending":
                 view.draw_ending(

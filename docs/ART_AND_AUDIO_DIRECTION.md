@@ -150,7 +150,7 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | AB-03 | Spark | Bolt projectile | P0 | Done |
 | AB-04 | Blink | Diamond at departure and arrival | P0 | Done |
 | AB-05 | Arc Trail | Bolt line between two Blink diamonds | P0 | Done |
-| AB-06 to 08 | Burst, Shock Cone, evolutions | Ring-based effects | P2 | Not started |
+| AB-06 to 08 | Burst, Shock Cone, evolutions | Magenta ray cone (wider when evolved), Shock Cone adds yellow sparks, chain bolts between robots, Overdrive ghost trail | P2 | Done (overhaul step 4) |
 
 ### Pickups, telegraphs and icons
 | ID | Asset | Pri | Status |
