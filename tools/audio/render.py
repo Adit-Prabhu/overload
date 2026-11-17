@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "assets" / "audio"
 MANIFEST = ROOT / "assets" / "ASSET_MANIFEST.json"
 LICENSE = "assets/audio/LICENSE.txt"
-CEILING = 10 ** (-1 / 20)
+CEILING = 10 ** (-1.2 / 20)  # 0.2 dB of headroom for other decoders, such as SDL_mixer
 IDS = {
     "music_hum": "MU-01.hum",
     "music_pulse": "MU-01.pulse",
@@ -49,15 +49,28 @@ def encode(path: Path, signal: np.ndarray) -> None:
 
 
 def write(name: str, signal: np.ndarray) -> Path:
+    """Encode `signal`. An existing file that already decodes to the same audio is kept, so
+    a re-render only changes files whose sound changed (each encode picks a new Ogg stream
+    serial number, which would otherwise change every hash)."""
     path = OUT / f"{name}.ogg"
-    peak = -1.5
+    trial = OUT / f".{name}.trial.ogg"
+    peak = -1.7
     for _ in range(6):
-        encode(path, normalize(signal, peak).astype(np.float32))
-        decoded, _ = sf.read(path, dtype="float32")
+        encode(trial, normalize(signal, peak).astype(np.float32))
+        decoded, _ = sf.read(trial, dtype="float32")
         if float(np.max(np.abs(decoded))) <= CEILING:
-            return path
+            break
         peak -= 0.5  # Vorbis can overshoot the source peak a little: back off and retry
-    raise RuntimeError(f"{name} still peaks above -1 dBFS after encoding")
+    else:
+        trial.unlink()
+        raise RuntimeError(f"{name} still peaks above -1.2 dBFS after encoding")
+    if path.exists():
+        current, _ = sf.read(path, dtype="float32")
+        if current.shape == decoded.shape and np.array_equal(current, decoded):
+            trial.unlink()
+            return path
+    trial.replace(path)
+    return path
 
 
 def render_all() -> dict[str, Path]:
@@ -79,24 +92,34 @@ def render_all() -> dict[str, Path]:
 def update_manifest(written: dict[str, Path]) -> None:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     keep = [e for e in manifest["assets"] if not e["path"].startswith("assets/audio/")]
+    old = {e["path"]: e for e in manifest["assets"] if e["path"].startswith("assets/audio/")}
     today = date.today().isoformat()
+
+    def added(path: str, digest: str) -> str:
+        """Keep the original date for a file whose bytes did not change."""
+        entry = old.get(path)
+        return entry["added"] if entry and entry["sha256"] == digest else today
+
     audio = []
     for name, path in sorted(written.items()):
+        relative = path.relative_to(ROOT).as_posix()
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
         audio.append(
             {
                 "id": IDS.get(name, "SFX." + name.removeprefix("sfx_")),
-                "path": str(path.relative_to(ROOT)),
+                "path": relative,
                 "kind": "audio",
                 "creator": "Overload project, composed in code",
                 "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
                 "license": "Original work, see assets/audio/LICENSE.txt",
                 "license_file": LICENSE,
-                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-                "added": today,
+                "sha256": digest,
+                "added": added(relative, digest),
                 "approval": "Pending Adit's listen-through",
             }
         )
     license_path = ROOT / LICENSE
+    license_digest = hashlib.sha256(license_path.read_bytes()).hexdigest()
     audio.append(
         {
             "id": "AUDIO.license",
@@ -106,8 +129,8 @@ def update_manifest(written: dict[str, Path]) -> None:
             "source": "Written for this project",
             "license": "Original work",
             "license_file": LICENSE,
-            "sha256": hashlib.sha256(license_path.read_bytes()).hexdigest(),
-            "added": today,
+            "sha256": license_digest,
+            "added": added(LICENSE, license_digest),
             "approval": "Pending Adit's choice of a project license",
         }
     )

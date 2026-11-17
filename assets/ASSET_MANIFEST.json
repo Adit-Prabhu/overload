@@ -46,7 +46,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "fa1f428de9c71830cc8db0ba34ecab6d80cf76591892daf89609db2190f9db22",
+      "sha256": "6595af7a94ce0f828d4b9f0aae9281c8109b32a759a1d215c85ff56aa6b1e991",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -58,7 +58,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "e15a6b66dc46a330d722f0d1ec12c8adbde8b69bf1f90c7584153e20ef61051f",
+      "sha256": "898822565f448b4fa369d21d3d32b5736b07acc1a037be5b482dae6c0bbd55b6",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -70,7 +70,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "fc7807a373c95185f6870b4a7690eb6e2023bcf220ae5a15201f7cf901928932",
+      "sha256": "ae25926c4cafa2232ba105b7d3daac4e2e2f27a239e884133527f53a15dd3a52",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -82,7 +82,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "2332fda1cd51b90eeb558290c63b0e496a01a3eeae262c96777b47ad138c88ce",
+      "sha256": "383d7080e8e8622218077247eb9b8eca5701110782a2c1e7183016838a27b270",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -94,7 +94,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "bd823da6ba1028537bf112a3b7035ca6fa446294313b5c17e3d331a70519bc1b",
+      "sha256": "80819985630044413e5f37d1d41a1006d3e76d3e0b03ec6bab40ebb833dd6e58",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -106,7 +106,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "656a8d0916c0beafe2ffe27f5f9f3ee7e7b129ec696712e36b36f5f3bd6ba8e8",
+      "sha256": "4db83b305b046f8e3ab20341434f3c3e1e2236f198e12ef92b83e7f8132bb2fb",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -118,7 +118,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "dbca75e9333420d49a3133b5169d9d2890e01a102b9738fa6369ecbd400f0cb3",
+      "sha256": "c5b6aa674db171067d76c7abb89995c86b6db18804ff18cbeb8a6113f5a29456",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -130,7 +130,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "324666a05f1a6c3ff8fdadd7bbdacf58f9092f4d5561367dfb8c2479fbd7d0ca",
+      "sha256": "cbfcc95f74eb3e2d14d67794d0e927c8e1419c12a5817527d27c2f870c5260e3",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -142,7 +142,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "01e7073e16ef74e28fa1385b484bb1fef61f136663362c2132190d6ac5287917",
+      "sha256": "4043221bb62211a3bffc98092aa7c4eac1ab0209885ebedfb870017bc3dbe36d",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -154,7 +154,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "e535946b6bd7c2430551f27402042792f91831725d2bd838a37c764ae5aa8311",
+      "sha256": "3501eebb9c6768d5b76df02b78e00fac76e4203613e25ddfba88bfd0fea5abde",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -166,7 +166,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "f5262adf00f537a51892fd3d211e83dc122adccb4bfc9d7ca0d49852b69a63be",
+      "sha256": "e86b3bdd218d9d6f2ebc95e5c22ac72a790813ff90960e9d1b2b4ac3a72ee962",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -178,7 +178,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "0deb85710a250fc17cadc01e7ed01883e0e213e65fb764400bd9fc76bcc98c7f",
+      "sha256": "d56b5e6845c74205896e423082990fe4cc55e79b5dfb954d158be1cfecb27b66",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -190,7 +190,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "cb346194ba9a6081db9acd2ee2b20bfde53ef8662f12dac7d9b7b40ad5b5a913",
+      "sha256": "701829721e415d62aebde87b07a5c166da693db64472ab9e32065f24ed3ddf73",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -202,7 +202,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "1acd33f395252ce07f93cb2227671b84b6b8396020777c5c77963ab0575b6efa",
+      "sha256": "37d5d70af3541f97bfef0e31579ca62938fc73c4f8ece3f1afa7e151c73c935b",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -214,7 +214,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "9545a1c7fb7a5d9ec3f06e3a3b83037b74fae9ec53b5be47a9a9107dfdd41ea2",
+      "sha256": "6c247ced3205e9ad56dddc152713c2898ff6618c7108637b0cc1e9505e5aed9f",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -226,7 +226,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "42a1d884edf8f82682ddf1e0871b1a3855ed590001ad71f19f8e385df025335c",
+      "sha256": "35990343d6ab79f767df89a1dad136077bf777b28093122ace6a43b8cef79773",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -238,7 +238,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "55ce3e9e888786f451fef1621fa1e07260543e2911f16250998e2abe3439e0dd",
+      "sha256": "abcf7f1df7c99afb5e1910439c08a7c1af31ada0c39f21ae46f745073a443a03",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -250,7 +250,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "475b9ab187393df761163eff5ed597a6261ed526a33cfb7144ee608dbdb16d17",
+      "sha256": "f165e64897e5ab15303068069fc7897e954c25a062a9c1c9c6709e580323f638",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -262,7 +262,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "5615b127619e543db9994445c6f6f2b1295d29ec7c23705ca605634e47894a0f",
+      "sha256": "7b0ed53f709f7f41ea5269bdd6c2f8d8afc9c0d22edcfb53ddc9e27af16d8d1c",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -274,7 +274,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "0751f4b288128ff790ef16cdf4e1e6d3026cd576275999237ac5892bc0eb085f",
+      "sha256": "f901cb479568f0e1beba2f716aa018537a731f728ad881e6795dc369fd5a581c",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -286,7 +286,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "e8c5873da5fb3b69a557bd7a5c4d9cbea17dcc2969f45b319b4d33be56aa7f57",
+      "sha256": "8c3f8a0eab72140d76744a845329a1c3005f9916e8a8f3774beb370023327db8",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -298,7 +298,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "558510c2aee7c68f8f4c5dcd64c1c54eb2f15c57e2dc08a8223bf79438dbf195",
+      "sha256": "cd21361bb071b9805283cf09b391add10f9cb159d873d7b7623d5adcc1c4abdd",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -310,7 +310,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "c2fabe54c12eb75a9b9da500432a4a0efb230f2341d5252ea83232a44ec43371",
+      "sha256": "a8b560013e90f4b3f7d0296ce23b0bb386127b6e13b292cd7a1098fd03c4bfd4",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -322,7 +322,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "70f5b94895602e739a442b78c7e20220c5a6352e4bc1e26e17e7a2802e146292",
+      "sha256": "a3d313501d58d78d9127bac3c209d9ef9649934032d61ce17925f21dd55e64e6",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -334,7 +334,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "7caada73802914f25700d5dd1626c2d05cc63c64e0f2b45cca38a2714ad20b82",
+      "sha256": "37fa283e14d46453e2e09e9b09a81d670b2458a9f2bf797009e29a822e6d5f07",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -346,7 +346,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "b5f159eaf300a75127f86dfbcd9369cd15161aaeea3da72770ad83eedc1c8302",
+      "sha256": "9a83c4f0767424b90cb5536b00a3a6962e27e7e745120c7ddbc13c32d875e4d6",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -358,7 +358,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "a37445fc663d147b32d5848f987227b98bbfa1acdf191a9e2c5359009a841f60",
+      "sha256": "6b353cd4fb40338ce8595a813dae0c6da99913c9964c5fed50e5a7c4063d8f10",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -370,7 +370,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "45f0e1b907d8dd54da147248777d881147e7057a11a5f1b45998af3e3d38ad42",
+      "sha256": "c79fc5504babb599035005c814e04334bb77acc7f65ad9ccfef9a1959249fb5f",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -382,7 +382,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "573eb555729fc26c2f544438c3937c71dfbe6c748920a5f6568249cf64902a51",
+      "sha256": "79bd7a9705b0ac98c81cfd8c501c30a8a437084091f234af58ad09eb0fc4462c",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -394,7 +394,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "908f369cf525fc7e1c29ed39fdae168f2f5b1f8f3f29d1d6716c1457b007a650",
+      "sha256": "fb1fe1914d5be40101ee1df42b8e23d07d606c61a3de43c555ba04994d468000",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -406,7 +406,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "72c44c9d15260c20f051e4831d4ecf5f460e779035cc75f4a07565e607d66eb7",
+      "sha256": "c068b5e1adce33a78a745196ef1b08aa41581287b4b5f8393dba4096973ed3d6",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -418,7 +418,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "593db41e7bdfd26c6a6cf0b946ee15afd9cdf6f3489f57e3c3e9c1a1ce16a878",
+      "sha256": "9df90e4bcc0260bad19de3c8c9aa8f5568a82e4629b2865b0096766505280192",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -430,7 +430,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "20a35c9912f3e1f29ee0689800f44b4eefc86ffbd5baa795f5cf4d6657c531e3",
+      "sha256": "149ab17c56fd63917530486b396dfc6b665ff773db8d7b23e048c328b40efcbe",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -442,7 +442,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "Original work, see assets/audio/LICENSE.txt",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "b15dee7c641e3eb2df9670d0d80ac7da962067466f4543ab50c1264da1d4b16b",
+      "sha256": "78189fc89bb07428d542561cb8755885429717214bb1b76800892471bdd48103",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },

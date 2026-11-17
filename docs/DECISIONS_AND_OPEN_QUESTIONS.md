@@ -19,6 +19,7 @@ GDF v2.1 Sections 5.1/5.2 and Gate 1 read. Required live deployed model behavior
 | OQ4 | Is 30 hours available through Nov 28, and which dependency versions will be pinned? | G1 review/setup |
 | OQ5 | Do players recognize adaptation and regard it as fair? | Initial external playtest |
 | OQ6 | Does the LLM improve anything over a simple adaptive rule? | Optional third condition. Otherwise leave claim untested |
+| OQ7 | Which license covers the project's own code, art and audio? The repository has none yet, and `assets/audio/LICENSE.txt` reserves all rights until one is chosen | Before the public release (G4) |
 
 ## Decisions after G1
 | Date | Decision | Source |

@@ -33,7 +33,9 @@ def mixer():
     os.environ["SDL_AUDIODRIVER"] = "dummy"
     import pygame
 
+    pygame.mixer.quit()  # another test may have started it in stereo
     pygame.mixer.init(frequency=RATE, size=-16, channels=1)
+    assert pygame.mixer.get_init() == (RATE, -16, 1)
     yield
     pygame.mixer.quit()
 
@@ -60,9 +62,10 @@ def test_music_stems_share_one_length() -> None:
 
 @pytest.mark.parametrize("name", ("music_hum", "music_arc", "music_lead", "music_fuse_box"))
 def test_tonal_stems_loop_without_a_click(name: str) -> None:
-    """The jump from the last sample back to the first is no bigger than the stem's ordinary
-    sample-to-sample movement (the drum stem starts on a kick, a deliberate attack)."""
+    """The jump from the last sample back to the first is no bigger than the movement right
+    around the loop point (the drum stem starts on a kick, a deliberate attack)."""
     data = samples(name)
-    steps = sorted(abs(data[i + 1] - data[i]) for i in range(0, len(data) - 1, 7))
+    edge = list(data[-2000:]) + list(data[:2000])
+    steps = sorted(abs(edge[i + 1] - edge[i]) for i in range(len(edge) - 1) if i != 1999)
     typical = steps[int(len(steps) * 0.99)]
     assert abs(data[0] - data[-1]) <= max(typical * 1.5, 64), name

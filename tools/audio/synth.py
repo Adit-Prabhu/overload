@@ -53,11 +53,13 @@ def sweep(start: float, end: float, n: int) -> np.ndarray:
 def envelope(
     n: int, attack: float = 0.005, decay: float = 0.1, sustain: float = 0.0, release: float = 0.05
 ) -> np.ndarray:
-    """ADSR across n samples: the release ends exactly at the last sample."""
+    """ADSR across n samples: the release ends exactly at the last sample. When the stages
+    do not fit in n they shrink in proportion, so a short note still fades to silence."""
     a, d, r = (max(1, round(x * SR)) for x in (attack, decay, release))
-    a = min(a, n)
-    d = min(d, n - a)
-    r = min(r, max(0, n - a - d))
+    if a + d + r > n:
+        scale = n / (a + d + r)
+        a, d = max(1, int(a * scale)), int(d * scale)
+        r = max(1, n - a - d)
     hold = n - a - d - r
     return np.concatenate(
         [
@@ -79,7 +81,7 @@ def svf(x: np.ndarray, cutoff: Freq, q: float = 0.7, mode: str = "low") -> np.nd
     n = len(x)
     cut = np.broadcast_to(np.asarray(cutoff, dtype=np.float64), (n,))
     f = 2.0 * np.sin(np.pi * np.minimum(cut, SR / 6.0) / SR)
-    damp = 1.0 / max(q, 0.5)
+    damp = 1.0 / max(q, 0.7)  # below 0.7 the clamped cutoff can go unstable
     low = band = 0.0
     out = np.empty(n)
     xs, fs = x.tolist(), f.tolist()

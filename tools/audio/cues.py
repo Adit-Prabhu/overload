@@ -98,7 +98,7 @@ def snare() -> np.ndarray:
 
 def hat(open_: bool = False) -> np.ndarray:
     n = samples(0.22 if open_ else 0.05)
-    sizzle = svf(noise(n, "hat-open" if open_ else "hat"), 7500, q=0.8, mode="high")
+    sizzle = svf(noise(n, "hat-open" if open_ else "hat"), 7000, q=0.8, mode="high")
     return sizzle * decay(n, 0.2 if open_ else 0.04) * 0.3
 
 
@@ -331,6 +331,7 @@ def _orb_fire() -> np.ndarray:
 
 
 def _regulator_hit() -> np.ndarray:
+    """A metal clang: deliberately inharmonic partials, the one cue outside the key."""
     n = samples(0.18)
     partials = sum(sine(f, n) * w for f, w in ((420, 0.5), (1130, 0.3), (2710, 0.2)))
     return partials * decay(n, 0.12) * 0.6
