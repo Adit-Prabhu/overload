@@ -35,7 +35,7 @@ Kept: the tile and lighting style, the deterministic simulation and replays, the
 
 Decisions (Adit, Nov 17):
 - **Bigger map now, logged for G3.** The G1 production ceiling allowed three short combat rooms and one hidden branch. Adit chose a larger hand-built floor now. It goes in the G3 scope-lock proposal, and rooms are data, so the instructor can cut them cheaply. Procedural maps stay out of scope (G1 GDD).
-- **Dying restarts the sector.** The Surge respawns at the sector's start with the loadout it entered with. Rooms and the Regulator reset and the accepted tactic stays, so the experiment's retry rule (no new model call) holds.
+- **Dying restarts the sector.** The Surge respawns at the sector's start with the loadout it entered with. Rooms, robots, the Regulator and the observation record all roll back to that checkpoint, and the accepted tactic stays, so the experiment's retry rule (entry loadout, tactic and observation checkpoint, no new model call) holds.
 - **Chibi maintenance robots.** Round, chunky bodies with a big glowing visor, readable at 16 px. A style frame comes first for Adit's approval.
 
 ### The new structure
@@ -44,7 +44,8 @@ Decisions (Adit, Nov 17):
 | Floor | A hand-built substation floor of rooms joined by corridors, identical in both conditions. Three sectors with their own look: Control Hall, Transformer Yard, Core |
 | Sector | Entry, then two or three combat rooms, then the Regulator's chamber. Combat room doors lock on entry, robots warp in over a visible 0.6 s tell in two waves, and the doors open when the room is clear |
 | Fuse Box | A safe room between sectors: loadout, fusion and evolutions. The rival's one request starts here, as before |
-| Regulator | Fought once per sector, three times in all. Encounter 1 stays neutral and the tactic still freezes when the player enters the chamber. The rival observes the whole sector (rooms and fight), using only the same visible facts |
+| Regulator | Fought once per sector, three times in all. Encounter 1 stays neutral. The tactic for the next sector is accepted in the Fuse Box and frozen when the player leaves it, before the sector's first room |
+| Observation window | The rival now observes the whole sector, robot rooms and the Regulator fight, because the Regulator "watches how you fight" and one fight is little evidence. It uses the same visible kinds only: distance to the nearest active hostile, shots, dodges and power uses (plus `burst_uses` once Burst lands, which needs a Worker redeploy). Robots in rooms ignore the tactic, so only the Regulator adapts. The fixed baseline records the same window in its trace but never reads it |
 | Hidden branch | One secret room behind a cracked wall in sector 2, holding an evolution charge |
 
 ### Robots
@@ -68,6 +69,8 @@ Each robot carries one power or none, and each attacks in its own way, so no two
 - **Fusions:** Arc Trail (Spark + Blink) and Shock Cone (Spark + Burst). Blink + Burst stays unsupported.
 
 ### Order of work
+This scope needs the instructor's G3 approval (Nov 30) before it counts. If cuts are needed, the G1 cut order applies: the second recipe first, then the hidden branch, then extra rooms. Rooms are data, so cutting one is cheap.
+
 Each item is its own reviewed PR:
 1. The robot style frame, for Adit's approval.
 2. The floor engine: rooms, corridors, doors, waves and the camera.

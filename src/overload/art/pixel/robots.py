@@ -3,11 +3,13 @@
 Every robot has a round chunky body, a dark visor with a glowing hostile eye, and, if it
 carries a power, a core window showing that power's symbol (art direction rule 4: you can see
 what you will steal). Light comes from the top left. Hostile shots stay in hostile colors and
-differ by shape: spark ball, diamond shard, shell, shockwave ring, needle.
+differ by shape: the Drone's spiked spark ball (effects.hostile_bolt), the Relay Bot's diamond
+shard, the Sentry's shell, the Breaker's shockwave ring, the Regulator's needles and orbs.
 """
 
 from __future__ import annotations
 
+import math
 from functools import cache
 
 import pygame
@@ -233,7 +235,7 @@ def mech_body() -> pygame.Surface:
         _fill(s, "px.bot.0", x - 1, 38, 9, 4)
         _fill(s, "px.bot.2", x - 1, 38, 9, 1)
     # Hips, hazard striped.
-    for x in (7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28):
+    for x in range(7, 29):
         for y in (30, 31, 32):
             _fill(s, "px.hazard.1" if ((x + y) // 2) % 2 == 0 else "px.hazard.0", x, y)
     # Chest shell, lit from the top left.
@@ -271,7 +273,7 @@ def mech_body() -> pygame.Surface:
     for dx, dy in ((3, -3), (4, -2), (3, -4)):
         _fill(s, "hostile.danger", cx + dx, cy + dy)
     # Status lights.
-    for i, token in enumerate(("px.hostile.3", "px.led.amber", "power.blink")):
+    for i, token in enumerate(("px.hostile.3", "px.led.amber", "px.ceramic.2")):
         _fill(s, token, 7, 17 + i * 3)
     add_outline(s, "px.outline")
     return s
@@ -281,8 +283,6 @@ def regulator_mech(
     protocol: str, facing_left: bool, needle: float | None = None, lit: bool = False
 ) -> pygame.Surface:
     """The mech with its protocol arms: Clamp pincers, Insulate plates or Oscillate fins."""
-    import math
-
     body = mech_body()
     bw, bh = body.get_size()
     if protocol == "clamp":
@@ -373,8 +373,6 @@ def orb() -> pygame.Surface:
 
 def shockwave(target: pygame.Surface, center: tuple[float, float], radius: float) -> None:
     """The Breaker's slam: a ring of dashes that runs along the floor."""
-    import math
-
     cx, cy = center
     count = max(8, int(radius * 1.2))
     for i in range(count):
@@ -383,8 +381,3 @@ def shockwave(target: pygame.Surface, center: tuple[float, float], radius: float
         a = 2 * math.pi * i / count
         x, y = round(cx + math.cos(a) * radius), round(cy + math.sin(a) * radius * 0.6)
         target.fill(rgb("hostile.danger"), (x, y, 2, 1))
-
-
-def outline(surface: pygame.Surface) -> pygame.Surface:
-    add_outline(surface, "px.outline")
-    return surface

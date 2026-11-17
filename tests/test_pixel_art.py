@@ -239,3 +239,38 @@ def test_the_fusion_flash_lasts_a_fixed_number_of_ticks(headless_pygame) -> None
     for _ in range(FUSION_TICKS):
         view.update(campaign, (128, 72))
     assert view.fusion_flash == 0
+
+
+def test_every_robot_and_shot_renders(headless_pygame) -> None:
+    from overload.art.pixel import robots
+
+    for left in (False, True):
+        robots.drone(0, left)
+        robots.drone(6, left)
+        robots.relay_bot(left)
+        robots.relay_bot(left, arming=True)
+        robots.breaker(left)
+        robots.breaker(left, raising=True)
+        robots.sweeper(0, left, revving=True)
+        robots.sentry(left)
+        for protocol in ("clamp", "insulate", "oscillate"):
+            robots.regulator_mech(protocol, left, needle=0.5, lit=True)
+    for shot in (robots.shard(), robots.shell(), robots.needle_dart(), robots.orb()):
+        assert shot.get_width() > 0
+    with pytest.raises(KeyError):
+        robots.regulator_mech("berserk", False)
+
+
+def test_robots_never_use_power_colors_except_their_core(headless_pygame) -> None:
+    """Power colors are for powers and power cores only (art direction rule)."""
+    from overload.art.pixel import robots
+
+    for name, rows, allowed in (
+        ("drone", robots._DRONE, {"Y", "y"}),
+        ("relay", robots._RELAY, {"K", "k"}),
+        ("breaker", robots._BREAKER["rest"], {"U", "u"}),
+        ("sweeper", robots._SWEEPER, set()),
+        ("sentry", robots._SENTRY, set()),
+    ):
+        used = {c for row in rows for c in row} & set("YyKkUu")
+        assert used <= allowed, name
