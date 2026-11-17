@@ -1,9 +1,25 @@
-# Overload · G1 proposal
-Version 0.2 · November 15, 2026 · Gate 1. Supersedes the local-policy-only draft.
+# Overload
 
 Overload is a top-down shooter where you steal and fuse enemy powers to feel inventive and capable of surprising a rival that learns how you fight. COMS E6998 section 014 (AI in Practice: Game Design and Development), Columbia University, individual final project.
 
-This repository currently holds the G1 concept package. It describes proposed work, not a completed game or observed playtest results. It follows the course syllabus and GDF reader v2.1 (November 10). No game code, deployed service, paid model call or playtest exists yet.
+G1 was approved. The repository now holds the project scaffold: a game window that opens, a placeholder rival service with a health route, CI and the agent team configuration. There is no gameplay, deployed service, paid model call or playtest yet.
+
+## Run and test
+Requirements: [uv](https://docs.astral.sh/uv/) and Python 3.11 or 3.12 for the game, Node.js 22 for the rival service.
+
+```sh
+uv sync --frozen
+uv run overload                          # opens the game window, Esc quits
+uv run pytest                            # deterministic client tests
+uv run ruff check . && uv run ruff format --check .
+
+cd worker
+npm ci
+npm test                                 # Worker tests run locally in workerd, no deployment
+npm run typecheck
+```
+
+CI runs the same checks on every pull request ([`.github/workflows/overload-checks.yml`](.github/workflows/overload-checks.yml)). Development agent roles live in [`.agents/`](.agents/) and the common manifest is [`agent-config.json`](agent-config.json).
 
 ## G1 submission
 - Recording (3–5 min): https://youtu.be/uBufxDVXPek
@@ -23,7 +39,7 @@ This repository currently holds the G1 concept package. It describes proposed wo
 Files named "Initial" are the G1 gate proposal. They are preserved as submitted. Update (G2/G3) and Final (G4) versions will be added alongside them rather than overwriting them.
 
 ## Status
-- G1 decision (Approve/Hold): pending, posted on CourseWorks by Nov 17.
+- G1 decision: Approved, as reported by Adit on Nov 16, 2026. See [decisions](docs/DECISIONS_AND_OPEN_QUESTIONS.md).
 - Next checkpoint: Nov 23, deployed model call, isolated session state and forced-timeout fallback.
 - Videos are never committed. Recordings are linked above.
 

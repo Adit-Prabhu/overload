@@ -26,3 +26,7 @@ node_modules/
 # OS / IDE
 .DS_Store
 .idea/
+
+# Runtime output
+logs/
+dist/

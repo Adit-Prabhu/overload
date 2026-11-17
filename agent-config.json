@@ -1,0 +1,170 @@
+{
+  "schema_version": "course-1",
+  "status": "Scaffold. The in-game rival service is planned (implementation plan task 4). Fields describe the approved design from docs/INITIAL_CONFIGURATION.md, not running behavior.",
+  "purpose": "Choose the Regulator's protocol for the next encounter from the player's observed habits.",
+  "native_artifact": "worker/src/index.ts (planned routes POST /sessions and POST /sessions/:id/tactic, structured JSON function-calling equivalent)",
+  "tools_available": [
+    "select_tactic(tactic_id, evidence_ids)"
+  ],
+  "prohibited_actions": [
+    "change stats, damage, health or speed",
+    "invent moves or unlock items",
+    "inspect hidden inventory, positions, RNG or raw world state",
+    "read another session's context",
+    "start additional or retried requests",
+    "reveal secrets or credentials",
+    "override game-side validation"
+  ],
+  "memory_policy": "Last two encounter summaries for the current session only, each at most 300 tokens. Reset on a new session. Server state expires after 30 minutes of inactivity. No cross-session retrieval or shared memory.",
+  "context_sources": [
+    "src/overload/agent/observations.py:summary (planned)",
+    "config/tactics.json (planned)",
+    "previous accepted tactic and visible event IDs for this session"
+  ],
+  "retrieval": "None. No RAG or external knowledge.",
+  "model_choice": {
+    "provider": "Vertex AI, pending decision D6 on the Worker credential path",
+    "requested_model": "gemini-3.5-flash-lite (proposed, confirm availability and price before the first paid call)",
+    "settings": "temperature 0, structured JSON output, no automatic continuation, no retry",
+    "resolved_model": "Logged per request when the API returns it"
+  },
+  "prompts_or_system_instructions": "Select one allowed next-encounter tactic from the supplied catalogue using only observed history. Return tactic_id and evidence_ids as JSON. Do not invent evidence or change game rules. With insufficient evidence select lateral.",
+  "named_failure_modes": [
+    "timeout",
+    "provider refusal or error",
+    "invalid JSON",
+    "unknown tactic or evidence ID",
+    "wrong session, request or encounter ID",
+    "stale reply after the deadline",
+    "repeated protocol fixation",
+    "budget exhaustion",
+    "leaked context"
+  ],
+  "evaluation_cases": "Deterministic: boundary invariance, two-session isolation, invalid proposal rejection, timeout, stale reply, request cap, full win and loss paths. Live: six authored observation histories x three repeats, at most 18 attempts and $1 per suite.",
+  "logging_policy": "Anonymous session ID, encounter and request IDs, config and prompt hash, requested and resolved model, filtered-context hash, accepted proposal, fallback reason, latency, token and cost estimate. No credentials or participant identities.",
+  "human_override_points": [
+    "Adit approves model, config and spending",
+    "Adit can disable live mode at launch, which uses the deterministic fallback",
+    "Adit can stop any live evaluation",
+    "Adit decides every change and merge"
+  ],
+  "test_command": "uv run pytest && (cd worker && npm test)",
+  "ci_workflow_path": ".github/workflows/overload-checks.yml",
+  "limits": {
+    "attempts_per_session": 2,
+    "retries": 0,
+    "deadline_seconds": 5,
+    "max_input_tokens": 1000,
+    "max_output_tokens_billed": 512,
+    "model_allowance_usd_per_session": 0.01,
+    "live_eval_cap_usd_per_suite": 1.0
+  },
+  "fallback": "Any invalid, late, unavailable, disabled or over-budget proposal becomes lateral (Oscillate protocol), labeled as fallback in the trace. Combat never waits on the model.",
+  "knowledge_boundary": "Only the observation-filter summary and the tactic catalogue cross to the model. Game code owns all state and validates every proposal.",
+  "limitations": [
+    "Nothing in the service is implemented or deployed yet.",
+    "A fixed-schedule baseline tests history dependence, not whether an LLM beats a simple adaptive rule.",
+    "Valid JSON and real evidence IDs do not prove the chosen tactic was a good one."
+  ],
+  "agent_team": [
+    {
+      "role": "Producer",
+      "native_artifact": ".agents/producer.md",
+      "purpose": "Scope, dependencies, schedule and risks.",
+      "context": ["docs/IMPLEMENTATION_PLAN.md", "docs/INITIAL_RISK_REGISTER.md", "Asana export"],
+      "tools_and_permissions": "Read docs, propose task and risk updates. Cannot change deadlines, scope or gate status.",
+      "outputs": "Prioritized task list and risk updates.",
+      "handoff": "To Adit, then to the Tech Lead.",
+      "evaluation": "Capacity and dependency check against the plan.",
+      "human_approval": "Adit accepts every commitment."
+    },
+    {
+      "role": "Design Lead",
+      "native_artifact": ".agents/design.md",
+      "purpose": "Rules, powers, fusion, tell timings and playtest questions.",
+      "context": ["docs/INITIAL_GDD.md", "docs/ART_AND_AUDIO_DIRECTION.md", "playtest observations"],
+      "tools_and_permissions": "Edit design drafts and test cases. No silent scope expansion.",
+      "outputs": "Rule specs and test cases.",
+      "handoff": "To Tech, Art and QA.",
+      "evaluation": "A traced valid session and tell-timing tests.",
+      "human_approval": "Adit accepts creative direction."
+    },
+    {
+      "role": "Tech Lead",
+      "native_artifact": ".agents/tech.md",
+      "purpose": "Client, simulation, Worker and deployment.",
+      "context": ["AGENTS.md", "docs/IMPLEMENTATION_PLAN.md", "approved tasks"],
+      "tools_and_permissions": "Branch-local code and tests. No merges, tags, deployments or paid calls without Adit's authorization.",
+      "outputs": "Runnable change with tests and traces.",
+      "handoff": "To the QA reviewer.",
+      "evaluation": "CI and contract tests.",
+      "human_approval": "Adit accepts integration and merges."
+    },
+    {
+      "role": "Art Lead",
+      "native_artifact": ".agents/art.md",
+      "purpose": "Palette, shapes, sprites, VFX, HUD and showcase art.",
+      "context": ["docs/ART_AND_AUDIO_DIRECTION.md", "approved style frame", "assets/ASSET_MANIFEST.json"],
+      "tools_and_permissions": "Create original code-drawn assets and contact sheets. No downloads or generated images without a manifest entry Adit approved.",
+      "outputs": "Drawing code, contact sheets, manifest entries.",
+      "handoff": "To Tech and QA.",
+      "evaluation": "Grayscale and color-vision contact sheets, palette test.",
+      "human_approval": "Adit approves the style frame and each batch."
+    },
+    {
+      "role": "Narrative",
+      "native_artifact": ".agents/narrative.md",
+      "purpose": "Glossary, labels and the premise line.",
+      "context": ["docs/ART_AND_AUDIO_DIRECTION.md glossary", "public game facts only"],
+      "tools_and_permissions": "Edit bounded UI text. No gameplay promises, no hidden-state disclosure.",
+      "outputs": "Label set and premise line.",
+      "handoff": "To Design and Tech.",
+      "evaluation": "Glossary consistency check.",
+      "human_approval": "Adit approves all text."
+    },
+    {
+      "role": "Audio",
+      "native_artifact": ".agents/audio.md",
+      "purpose": "Synth, music stems, sound effects and mix.",
+      "context": ["docs/ART_AND_AUDIO_DIRECTION.md", "audio event list", "assets/ASSET_MANIFEST.json"],
+      "tools_and_permissions": "Write synth code and render original audio. No external samples without recorded terms.",
+      "outputs": "Rendered OGG files, source, preview file, manifest entries.",
+      "handoff": "To Tech and QA.",
+      "evaluation": "Peak, loop-seam and stem-length tests, mute-map test.",
+      "human_approval": "Adit approves each listen-through."
+    },
+    {
+      "role": "QA reviewer",
+      "native_artifact": ".agents/qa.md",
+      "purpose": "Independent read-only review and failure reproduction.",
+      "context": ["the diff and change summary", "AGENTS.md", "tests/"],
+      "tools_and_permissions": "Read files and run tests. No edits during review. Never reviews its own work.",
+      "outputs": "Findings labeled blocking, should fix or note, with file:line.",
+      "handoff": "To Adit, who decides each finding.",
+      "evaluation": "Findings reproduced by a failing test where possible.",
+      "human_approval": "Adit resolves every finding. The reviewer cannot approve or merge."
+    },
+    {
+      "role": "BI",
+      "native_artifact": ".agents/bi.md",
+      "purpose": "Latency, cost and player evidence analysis.",
+      "context": ["anonymized traces", "eval results", "playtest logs"],
+      "tools_and_permissions": "Read logs and write analysis. Cannot reclassify failed or unavailable runs.",
+      "outputs": "Bounded comparison reports.",
+      "handoff": "To Design and Producer.",
+      "evaluation": "Numbers recomputed from raw data.",
+      "human_approval": "Adit approves interpretation."
+    },
+    {
+      "role": "Publishing and Release",
+      "native_artifact": ".agents/release.md",
+      "purpose": "Reproducible builds, release instructions and archive.",
+      "context": ["approved build", "README", "release checklist"],
+      "tools_and_permissions": "Prepare packaging and instructions. No tags, releases or publishing without Adit's decision.",
+      "outputs": "Release checklist and package.",
+      "handoff": "To Adit.",
+      "evaluation": "Fresh-clone run and link access check.",
+      "human_approval": "Adit approves release. The instructor approves Gold."
+    }
+  ]
+}
