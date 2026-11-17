@@ -427,6 +427,31 @@ def _deny() -> np.ndarray:
     return _blink_deny()
 
 
+# The menu and the Fuse screen's roll (docs/POWERS_AND_FUSION.md section 8). The stings
+# climb with the rarity: a two-note rare, a three-note epic, and the full fusion swell
+# under a higher motif for a legendary.
+def _menu_move() -> np.ndarray:
+    return _motif(("E5",), 0.0, 0.035) * 0.5
+
+
+def _roll_tick() -> np.ndarray:
+    return _motif(("B5",), 0.0, 0.025) * 0.6
+
+
+def _fuse_rare() -> np.ndarray:
+    return _motif(("B4", "E5"), 0.07, 0.18)
+
+
+def _fuse_epic() -> np.ndarray:
+    return _motif(("B4", "E5", "G#5"), 0.07, 0.26)
+
+
+def _fuse_legendary() -> np.ndarray:
+    out = _fusion()
+    place(out, _motif(("E5", "G#5", "B5", "E6"), 0.08, 0.3, octave_up=False) * 0.8, 0)
+    return out
+
+
 MUSIC: dict[str, Callable[[], np.ndarray]] = {
     "music_hum": hum,
     "music_pulse": pulse,
@@ -471,6 +496,11 @@ SFX: dict[str, Callable[[], np.ndarray]] = {
     "sfx_fusion": _fusion,
     "sfx_confirm": _confirm,
     "sfx_deny": _deny,
+    "sfx_menu_move": _menu_move,
+    "sfx_roll_tick": _roll_tick,
+    "sfx_fuse_rare": _fuse_rare,
+    "sfx_fuse_epic": _fuse_epic,
+    "sfx_fuse_legendary": _fuse_legendary,
 }
 
 

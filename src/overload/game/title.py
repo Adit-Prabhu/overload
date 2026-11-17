@@ -22,8 +22,8 @@ CONTROLS = (
     ("FIRE", "HOLD LEFT CLICK"),
     ("DODGE", "SPACE"),
     ("POWERS", "Q AND E"),
-    ("LOADOUT AND FUSION", "TAB (PAUSES)"),
-    ("FUSE BOX: CONTINUE", "ENTER"),
+    ("MENU: LOADOUT AND FUSE", "TAB (PAUSES)"),
+    ("IN MENUS: PICK, BACK", "SPACE, ESC"),
     ("RETRY AFTER A SHORT CIRCUIT", "R"),
     ("QUIT", "ESC"),
 )

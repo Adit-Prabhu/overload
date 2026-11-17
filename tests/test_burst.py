@@ -7,10 +7,9 @@ import dataclasses
 
 import pytest
 
-from overload.game.flow import next_recipe
 from overload.sim.campaign import encounter_world
 from overload.sim.inputs import IDLE, InputFrame
-from overload.sim.powers import DROPS, Kit, evolved, fuse
+from overload.sim.powers import DROPS, Kit, evolved
 from overload.sim.spawns import spawn_robot
 from overload.sim.state import Charge, Projectile
 from overload.sim.tuning import DEFAULT
@@ -116,23 +115,6 @@ def test_evolved_burst_reaches_wider() -> None:
         step(world, aim_right(world, power_q=True))
     assert plain.hostiles[-1].health == DEFAULT.sweeper_health
     assert wide.hostiles[-1].health == DEFAULT.sweeper_health - DEFAULT.burst_damage
-
-
-def test_the_fuse_key_picks_the_next_open_recipe() -> None:
-    kit = Kit(["spark", "blink", "burst"], {}, ["", ""])
-    assert next_recipe(kit) == ("spark", "blink")
-    assert fuse(kit, *next_recipe(kit), seed=1) == "fused"
-    assert next_recipe(kit) == ("spark", "burst")
-    assert fuse(kit, *next_recipe(kit), seed=1) == "fused"
-    assert next_recipe(kit) == ("blink", "burst")
-    assert fuse(kit, *next_recipe(kit), seed=1) == "fused"
-    assert next_recipe(kit) is None, "all fused and no fusion picked: F spends nothing"
-    assert next_recipe(kit, "spark") is None
-    cone = kit.unlocked[4]  # whatever Spark + Burst rolled
-    assert next_recipe(kit, cone) == ("spark", "burst"), "the picked fusion rerolls"
-    assert fuse(kit, "spark", "burst", seed=1) == "no_charges"
-    assert fuse(Kit(["spark"], {}, ["", ""]), "blink", "burst", seed=1) == "missing"
-    assert fuse(Kit(["spark"], {}, ["", ""]), "spark", "spark", seed=1) == "unsupported"
 
 
 def test_power_guards() -> None:

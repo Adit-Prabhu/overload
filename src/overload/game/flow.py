@@ -21,7 +21,7 @@ from overload.agent.tactics import Decision
 from overload.session.trace import TraceWriter
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import InputFrame
-from overload.sim.powers import NAMES, RECIPE_ORDER, Kit, owned_result, rarity_of
+from overload.sim.powers import owned_result, rarity_of
 from overload.sim.tuning import TICK_RATE
 
 MIN_FUSE_TICKS = round(DEADLINE_SECONDS * TICK_RATE)
@@ -185,86 +185,3 @@ class Session:
         if self.trace is not None:
             sent = summary if self.selector.condition == "live" else None
             self.trace.decision(decision, self.session_id, sent)
-
-
-FUSE_NOTICES = {
-    "fused": "FUSED. Q OR E EQUIPS IT",
-    "missing": "STEAL BOTH POWERS FIRST",
-    "unsupported": "STEAL BOTH POWERS FIRST",
-    "no_charges": "NO SPARE CHARGES",
-    "pick": "PICK A FUSION TO REROLL",
-}
-
-
-def next_recipe(kit, selected: str = "") -> tuple[str, str] | None:
-    """The recipe F tries: the first one not fused yet whose ingredients are both stolen,
-    else a reroll of the selected power if it is a fusion, else the first one not fused yet
-    (it will report what is missing). None when every recipe is fused and no fusion is
-    selected, so F never spends charges on a power the player did not pick."""
-    open_recipes = [(a, b) for a, b in RECIPE_ORDER if not owned_result(kit.unlocked, a, b)]
-    for a, b in open_recipes:
-        if a in kit.unlocked and b in kit.unlocked:
-            return a, b
-    for a, b in RECIPE_ORDER:
-        if selected and owned_result(kit.unlocked, a, b) == selected:
-            return a, b
-    return open_recipes[0] if open_recipes else None
-
-
-class FuseBoxMenu:
-    """The loadout and fusion menu. Keys: up and down pick a power, q and e equip it to
-    that slot. Fuse makes the next recipe whose ingredients are both stolen. With none, it
-    rerolls the selected fusion, else reports what the next recipe needs (see next_recipe).
-    Rerolling an epic or legendary takes a second fuse press, since it can only lose.
-    Returns each simulation-affecting action so the caller can record it for the replay."""
-
-    def __init__(self) -> None:
-        self.selected = 0
-        self.notice: str | None = None
-        self.last_result = ""
-        self.armed: tuple[str, str] | None = None  # a reroll waiting for its second press
-
-    def reset(self) -> None:
-        self.selected = 0
-        self.notice = None
-        self.armed = None
-
-    def press(self, session: Session, key: str) -> list | None:
-        rows = session.campaign.world.unlocked
-        armed, self.armed = self.armed, None  # any other key cancels a pending reroll
-        if key in ("up", "down") and rows:
-            step = -1 if key == "up" else 1
-            self.selected = (self.selected + step) % len(rows)
-            self.notice = None  # a new selection replaces the last notice
-        elif key in ("q", "e") and rows:
-            slot = 0 if key == "q" else 1
-            ability = rows[min(self.selected, len(rows) - 1)]
-            session.equip(slot, ability)
-            self.notice = None
-            return ["equip", slot, ability]
-        elif key == "fuse":
-            world = session.campaign.world
-            selected = rows[min(self.selected, len(rows) - 1)] if rows else ""
-            pair = next_recipe(Kit.from_world(world), selected)
-            if pair is None:
-                self.last_result = "pick"
-                self.notice = FUSE_NOTICES["pick"]
-                return None
-            a, b = pair
-            recipe = owned_result(world.unlocked, a, b)
-            rarity = rarity_of(recipe)
-            spare = all(world.bank.get(p, 0) >= session.campaign.tuning.reroll_cost for p in pair)
-            if recipe and rarity != "rare" and spare and armed != pair:
-                self.armed = pair
-                self.last_result = "confirm"
-                self.notice = f"F AGAIN TO REROLL {rarity.upper()}"
-                return None
-            result = session.fuse(a, b)
-            self.last_result = result
-            self.notice = FUSE_NOTICES[result]
-            if result == "fused":
-                power = owned_result(world.unlocked, a, b)
-                # short: it shares the footer line
-                self.notice = f"{NAMES[power]} {rarity_of(power).upper()}"
-            return ["fuse", a, b]
-        return None

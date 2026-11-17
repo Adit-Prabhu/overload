@@ -219,6 +219,42 @@
       "approval": "Pending Adit's listen-through"
     },
     {
+      "id": "SFX.fuse_epic",
+      "path": "assets/audio/sfx_fuse_epic.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "CC-BY-4.0",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "9709fa0c1257619911862f5dbdf2155e65289452cfd18fe2ada156fb5b397ba3",
+      "added": "2026-11-17",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
+      "id": "SFX.fuse_legendary",
+      "path": "assets/audio/sfx_fuse_legendary.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "CC-BY-4.0",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "5071392e7fc5bd8249f75bff9a78471c73c3cb5c4ff2939dd0b24a13d27ffe53",
+      "added": "2026-11-17",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
+      "id": "SFX.fuse_rare",
+      "path": "assets/audio/sfx_fuse_rare.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "CC-BY-4.0",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "65785ccec7ea738640b9f8a5aab7cd52692fd4ce657d6615d6fa732d0787ccf8",
+      "added": "2026-11-17",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
       "id": "SFX.fusion",
       "path": "assets/audio/sfx_fusion.ogg",
       "kind": "audio",
@@ -263,6 +299,18 @@
       "license": "CC-BY-4.0",
       "license_file": "assets/audio/LICENSE.txt",
       "sha256": "f165e64897e5ab15303068069fc7897e954c25a062a9c1c9c6709e580323f638",
+      "added": "2026-11-17",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
+      "id": "SFX.menu_move",
+      "path": "assets/audio/sfx_menu_move.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "CC-BY-4.0",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "0a8382b4cc7e23d6d7f5efef751c282700ce0747adaca78fc328076855e51ae0",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },
@@ -407,6 +455,18 @@
       "license": "CC-BY-4.0",
       "license_file": "assets/audio/LICENSE.txt",
       "sha256": "5d8b0fb8744ca3990fa8bd5521c07cdf08d17a3bb580d8de2d428de152c4315e",
+      "added": "2026-11-17",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
+      "id": "SFX.roll_tick",
+      "path": "assets/audio/sfx_roll_tick.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "CC-BY-4.0",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "b29a2e5b07fcbce225bfebc1c483a498987503e557b858be47be4cb0743193e2",
       "added": "2026-11-17",
       "approval": "Pending Adit's listen-through"
     },

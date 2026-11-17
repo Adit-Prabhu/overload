@@ -5,15 +5,14 @@ from __future__ import annotations
 import json
 import threading
 
-from floorbot import FloorBot, clear_encounter, enter, fuse_box_with
+from floorbot import clear_encounter, enter
 
 from overload.agent.client import TacticClient
 from overload.agent.selector import FixedSchedule, LiveSelector, NeutralSelector
-from overload.game.flow import FALLBACK_LINE, FUSE_NOTICES, MIN_FUSE_TICKS, FuseBoxMenu, Session
+from overload.game.flow import FALLBACK_LINE, MIN_FUSE_TICKS, Session
 from overload.session.trace import TraceWriter
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import IDLE, InputFrame
-from overload.sim.powers import NAMES, RESULTS, rarity_of
 from overload.sim.tuning import DEFAULT
 
 
@@ -183,39 +182,6 @@ def test_baseline_traces_never_claim_a_summary_was_sent(tmp_path) -> None:
     assert rows[-1]["event"] == "session_end"
 
 
-def test_menu_equips_the_picked_power_and_reports_the_action() -> None:
-    session = fuse_box_with("spark", "blink")
-    menu = FuseBoxMenu()
-    assert menu.press(session, "down") is None
-    assert menu.press(session, "q") == ["equip", 0, "blink"]
-    assert session.campaign.kit.slots == ["blink", ""]
-    menu.press(session, "down")  # wraps back to spark
-    assert menu.press(session, "e") == ["equip", 1, "spark"]
-    assert session.campaign.kit.slots == ["blink", "spark"]
-
-
-def test_menu_fusion_shows_the_supported_recipe_when_it_fails() -> None:
-    session = fuse_box_with("spark")
-    menu = FuseBoxMenu()
-    assert menu.press(session, "fuse") == ["fuse", "spark", "blink"]
-    assert menu.notice == FUSE_NOTICES["missing"]
-    assert session.campaign.kit.unlocked == ["spark"]
-    session.campaign.world.unlocked.append("blink")
-    menu.press(session, "fuse")
-    world = session.campaign.world
-    power = world.unlocked[-1]
-    assert world.unlocked[:2] == ["spark", "blink"]
-    assert power in RESULTS[frozenset(("spark", "blink"))]
-    assert menu.notice == f"{NAMES[power]} {rarity_of(power).upper()}"
-
-
-def test_menu_with_nothing_stolen_ignores_equip_keys() -> None:
-    session = fuse_box_with()
-    menu = FuseBoxMenu()
-    for key in ("up", "down", "q", "e"):
-        assert menu.press(session, key) is None
-
-
 def test_menu_actions_are_traced(tmp_path) -> None:
     trace = TraceWriter(tmp_path / "t.jsonl", condition="off", tuning_id="t", arena_id="a")
     session = Session(Campaign(1), NeutralSelector(), trace, "anon")
@@ -238,84 +204,6 @@ def press_keys(reader, *keys) -> None:
         reader.handle(pygame.event.Event(pygame.KEYDOWN, key=key))
 
 
-def live_menu_setup():
-    from overload.game.app import InputReader
-    from overload.session.replay import Recording
-    from overload.sim.arena import FLOOR_ARENA, arena_id
-    from overload.sim.tuning import DEFAULT
-
-    session = Session(Campaign(1), NeutralSelector())
-    recording = Recording(
-        seed=1,
-        tuning_id=DEFAULT.tuning_id(),
-        arena_id=arena_id(FLOOR_ARENA),
-        mode="campaign",
-        protocols=["lateral"],
-    )
-    return session, FuseBoxMenu(), InputReader(), recording
-
-
-def test_keys_pressed_as_the_encounter_ends_are_not_menu_choices() -> None:
-    import pygame
-
-    from overload.game.app import fuse_box_frame
-
-    session, menu, reader, recording = live_menu_setup()
-    session.campaign.world.unlocked = ["spark", "blink"]
-    session.campaign.world.player.slots = ["spark", "blink"]
-    press_keys(reader, pygame.K_e)
-    clear_encounter(session)  # the encounter ends inside this frame's tick batch
-    fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=False)
-    assert session.campaign.kit.slots == ["spark", "blink"]
-    assert recording.menu == []
-
-
-def test_leaving_the_fuse_box_drops_latched_power_presses() -> None:
-    import pygame
-
-    from overload.game.app import fuse_box_frame
-
-    session, menu, reader, recording = live_menu_setup()
-    clear_encounter(session)
-    wait_in_fuse_box(session, MIN_FUSE_TICKS)
-    press_keys(reader, pygame.K_q, pygame.K_RETURN)
-    fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=True)
-    assert session.campaign.stage == "encounter" and session.campaign.encounter == 2
-    assert not reader._power_q, "Q from the menu must not fire a power in encounter 2"
-
-
-def test_a_live_fuse_box_session_replays_exactly() -> None:
-    import pygame
-
-    from overload.game.app import fuse_box_frame
-    from overload.session.replay import play
-
-    session, menu, reader, recording = live_menu_setup()
-    campaign = session.campaign
-    bot = FloorBot(campaign)
-    for tick in range(20_000):  # clear sector 1 with real inputs, as a player would
-        frame = bot.frame(tick)
-        if campaign.world.outcome == "down":
-            frame = InputFrame(restart=True)
-        session.tick(frame)
-        recording.frames.append(frame)
-        if campaign.stage == "fuse_box":
-            break
-    assert campaign.stage == "fuse_box"
-    for _ in range(MIN_FUSE_TICKS):
-        session.tick(IDLE)
-        recording.frames.append(IDLE)
-    press_keys(reader, pygame.K_s, pygame.K_e, pygame.K_f, pygame.K_RETURN)
-    fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=True)
-    assert recording.menu and recording.menu[-1][1] == "fuse"
-    assert recording.starts == [len(recording.frames)] and campaign.encounter == 2
-    for _ in range(30):
-        frame = InputFrame(fire=True, aim_x=300, aim_y=150, power_e=True)
-        session.tick(frame)
-        recording.frames.append(frame)
-    assert play(recording).state_hash() == campaign.state_hash()
-
-
 def test_the_fuse_box_holds_the_surge_still_and_ignores_restart() -> None:
     session = Session(Campaign(1), NeutralSelector())
     clear_encounter(session)
@@ -328,20 +216,6 @@ def test_the_fuse_box_holds_the_surge_still_and_ignores_restart() -> None:
     assert campaign.stage == "fuse_box" and campaign.retries == {1: 0}
 
 
-def test_the_paused_loadout_menu_works_mid_sector() -> None:
-    import pygame
-
-    from overload.game.app import fuse_box_frame
-
-    session, menu, reader, recording = live_menu_setup()
-    session.campaign.world.unlocked = ["spark", "blink"]
-    press_keys(reader, pygame.K_f, pygame.K_RETURN)
-    sounds = fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=False, paused=True)
-    assert len(session.campaign.world.unlocked) == 3 and "fusion" in sounds
-    assert recording.menu[-1][1:] == ["fuse", "spark", "blink"]
-    assert session.campaign.stage == "encounter", "Enter does nothing outside the Fuse Box"
-
-
 def test_tab_toggles_the_menu() -> None:
     import pygame
 
@@ -350,20 +224,6 @@ def test_tab_toggles_the_menu() -> None:
     reader = InputReader()
     press_keys(reader, pygame.K_TAB)
     assert reader.take_toggle() and not reader.take_toggle()
-
-
-def test_menu_keys_pressed_during_play_are_dropped() -> None:
-    import pygame
-
-    from overload.game.app import fuse_box_frame
-
-    session, menu, reader, recording = live_menu_setup()
-    session.campaign.world.unlocked = ["spark", "blink"]
-    press_keys(reader, pygame.K_f, pygame.K_q)
-    assert fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=False) == []
-    assert "arc_trail" not in session.campaign.world.unlocked and not recording.menu
-    later = fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=False, paused=True)
-    assert later == [] and not recording.menu, "nothing queued from before the pause"
 
 
 def test_closing_the_menu_drops_dodge_and_power_presses() -> None:
@@ -375,19 +235,3 @@ def test_closing_the_menu_drops_dodge_and_power_presses() -> None:
     press_keys(reader, pygame.K_SPACE, pygame.K_q, pygame.K_e, pygame.K_r)
     reader.drop_power_latches()
     assert not (reader._dodge or reader._power_q or reader._power_e or reader._restart)
-
-
-def test_the_menu_stops_time_and_opens_only_mid_sector() -> None:
-    from overload.game.app import ticks_due, toggle_pause
-
-    assert ticks_due(True, False, 0.05, 0.5) == (0, 0.0)
-    assert ticks_due(True, True, 0.0, 0.0) == (0, 0.0)
-    assert ticks_due(False, True, 0.0, 0.0)[0] == 1
-    session = fuse_box_with("spark")
-    assert session.campaign.stage == "fuse_box"
-    assert toggle_pause(False, session.campaign) is False, "not in the Fuse Box"
-    fresh = Campaign(1)
-    assert toggle_pause(False, fresh) is True and toggle_pause(True, fresh) is False
-    fresh.world.player.charge = 0
-    fresh.step(IDLE)
-    assert toggle_pause(False, fresh) is False, "not while down"
