@@ -131,6 +131,8 @@ class Tuning:
             raise ValueError("Relay tells are below the readability minimums")
         if self.blink_min_distance > self.blink_distance:
             raise ValueError("Blink minimum distance exceeds its range")
+        if (abs(self.hand_x) + abs(self.hand_y) + self.barrel) / 4 > 4.0:
+            raise ValueError("The caster tip is too far out to check for props between")
         if self.shot_speed + 2 * self.shot_radius >= THINNEST_OBSTACLE:
             raise ValueError("Shots could tunnel through the thinnest obstacle")
         if self.dodge_speed >= self.player_radius:

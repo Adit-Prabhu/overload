@@ -26,7 +26,12 @@ def aim(player: Player, inp: InputFrame, tuning: Tuning = DEFAULT) -> None:
     if inp.aim_x != round(player.x):
         player.facing = -1 if inp.aim_x < player.x else 1
     hx, hy = hand(player, tuning)
-    ax, ay = normalize(inp.aim_x - hx, inp.aim_y - hy)
+    dx, dy = inp.aim_x - hx, inp.aim_y - hy
+    if dx * dx + dy * dy <= (tuning.barrel + 1.0) ** 2:
+        # The cursor is inside the caster's reach: aim from the body instead, so the shot
+        # still heads toward it rather than away from it.
+        dx, dy = inp.aim_x - player.x, inp.aim_y - player.y
+    ax, ay = normalize(dx, dy)
     if ax or ay:
         player.aim_x, player.aim_y = ax, ay
 

@@ -152,6 +152,7 @@ def _fire(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> None:
     if not inp.fire or player.gun_cooldown > 0 or player.dodging:
         return
     player.gun_cooldown = tuning.gun_cooldown
+    world.events.append(Event("shot", player.x, player.y))  # a visible shot, even a fizzle
     start = launch_point(world, tuning, arena)
     if start is None:
         return
@@ -168,7 +169,6 @@ def _fire(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> None:
             ttl=tuning.shot_ttl,
         )
     )
-    world.events.append(Event("shot", player.x, player.y))
 
 
 def _hostiles(world: World, tuning: Tuning, arena: Arena) -> None:

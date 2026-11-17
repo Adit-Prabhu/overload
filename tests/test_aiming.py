@@ -66,3 +66,25 @@ def test_a_point_blank_shot_into_a_prop_fizzles_at_it() -> None:
     step(world, InputFrame(aim_x=int(x + w + 40), aim_y=int(y + h / 2), fire=True))
     assert not [p for p in world.projectiles if not p.hostile]
     assert "fizzle" in {e.kind for e in world.events}
+
+
+@pytest.mark.parametrize("seed", range(40))
+def test_a_cursor_right_next_to_the_surge_is_still_shot_toward(seed: int) -> None:
+    rng = random.Random(1000 + seed)
+    world = fresh_world()
+    player = world.player
+    player.x, player.y = 200.0, 120.0
+    cursor = (int(player.x + rng.uniform(-14, 14)), int(player.y + rng.uniform(-14, 14)))
+    if cursor == (200, 120):
+        return
+    step(world, InputFrame(aim_x=cursor[0], aim_y=cursor[1], fire=True))
+    shot = next(p for p in world.projectiles if not p.hostile)
+    toward = (cursor[0] - player.x) * shot.vx + (cursor[1] - player.y) * shot.vy
+    assert toward > 0, "the shot heads toward the cursor, never away from it"
+
+
+def test_the_caster_reach_is_guarded() -> None:
+    import dataclasses
+
+    with pytest.raises(ValueError):
+        dataclasses.replace(DEFAULT, barrel=20.0)
