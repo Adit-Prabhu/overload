@@ -31,12 +31,14 @@ from overload.sim.state import Device, Event, World
 from overload.sim.tuning import Tuning
 
 RIVAL_ID = -1  # stands for the Regulator in a list of struck bodies
-WIDE = 1.25  # an evolved Burst widens every blast of its fused powers
 
 
-# Fused powers inherit the evolutions their pair's rare inherits (spec section 3), so a
-# higher rarity never loses out once an ingredient evolves: Arc Trail takes Overdrive, Shock
-# Cone takes CHAIN and WIDE (its sparks chain, its cone widens), Impact Blink takes Overdrive.
+# Fused powers inherit the evolutions their pair's rare inherits, so a higher rarity never
+# loses out once an ingredient evolves: Arc Trail takes Overdrive, Shock Cone takes CHAIN and
+# WIDE (its sparks chain, its cone widens), Impact Blink takes Overdrive. This narrows spec
+# section 3 ("a fused power uses its ingredients' evolutions"): inheriting both ingredients
+# measured Bolt Lance at 1.50 times Arc Trail and Displacer below Impact Blink, outside the
+# power step guard (recorded in docs/DECISIONS_AND_OPEN_QUESTIONS.md).
 INHERITS = {
     frozenset(("spark", "blink")): ("blink",),
     frozenset(("spark", "burst")): ("spark", "burst"),
@@ -58,7 +60,8 @@ def _overdrive(world: World, power: str, tuning: Tuning) -> None:
 
 
 def _reach(world: World, power: str, radius: float, tuning: Tuning) -> float:
-    return radius * WIDE if _evolved(world, power, "burst", tuning) else radius
+    """An evolved Burst widens the blasts and field of the powers that inherit it."""
+    return radius * tuning.fused_wide if _evolved(world, power, "burst", tuning) else radius
 
 
 def _targets(world: World):
@@ -94,18 +97,23 @@ def blast(
     damage: int,
     push: float,
     power: str,
+    skip: int | None = None,
 ) -> None:
-    """A full ring blast: damages every body that reaches into the ring, knocks robots
-    straight out from the center and erases hostile shots inside it."""
+    """A full ring blast: damages every body that reaches into the ring (but `skip`), knocks
+    robots straight out from the center and erases hostile shots inside it. A robot right at
+    the center is pushed away from the Surge."""
     radius = _reach(world, power, radius, tuning)
+    player = world.player
     for body in _targets(world):
-        if length(body.x - x, body.y - y) > radius + body.radius:
+        if _id(body) == skip or length(body.x - x, body.y - y) > radius + body.radius:
             continue
         _strike(world, body, damage, power, tuning)
         if _id(body) != RIVAL_ID and push:
             ux, uy = normalize(body.x - x, body.y - y)
             if not (ux or uy):
-                ux, uy = world.player.aim_x, world.player.aim_y
+                ux, uy = normalize(body.x - player.x, body.y - player.y)
+            if not (ux or uy):
+                ux, uy = player.aim_x, player.aim_y
             knock(world, body, ux, uy, push, arena)
     kept = []
     for shot in world.projectiles:
@@ -165,21 +173,16 @@ def chain_jump(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> b
         if length(b.x - player.x, b.y - player.y) <= tuning.chain_jump_range
     ]
     if not near:
-        world.events.append(Event("blink_rejected", player.x, player.y))
+        world.events.append(Event("blink_rejected", player.x, player.y, 0, "chain_jump"))
         return False
-    target = min(near, key=lambda b: (length(b.x - inp.aim_x, b.y - inp.aim_y), _id(b)))
+    near.sort(key=lambda b: (length(b.x - inp.aim_x, b.y - inp.aim_y), _id(b)))
     origin = (player.x, player.y)
+    # The first hop goes to the body nearest the cursor that has room beside it.
+    target = next((b for b in near if _landing(world, tuning, arena, b, origin)), None)
     struck: list[int] = []
     while target is not None and len(struck) < tuning.chain_jump_hops:
-        ux, uy = normalize(origin[0] - target.x, origin[1] - target.y)
-        if not (ux or uy):
-            ux, uy = -player.aim_x, -player.aim_y
-        gap = target.radius + tuning.player_radius + 2.0
-        spot = (target.x + ux * gap, target.y + uy * gap)
-        if not (
-            _free(world, spot, tuning.player_radius, arena)
-            and _clear_path(world, origin, spot, arena)
-        ):
+        spot = _landing(world, tuning, arena, target, origin)
+        if spot is None:
             break
         _arc(world, origin, spot)
         player.x, player.y = spot
@@ -196,11 +199,24 @@ def chain_jump(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> b
             rest, key=lambda b: (length(b.x - spot[0], b.y - spot[1]), _id(b)), default=None
         )
     if not struck:
-        world.events.append(Event("blink_rejected", player.x, player.y))
+        world.events.append(Event("blink_rejected", player.x, player.y, 0, "chain_jump"))
         return False
     player.invulnerable = max(player.invulnerable, tuning.chain_jump_grace)
     _overdrive(world, "chain_jump", tuning)
     return True
+
+
+def _landing(world: World, tuning: Tuning, arena: Arena, target, origin):
+    """Where a Chain Jump hop lands beside `target`, on the side it comes from, or None
+    when that spot is blocked or out of a clear line."""
+    ux, uy = normalize(origin[0] - target.x, origin[1] - target.y)
+    if not (ux or uy):
+        ux, uy = -world.player.aim_x, -world.player.aim_y
+    gap = target.radius + tuning.player_radius + 2.0
+    spot = (target.x + ux * gap, target.y + uy * gap)
+    if _free(world, spot, tuning.player_radius, arena) and _clear_path(world, origin, spot, arena):
+        return spot
+    return None
 
 
 # Spark + Burst -------------------------------------------------------------------------------
@@ -237,7 +253,7 @@ def impact_blink(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) ->
     player = world.player
     spot = blink_destination(world, inp, tuning, arena)
     if spot is None:
-        world.events.append(Event("blink_rejected", player.x, player.y))
+        world.events.append(Event("blink_rejected", player.x, player.y, 0, "impact_blink"))
         return False
     world.events.append(Event("blink_from", player.x, player.y))
     player.x, player.y = spot
@@ -281,19 +297,31 @@ def displacer(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bo
             world.events.append(Event("blink_to", *there))
             world.events.append(Event("swap", here[0], here[1], robot.id))
             _overdrive(world, "displacer", tuning)
-            for spot in (there, here):
-                blast(
-                    world,
-                    tuning,
-                    arena,
-                    *spot,
-                    tuning.displacer_radius,
-                    tuning.displacer_damage,
-                    tuning.displacer_knock,
-                    "displacer",
-                )
+            # The blast where the Surge lands, then the one where the robot lands. The
+            # swapped robot is hit once, by its own blast, however close the swap was.
+            blast(
+                world,
+                tuning,
+                arena,
+                *there,
+                tuning.displacer_radius,
+                tuning.displacer_damage,
+                tuning.displacer_knock,
+                "displacer",
+                skip=robot.id,
+            )
+            blast(
+                world,
+                tuning,
+                arena,
+                *here,
+                tuning.displacer_radius,
+                tuning.displacer_damage,
+                tuning.displacer_knock,
+                "displacer",
+            )
             return True
-    world.events.append(Event("blink_rejected", player.x, player.y))
+    world.events.append(Event("blink_rejected", player.x, player.y, 0, "displacer"))
     return False
 
 
@@ -303,7 +331,7 @@ def meteor(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:
     player = world.player
     spot = blink_destination(world, inp, tuning, arena, reach=tuning.meteor_range)
     if spot is None:
-        world.events.append(Event("blink_rejected", player.x, player.y))
+        world.events.append(Event("blink_rejected", player.x, player.y, 0, "meteor"))
         return False
     player.leap = tuning.meteor_ticks
     player.leap_x0, player.leap_y0 = player.x, player.y
@@ -341,6 +369,7 @@ def tick(world: World, tuning: Tuning, arena: Arena) -> None:
         player.y = player.leap_y0 + (player.leap_y1 - player.leap_y0) * done
         if player.leap == 0:
             _overdrive(world, "meteor", tuning)
+            player.invulnerable = max(player.invulnerable, tuning.meteor_grace)
             blast(
                 world,
                 tuning,

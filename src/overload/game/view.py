@@ -37,6 +37,12 @@ from overload.sim.tuning import DEFAULT
 
 VIEW = (256, 144)
 BLAST_TICKS = 12
+# Why a fused power did nothing (it costs nothing and is not counted).
+REJECTED = {
+    "chain_jump": "NO ROBOT IN REACH",
+    "displacer": "NO ROBOT TO SWAP WITH",
+    "meteor": "NO ROOM TO LAND",
+}
 SURGE_FEET = 8  # sprite feet sit this many pixels below the body center
 # The glow on the Surge's pack for an equipped power: a fused power shows the ingredient
 # its effect leans on.
@@ -341,7 +347,7 @@ class PixelView:
                 self._burst(event.x, event.y, 8, "px.blink.light", 1.4)
             elif event.kind == "blink_rejected":
                 self._burst(event.x, event.y, 4, "ui.dim", 0.6)
-                self.toast("NO ROOM TO BLINK", 40)
+                self.toast(REJECTED.get(event.power, "NO ROOM TO BLINK"), 40)
             elif event.kind == "unlock":
                 self._burst(event.x, event.y, 24, f"power.{event.power}", 2.2)
                 self.unlock_flash = 12
@@ -612,7 +618,7 @@ class PixelView:
         if player.leap > 0:  # Meteor: where the Surge will come down
             effects.landing_marker(
                 screen,
-                v(player.leap_x1, player.leap_y1 + SURGE_FEET),
+                v(player.leap_x1, player.leap_y1),  # the true circle the blast hits
                 tuning.meteor_radius,
                 1.0 - player.leap / tuning.meteor_ticks,
             )
@@ -720,9 +726,12 @@ class PixelView:
             elif self.lance_bolt:
                 start, end, _life = self.lance_bolt
                 effects.chain_bolt(screen, self.glow.layer, v(*start), v(*end))
+            else:
+                self.lance_from = None
             if player.aura > 0:
                 effects.aura(screen, self.glow.layer, v(player.x, player.y), tick)
             hand = v(*aiming.hand(player, tuning))
+            hand = (hand[0], hand[1] - lift)  # the caster rises with a Meteor
             caster = pygame.transform.rotate(actors.caster(), -math.degrees(aim))
             screen.blit(
                 caster,

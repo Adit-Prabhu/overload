@@ -55,6 +55,8 @@ def tick(world: World, tuning: Tuning, arena) -> None:
         _hold(world, tuning, floor)
         return
     player = world.player
+    if player.leap > 0:
+        return  # a Meteor in the air: the room it lands in activates on landing
     # Any interior tile counts (door gaps are wall tiles, never interior), so no path along
     # the walls can slip past a room. A body still overlapping the gap is pushed into the
     # room when the doors shut.

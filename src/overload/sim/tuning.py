@@ -215,6 +215,8 @@ class Tuning:
     meteor_radius: float = 48.0
     meteor_damage: int = 4
     meteor_knock: float = 12.0
+    meteor_grace: int = 12  # untouchable for a moment after landing
+    fused_wide: float = 1.25  # an evolved Burst widens its fused powers' blasts and field
 
     signature_quiet: int = 66  # the protocol rests this long after a signature (a quake's run)
 
@@ -294,6 +296,11 @@ class Tuning:
                 raise ValueError(f"{name}: knockback steps could push a robot through a prop")
         if self.shock_mine_speed >= THINNEST_OBSTACLE or self.meteor_ticks < 0.4 * TICK_RATE:
             raise ValueError("A mine could tunnel, or a Meteor's landing marker shows too briefly")
+        positive = ("storm_aura_interval", "shock_mine_fuse", "chain_jump_hops", "lance_ticks")
+        if any(getattr(self, name) < 1 for name in positive) or self.shock_mine_speed <= 0:
+            raise ValueError("Fused power timers, counts and speeds must be positive")
+        if self.fused_wide < 1.0:
+            raise ValueError("An evolution never shrinks a blast")
         if self.blink_min_distance > self.meteor_range:
             raise ValueError("Meteor range is below the Blink minimum")
         if self.dodge_speed >= self.player_radius:

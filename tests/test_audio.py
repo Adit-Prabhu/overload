@@ -32,7 +32,10 @@ def emitted_event_kinds() -> set[str]:
                 and isinstance(node.args[0], ast.Constant)
             ):
                 kinds.add(node.args[0].value)
-    return kinds | {"power_spark", "power_blink", "power_arc_trail"}
+    # Power events are built as f"power_{ability}" (sim/powers.py), so list them here.
+    from overload.sim.powers import ABILITIES
+
+    return kinds | {f"power_{ability}" for ability in ABILITIES}
 
 
 def test_every_sound_has_a_visual_twin() -> None:
