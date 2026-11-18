@@ -58,7 +58,7 @@ BOSSES = {
         "transformer",
         "TRANSFORMER",
         64,
-        18.0,
+        22.0,  # the widest chassis: a bigger circle covers its tank and hump
         (
             Phase(("quake", "charge"), 220, 0.9),
             Phase(("spray", "double_quake", "charge"), 190, 0.8),

@@ -1,5 +1,5 @@
 # Overload · Boss design (the Regulator's three chassis)
-Version 0.2 · November 18, 2026 · Status: proposed, for Adit's sign-off. Production scope past the G1 ceiling, logged for the G3 scope-lock proposal like the floor and the chassis. Version 0.2 takes in the independent review of 0.1 and records the sim as built in the stacked PR after this one.
+Version 0.3 · November 18, 2026 · Presentation prototype implemented for Adit's sign-off. Production scope past the G1 ceiling, logged for the G3 scope-lock proposal like the floor and the chassis. The stacked combat and presentation PRs implement the design below.
 
 ## 1. Why
 Adit, Nov 18, after the first redraw: "the bosses need more work, like they don't have interesting attacks or attack patterns, and they look weird ... they don't look intimidating ... if it's the same as mobs then it doesn't feel different, beating a boss should feel like an achievement and I don't get that right now."
@@ -31,11 +31,30 @@ How a boss should look. These are my reading of the genre, not sourced claims:
 - **Dark armor with glowing accents:** dark shells, bright slit eyes rather than round lenses, rim light. Jagged or clawed limbs read as dangerous.
 - **Scale:** bosses tower. The Surge is 16 x 22 in a 256 x 144 view, so a boss should be about three times its height.
 
+### Presentation research and application
+
+- **Enter the Gungeon.** Dave Crooks describes Dodge Roll starting from a rough boss concept and letting the gameplay programmer experiment with patterns before the team iterates. He calls out the Beholster as the clearest expression of the game's fantasy and praises the High Priest's variety. For Overload, the kit already supplies the patterns. The character should embody a particular piece of substation machinery so that a wire sweep, coolant spray or reactor spiral makes sense as soon as the player sees it. [Dodge Roll developer interview](https://www.gamedeveloper.com/design/q-a-the-guns-and-dungeons-of-i-enter-the-gungeon-i-)
+- **Cuphead.** Studio MDHR describes building the battles first, then iterating on animation against the established hitboxes and timing. Escalating transformations make progression an event in itself. For Overload, this means opening armor, changing posture and damaging hardware at the existing thresholds. Each chassis keeps its recognizable silhouette and recurring face shape through all three forms. [Studio MDHR developer interview](https://www.gamedeveloper.com/business/road-to-the-igf-studio-mdhr-s-i-cuphead-i-)
+- **Hyper Light Drifter.** Alx Preston describes using visual design to carry narrative and character while keeping fast combat legible. Its approach gives the station equipment in Overload two jobs. The same ceramic insulators, panel stripes, steel pistons and status lights appear on the room props, the maintenance bots and the boss bodies. Scale, heavier joints, a deep visor and exposed high-energy machinery distinguish the bosses. [Heart Machine developer article](https://blog.playstation.com/2014/03/14/creating-the-world-of-hyper-light-drifter-on-ps4-and-ps-vita/)
+- **Attack and punish cues.** Combat designer Mike Birkhead argues for recognizable anticipation and a clear visual state when a weak point can be punished. The large silhouette changes mark persistent phases. Individual attacks still have their existing patterns and floor tells, a lowered head or raised linkage illustrates the wind-up, and a small white-hot opening with pale steam marks a vent. Both side plates and thruster fins remain visible in all three phases. [Mike Birkhead on boss design](https://www.gamedeveloper.com/design/opinion-boss-design---tips-from-a-combat-designer)
+
+### Three phases at game scale
+
+| Chassis | Phase 1 | Phase 2 | Phase 3 |
+| --- | --- | --- | --- |
+| Linesman | Upright breaker gantry, a narrow welding visor and sprung climbing gaffs | Crossarm lifts, claws swing out and the mask drops into a scowl | Crossarm spreads wide, hot leads hang from the terminals, and a torn chest plate hangs beneath the cage |
+| Transformer | Low oil-filled tank under a beveled shell, small cold stack and four piston legs | Head lowers behind the horns, radiator stack rises and the side hatch strains | Outer panel peels away, coils glow through the open side, and the bull drops its head farther into the charge |
+| Grid Core | Sealed reactor cage, close plates, upright terminals and four armored feet | Plates part around a visible reactor, knees rise, and the terminals push out | Cage opens farther, the live reactor dominates the center, and fractured leads bridge the armor |
+
+The [phase sheet](art/bosses.png) shows the three forms in their own chambers under game lighting, with the Surge for scale. The local [roster sheet](art/robot_style_frame.png) compares them to the five maintenance bots. Dark articulated legs and appendages extend beyond the damage circle. The colored armor stays near the aim point, with at least 80 percent covered in phase 1 and 65 percent in later phases. The game uses the same health breakpoints, attack rotations and attack timing values for the existing protocols.
+
+On a Grid Core win, the wreck and chained explosions run for 1.5 s and the banner holds for another 1.5 s. The results screen follows while the simulation is already at the ending. Simultaneous player death suppresses the victory presentation. The separate boss times row has its own space below shots. The entrance keeps the health and loadout HUD visible. The DEV instant defeat shortcut still skips the combat kill event. Capture the death presentation with normal damage, as the render tool does.
+
 ## 3. Rules this game must keep
 The study needs these, and the rework stays inside them:
 - **The protocol** (Clamp, Insulate, Oscillate) is still the only thing the rival model chooses. It moves the Regulator and fires its protocol attack. It stays frozen for the whole fight, through every phase, and a phase change makes no rival request (AGENTS.md).
 - **Kit attacks may move the body.** The Bull Charge carries the Transformer across the room. While a kit attack, a vent or a phase change runs, the protocol waits, as it waited for the old signatures. After a charge, the protocol walks it back into its own range.
-- **The protocol runs at least half of every boss fight**, in every sector and protocol, measured with the floor bot (a test holds it on two seeds, Clamp included). The kit is not allowed to crowd out the treatment. The 1.5 s boot does not count as fight time, since nothing acts during it. Counted with it, Insulate's share in sector 2 drops to about 0.46.
+- **The protocol runs at least half of every boss fight**, in every sector and protocol, measured with the floor bot (the test totals time across retries per sector for three seeds, Clamp included). The kit is not allowed to crowd out the treatment. The 1.5 s boot does not count as fight time, since nothing acts during it. Counted with it, Insulate's share in sector 2 drops to about 0.46.
 - **The chassis kit** is fixed per sector and identical in both comparison conditions. It never reads the model's observations.
 - **Deterministic** and fully playable with the model off. No kit attack draws from the world RNG: volley marks, debris and lattice cells sit at fixed offsets from the Surge or the impact.
 - **Telegraphs** fill up, use `hostile.danger` plus a pattern, and last at least 0.75 s for a kit attack (Tuning enforces it).
@@ -112,10 +131,11 @@ It stays at range and fills the air.
 - **Lattice:** a checkerboard of 32 px cells over 5 x 3 cells around the Surge (1 s tell), burning for 0.8 s. A cell is two tiles wide, so the Surge fits inside a dark one with room to spare, and one dodge (29 px) crosses a cell. Insulate's own tiles are swept away when a Lattice starts, so they never cover a dark cell. Only cells inside the chamber burn.
 - **Lattice twice:** the other color arms as the first burns, and lights 0.6 s after the first goes out, so the player has to move once.
 
-### 4.5 Balance (bot, 4 seeds, every protocol order)
+### 4.5 Balance (four floor bot seeds and sampled protocol orders)
 - **Health:** 48, 64 and 80.
-- **Hit circle:** 18 px, on the chassis data. The legacy single-arena Regulator keeps 14.
-- **Protocol share of fight time:** 50 to 66 percent in every sector.
+- **Hit circle:** 18 px for the Linesman and Grid Core, 22 for the wider Transformer. The legacy single-arena Regulator keeps 14. The Transformer's radius also sizes body contact and its Bull Charge lane, and moves its projectile and quake origins outward by 4 px. Attack rotations, tells and timing values are the same.
+- **Transformer radius follow-up:** With seed 3 and lateral/pressure, the bot enters sector 3 on tick 5,702 at either radius. The larger chassis changes its position by about half a pixel at the Fuse Box, enough to change its route and fight. The 22 px run finishes on tick 72,473, with 27 bus-room deaths and 3 chamber deaths. The protocol still runs for 64, 56 and 70 percent of the three fights. The test retains this case with an 80,000-tick limit, and seeds 2 and 4 retain 40,000. These are scripted bot runs for protocol coverage. Human difficulty is assessed at the playtest.
+- **Protocol share of fight time before widening the Transformer:** 50 to 66 percent across the sectors and orders measured.
 - **Bot boss fights:** about 8 to 13 s. A human is slower and the vents reward patience.
 - **Chamber deaths:** none in sectors 1 and 2. Up to 3 in sector 3, where most deaths stay in the combat rooms, as before.
 
