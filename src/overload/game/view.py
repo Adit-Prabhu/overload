@@ -309,6 +309,7 @@ class PixelView:
         self.chains: list[tuple] = []
         self.blasts: list[tuple] = []  # ring blasts of fused powers: x, y, radius, life
         self.gaits: dict[int, Gait] = {}  # per robot id (-1 the Regulator): walk cycles
+        self.frames = 0
         self.motes: list[Mote] = []  # steam and dust, drifting
         self.ripples: list[tuple[int, int, int]] = []  # drips on puddles: x, y, age
         self.flicker = {(e.x, e.y): e.phase for e in self.room.emitters if e.kind == "flicker"}
@@ -467,7 +468,8 @@ class PixelView:
                         "px.wall.3",
                     )
                 )
-        self._ambience(run.world.tick)
+        self.frames += 1  # the view's own clock: ambience keeps time while the world waits
+        self._ambience(self.frames)
         floor = run.arena.floor
         if floor is not None:
             room = floorplay.room_of(floor, run.world.player.x, run.world.player.y)
@@ -1067,8 +1069,12 @@ class PixelView:
         for i, (x, y) in enumerate(self.room.lamps):
             pulse = quantize(90 + 10 * math.sin(t * 2 + i))
             phase = self.flicker.get((x, y))
-            if phase is not None and flickering(tick, phase):
+            if phase is not None and flickering(self.frames, phase):
                 pulse = FLICKER_DIM
+                lx, ly = v(x, y)  # the lens goes dark with its light
+                lens = (round(lx) - 3, round(ly) - 2, 6, 3)
+                self.glow.layer.fill(rgb("fx.none"), lens)
+                screen.fill(rgb("px.bot.1"), lens)
             self.lighting.add(v(x, y + 24), 84, "px.lamp", pulse)
         for x, y in self.room.ceiling:
             self.lighting.add(v(x, y), 64, "px.lamp.light", 75)
