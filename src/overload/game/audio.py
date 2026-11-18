@@ -52,7 +52,7 @@ EVENT_SOUNDS = {
     "rival_orb": "orb_fire",
     "rival_volley": "mite_zap",
     "rival_hit": "regulator_hit",
-    "rival_destroyed": "regulator_defeated",
+    "rival_destroyed": "boss_down",  # rolling explosions, then the motif in major
     "absorb": "pickup",
     "unlock": "unlock",
     "shards": "mite_zap",
@@ -72,19 +72,18 @@ EVENT_SOUNDS = {
     "secret_open": "unlock",
     "boss_tell": "boss_charge",
     "boss_ring": "ring_burst",
-    "boss_spiral": "ring_burst",
+    "boss_spiral": "spiral",
     "quake": "quake",
     "summon": "summon",
-    "overload": "overload",
-    # The boss kits (docs/BOSS_DESIGN.md) reuse cues until their own are composed.
-    "phase_change": "overload",
-    "live_wire": "mite_zap",
-    "volley": "ring_burst",
-    "charge": "lunge",
-    "charge_impact": "quake",
-    "spray": "orb_fire",
-    "lattice": "hazard_fill",
-    "vent": "relay_blink",
+    # The boss kits (docs/BOSS_DESIGN.md): each attack its own sound.
+    "phase_change": "phase_change",
+    "live_wire": "live_wire",
+    "volley": "volley",
+    "charge": "charge",
+    "charge_impact": "charge_impact",
+    "spray": "spray",
+    "lattice": "lattice",
+    "vent": "vent",
     "boss_reward": "unlock",
 }
 # Each sound's visual twin: the game is fully playable muted.
@@ -114,7 +113,7 @@ VISUAL_TWINS = {
     "rival_orb": "large orb",
     "rival_volley": "three-bolt fan",
     "rival_hit": "white flash on the Regulator, its bar drops",
-    "rival_destroyed": "large burst, the Regulator disappears",
+    "rival_destroyed": "the wreck sinks under chained explosions, then NAME DOWN",
     "absorb": "burst in the power color",
     "unlock": "screen flash and a SPARK STOLEN or BLINK STOLEN notice",
     "protocol_boot": "protocol pose, shield ring and protocol icon",
@@ -135,10 +134,9 @@ VISUAL_TWINS = {
     "secret_open": "the wall breaks and A HIDDEN ROOM",
     "boss_tell": "a filling ring of dots around the boss plus the shape of what is coming",
     "boss_ring": "eight bolts fly out from the Linesman in a ring",
-    "boss_spiral": "two opposite streams of bolts turn around the Grid Core",
+    "boss_spiral": "two or four streams of bolts turn around the Grid Core",
     "quake": "a screen jolt and a wide dashed ring runs out across the floor",
     "summon": "warp markers close in on both sides of the chamber",
-    "overload": "a flash, cracks in the Grid Core's shell and GRID CORE OVERLOAD",
     "phase_change": "a jolt, a flash, a burst and the chassis name with its new phase",
     "live_wire": "Live Wire's dotted lines turn into crackling arcs",
     "volley": "rings of six bolts burst from the marked landing circles",
@@ -252,6 +250,8 @@ class Audio:
         if sting:
             self.play(sting, 0.9)
         for event in events:
+            if event.kind == "rival_destroyed" and world.outcome == "down":
+                continue
             name = EVENT_SOUNDS.get(event.kind)
             if name is None:
                 continue
