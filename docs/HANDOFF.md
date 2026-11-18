@@ -19,15 +19,22 @@ Snapshot of November 18, 2026. For any agent or chat picking up the work. The st
 
 | PR | What |
 | --- | --- |
-| #36 | Walking robots and more detailed mob sprites |
-| #37 | First redraw of the Regulator walk cycles |
-| #38 | Dressed floor, contact shadows and sector ambience |
-| #39 | Boss design and scope proposal |
-| #40 | Three-phase combat kit, damage and reward rules, Transformer radius and replay pins |
-| #41 | Phase-specific chassis art, camera, victory, retry and replay presentation |
-| Boss audio | Ten new original cues, event bindings and the completion record on `feat/boss-sounds` |
+| [#36](https://github.com/Adit-Prabhu/overload/pull/36) | Walking robots and more detailed mob sprites |
+| [#37](https://github.com/Adit-Prabhu/overload/pull/37) | First redraw of the Regulator walk cycles |
+| [#38](https://github.com/Adit-Prabhu/overload/pull/38) | Dressed floor, contact shadows and sector ambience |
+| [#39](https://github.com/Adit-Prabhu/overload/pull/39) | Boss design and scope proposal |
+| [#40](https://github.com/Adit-Prabhu/overload/pull/40) | Three-phase combat kit, damage and reward rules, Transformer radius and replay pins |
+| [#41](https://github.com/Adit-Prabhu/overload/pull/41) | Phase-specific chassis art, camera, victory, retry and replay presentation |
+| [#42](https://github.com/Adit-Prabhu/overload/pull/42) | Ten new original cues, event bindings and the completion record on `feat/boss-sounds` |
 
-Merge in this order from #36 through boss audio. Then update main locally.
+Adit merges in this order.
+
+```sh
+gh pr merge 36 --merge && gh pr merge 37 --merge && gh pr merge 38 --merge
+gh pr merge 39 --merge && gh pr merge 40 --merge && gh pr merge 41 --merge
+gh pr merge 42 --merge
+git switch main && git pull --ff-only
+```
 
 ## Next steps (spec section 9)
 1. Bulwark (from the Sentry) and Magnet (from the Sweeper) base powers: drops, charge cores, evolutions (REFLECT, CRUSH), effects, sounds, and the slotting banner. Then a bot protocol check that shields do not trivialize projectile protocols.
