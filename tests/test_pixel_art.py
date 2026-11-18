@@ -246,19 +246,91 @@ def test_every_robot_and_shot_renders(headless_pygame) -> None:
         robots.regulator_mech("berserk", False)
 
 
+def _colors(image: pygame.Surface) -> set[tuple[int, int, int]]:
+    return {
+        tuple(image.get_at((x, y)))[:3]
+        for x in range(image.get_width())
+        for y in range(image.get_height())
+        if image.get_at((x, y)).a
+    }
+
+
+def _robot_frames(robots) -> dict[str, list[pygame.Surface]]:
+    steps = (None, *range(robots.rig.STEPS))
+    return {
+        "drone": [
+            robots.drone(t, False, moving, aiming)
+            for t in range(6)
+            for moving in (0, 1)
+            for aiming in (False, True)
+        ],
+        "relay": [robots.relay_bot(False, arming, s) for arming in (False, True) for s in steps],
+        "breaker": [robots.breaker(False, step=s) for s in steps]
+        + [robots.breaker(False, raising=True), robots.breaker(False, slamming=True)],
+        "sweeper": [robots.sweeper(s, False) for s in steps]
+        + [robots.sweeper(None, False, revving=True, tick=t) for t in range(4)],
+        "sentry": [robots.sentry(False, scan, kick) for scan in range(5) for kick in (0, 2)],
+    }
+
+
 def test_robots_never_use_power_colors_except_their_core(headless_pygame) -> None:
-    """Power colors are for powers and power cores only (art direction rule)."""
+    """Power colors are for powers and power cores only (art direction rule), in every
+    frame of every pose, legs and arms included."""
     from overload.art.pixel import robots
 
-    for name, rows, allowed in (
-        ("drone", robots._DRONE, {"Y", "y"}),
-        ("relay", robots._RELAY, {"K", "k"}),
-        ("breaker", robots._BREAKER["rest"], {"U", "u"}),
-        ("sweeper", robots._SWEEPER, set()),
-        ("sentry", robots._SENTRY, set()),
+    power = {
+        "spark": {rgb("power.spark"), rgb("px.spark.light")},
+        "blink": {rgb("power.blink"), rgb("px.blink.light")},
+        "burst": {rgb("power.burst"), rgb("px.burst.light")},
+    }
+    carries = {"drone": "spark", "relay": "blink", "breaker": "burst"}
+    every_power = set().union(*power.values())
+    for name, frames in _robot_frames(robots).items():
+        allowed = power.get(carries.get(name, ""), set())
+        for frame in frames:
+            assert _colors(frame) & every_power <= allowed, name
+        if name in carries:
+            assert _colors(frames[0]) & allowed, f"{name} shows the core it carries"
+
+
+def test_each_robot_keeps_one_frame_size(headless_pygame) -> None:
+    """The view anchors a robot at the bottom middle of its frame, so every pose and walk
+    step of one robot shares a size and nothing jumps when the frame changes."""
+    from overload.art.pixel import robots
+
+    for name, frames in _robot_frames(robots).items():
+        assert len({frame.get_size() for frame in frames}) == 1, name
+
+
+def test_walkers_move_their_legs(headless_pygame) -> None:
+    """Adit, Nov 17: robots must walk on moving legs, not glide. Every step of the cycle
+    differs from standing, and the cycle comes back around."""
+    from overload.art.pixel import robots
+
+    def raw(image):
+        return pygame.image.tobytes(image, "RGBA")
+
+    for make in (
+        lambda s: robots.relay_bot(False, step=s),
+        lambda s: robots.breaker(False, step=s),
+        lambda s: robots.sweeper(s, False),
     ):
-        used = {c for row in rows for c in row} & set("YyKkUu")
-        assert used <= allowed, name
+        still = raw(make(None))
+        cycle = [raw(make(s)) for s in range(robots.rig.STEPS)]
+        assert all(frame != still for frame in cycle)
+        assert len(set(cycle)) >= 4, "at least four distinct poses in a cycle"
+
+
+def test_rig_legs_alternate() -> None:
+    from overload.art.pixel import rig
+
+    style = rig.LegStyle("Mm", "Mm", "XX", "dXXd", 1, swing=2, lift=1)
+    assert rig.pose(None, 0, style) == (0, 0)
+    for step in range(rig.STEPS):
+        a, b = rig.pose(step, 0, style), rig.pose(step, 1, style)
+        assert a[0] == -b[0], "the two feet swing opposite ways"
+        assert not (a[1] and b[1]), "never both feet in the air"
+    assert any(rig.pose(s, 0, style)[1] for s in range(rig.STEPS)), "a foot lifts"
 
 
 def test_the_slam_shake_never_moves_the_aim(headless_pygame) -> None:
@@ -288,3 +360,105 @@ def test_sector_variants_recolor_the_shell_but_not_the_danger_red(headless_pygam
         assert rgb("px.hostile.2") not in colors
         assert rgb("hostile.danger") in colors
     assert tier_colors(stock, 1) is stock
+
+
+def test_the_walk_cycle_follows_distance_walked(headless_pygame) -> None:
+    """A robot's step advances with the distance it moved, it stands still when it stops,
+    and a jump (a Relay Bot's blink) resets its stride instead of spinning its legs."""
+    from types import SimpleNamespace
+
+    from overload.game.view import STRIDE, PixelView, walk_step
+    from overload.sim.campaign import Campaign
+
+    view = PixelView(Campaign(1))
+    bot = SimpleNamespace(id=7, kind="breaker", x=100.0, y=100.0, health=5)
+    world = SimpleNamespace(hostiles=[bot], rival=None)
+    view._walk(world)
+    assert walk_step(view.gaits[7], "breaker") is None, "just arrived: standing"
+    steps = []
+    for _ in range(12):
+        bot.x += 0.5
+        view._walk(world)
+        steps.append(walk_step(view.gaits[7], "breaker"))
+    assert None not in steps and len(set(steps)) > 1
+    assert view.gaits[7].stride == 6.0 and STRIDE["breaker"] > 0
+    view._walk(world)  # did not move this tick
+    assert walk_step(view.gaits[7], "breaker") is None
+    bot.x += 40  # a teleport
+    view._walk(world)
+    assert view.gaits[7].stride == 0.0
+    world.hostiles = []
+    view._walk(world)
+    assert 7 not in view.gaits and 7 not in view.steps
+
+
+def test_relay_teleports_beam_and_shots_recoil(headless_pygame) -> None:
+    from overload.game.view import PixelView
+    from overload.sim.campaign import Campaign
+    from overload.sim.state import Event
+
+    campaign = Campaign(1)
+    view = PixelView(campaign)
+    view.consume(campaign, [Event("relay_from", 10, 10, 3), Event("relay_blink", 50, 10, 3)])
+    assert len(view.beams) == 2
+    view.consume(campaign, [Event("shell", 10, 10, 4)])
+    assert view.recoils[4] > 0
+    for _ in range(20):
+        view._tick_cosmetics()
+    assert not view.beams and 4 not in view.recoils
+
+
+def test_the_drone_core_glow_sits_on_its_core(headless_pygame) -> None:
+    """The glow is drawn at the sim position minus the hover, so it must land on the yellow
+    Spark core of the sprite drawn at the drone's feet minus the same hover."""
+    from types import SimpleNamespace
+
+    from overload.art.pixel import robots
+    from overload.game.view import ROBOT_FEET, hover
+
+    image = robots.drone(0, False)
+    spark = rgb("power.spark")
+    rows = [
+        y
+        for y in range(image.get_height())
+        for x in range(image.get_width())
+        if tuple(image.get_at((x, y)))[:3] == spark
+    ]
+    core_from_bottom = image.get_height() - (min(rows) + max(rows)) / 2
+    for tick in (0, 17, 40):
+        bot = SimpleNamespace(kind="drone", id=3)
+        lift = hover(bot, tick)
+        core_y = ROBOT_FEET["drone"] - lift - core_from_bottom  # relative to the sim y
+        assert abs(core_y - (0 - lift)) <= 1.5, tick
+
+
+def test_the_sentry_kicks_back_when_it_fires(headless_pygame) -> None:
+    from types import SimpleNamespace
+
+    from overload.game.view import RECOIL_TICKS, robot_image
+
+    sentry = SimpleNamespace(kind="sentry", phase="", id=2, tier=1, fire_timer=50)
+    rest = robot_image(sentry, 0, False, False)
+    kick = robot_image(sentry, 0, False, False, recoil=RECOIL_TICKS)
+    assert pygame.image.tobytes(rest, "RGBA") != pygame.image.tobytes(kick, "RGBA")
+
+
+def test_footfalls_kick_dust_and_short_moves_are_walks(headless_pygame) -> None:
+    from types import SimpleNamespace
+
+    from overload.game.view import STRIDE, PixelView
+    from overload.sim.campaign import Campaign
+
+    view = PixelView(Campaign(1))
+    bot = SimpleNamespace(id=9, kind="breaker", x=0.0, y=0.0, health=5)
+    world = SimpleNamespace(hostiles=[bot], rival=None)
+    view._walk(world)
+    sparks = len(view.sparks)
+    for _ in range(int(STRIDE["breaker"] * 8 / 0.5)):  # one whole cycle
+        bot.x += 0.5
+        view._walk(world)
+    assert len(view.sparks) > sparks, "a foot came down"
+    bot.x += 6.0  # the fastest real move (a Clamp dash is 3.6) is still a walk
+    view._walk(world)
+    assert view.gaits[9].stride > 0
+    assert view.gaits[9].dx > 0, "faces the way it walked"

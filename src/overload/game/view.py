@@ -15,7 +15,7 @@ import pygame
 
 from overload import __version__
 from overload.art.palette import rgb, rgba
-from overload.art.pixel import actors, effects, hud, tiles
+from overload.art.pixel import actors, effects, hud, rig, tiles
 from overload.art.pixel import robots as robots_art
 from overload.art.pixel.light import Glow
 from overload.art.pixel.lighting import Lighting, pool, quantize
@@ -80,7 +80,7 @@ EVOLVED_INFO = {
     "burst": "EVOLVED. A WIDER, LONGER CONE",
 }
 RIVAL_FEET = 20
-ROBOT_FEET = {"drone": 9, "relay": 8, "breaker": 9, "sweeper": 5, "sentry": 6}
+ROBOT_FEET = {"drone": 9, "relay": 10, "breaker": 12, "sweeper": 7, "sentry": 8}
 CORE_GLOW = {"drone": "power.spark", "relay": "power.blink", "breaker": "power.burst"}
 SHOT_ART = {
     "shard": robots_art.shard,
@@ -90,24 +90,70 @@ SHOT_ART = {
 }
 
 
+@dataclass
+class Gait:
+    """How far a body has walked, for its walk cycle. Cosmetic only: the view keeps it."""
+
+    x: float
+    y: float
+    stride: float = 0.0  # pixels walked so far
+    moved: float = 0.0  # pixels moved on the last tick
+    dx: float = 0.0  # direction of the last move, for facing
+
+
+STRIDE = {"relay": 2.0, "breaker": 2.0, "sweeper": 1.5, "regulator": 3.0}  # px per step
+WALKING = 0.05  # moved at least this far on the last tick: walking, not standing
+SCAN = (0, 1, 2, 3, 3, 2, 1, 0)  # the Sentry's eye sweeping its visor
+RECOIL_TICKS = 12
+BEAM_TICKS = 10
+# Heavy walkers kick up dust when a foot comes down: (kind, feet below center, dust count).
+FOOTFALLS = {"breaker": (12, 3)}
+FOOT_DOWN = (2, 6)  # the walk steps where a foot lands (art/pixel/rig.py)
+
+
+def hover(robot, tick: int) -> int:
+    """How high a hovering robot floats above its shadow: a slow bob (Arc Drones only)."""
+    if robot.kind != "drone":
+        return 0
+    return 2 + round(math.sin((tick + robot.id * 17) * 0.09) * 1.5)
+
+
+def walk_step(gait: Gait | None, kind: str) -> int | None:
+    """The walk cycle step for a body, from the distance it walked, or None standing."""
+    if gait is None or gait.moved < WALKING:
+        return None
+    return int(gait.stride / STRIDE.get(kind, 3.0)) % rig.STEPS
+
+
 def robot_image(
-    robot, tick: int, left: bool, charging: bool, recover: int = DEFAULT.breaker_recover
+    robot,
+    tick: int,
+    left: bool,
+    charging: bool,
+    recover: int = DEFAULT.breaker_recover,
+    gait: Gait | None = None,
+    recoil: int = 0,
 ) -> pygame.Surface:
     """The approved roster art (art/pixel/robots.py) for a robot in its current state, in
     its sector's colors: stock orange, Cooled teal (sector 2) or Overcharged violet (sector 3).
     Only the shell ramp changes. The danger red of its eyes never changes, though the bright
-    rim around some eyes shares the shell's highlight and takes the sector color."""
+    rim around some eyes shares the shell's highlight and takes the sector color. Walkers step
+    with the distance they walked (`gait`). `recoil` counts down after a shot."""
+    step = walk_step(gait, robot.kind)
     if robot.kind == "relay":
-        image = robots_art.relay_bot(False, arming=robot.phase == "blink")
+        image = robots_art.relay_bot(False, arming=robot.phase == "blink", step=step)
     elif robot.kind == "breaker":
         slamming = robot.phase == "recover" and robot.fire_timer > recover - 14
-        image = robots_art.breaker(False, raising=robot.phase == "raise", slamming=slamming)
+        image = robots_art.breaker(
+            False, raising=robot.phase == "raise", slamming=slamming, step=step
+        )
     elif robot.kind == "sweeper":
-        image = robots_art.sweeper(tick, False, revving=robot.phase in ("rev", "rush"))
+        image = robots_art.sweeper(step, False, revving=robot.phase == "rev", tick=tick)
     elif robot.kind == "sentry":
-        image = robots_art.sentry(False)
+        scan = 3 if charging else SCAN[(tick // 12 + robot.id) % len(SCAN)]
+        image = robots_art.sentry(False, scan=scan, kick=2 if recoil > RECOIL_TICKS // 2 else 0)
     else:
-        image = robots_art.drone(tick, False)
+        image = robots_art.drone(tick // 2, False, step is not None, charging, robot.id)
     image = tier_colors(image, robot.tier)
     return robots_art.flipped(image) if left else image
 
@@ -224,6 +270,10 @@ class PixelView:
         self.tint = [255.0, 255.0, 255.0]
         self.chains: list[tuple] = []
         self.blasts: list[tuple] = []  # ring blasts of fused powers: x, y, radius, life
+        self.gaits: dict[int, Gait] = {}  # per robot id (-1 the Regulator): walk cycles
+        self.beams: list[tuple[float, float, int]] = []  # Relay Bot teleports: x, y, life
+        self.steps: dict[int, int | None] = {}  # each walker's last walk step, for footfalls
+        self.recoils: dict[int, int] = {}  # per robot id: ticks since it fired, counting down
         self.lance_from: tuple[float, float] | None = None  # where a Bolt Lance started
         self.lance_bolt: tuple | None = None  # (start, end, life) after the lance ends
         self.notice: tuple[str, int] | None = None
@@ -265,6 +315,39 @@ class PixelView:
             amount * (1 if self.shake % 4 < 2 else -1),
         )
 
+    def _walk(self, world) -> None:
+        """Advance every body's walk cycle by how far it moved this tick. A jump (a Relay's
+        blink, a warp, a retry) is not a walk, so it resets the stride instead. Heavy feet
+        kick up dust as they come down."""
+        bodies = [(h.id, h.kind, h.x, h.y) for h in world.hostiles if h.health > 0]
+        if world.rival is not None and world.rival.health > 0:
+            bodies.append((-1, "regulator", world.rival.x, world.rival.y))
+        seen = set()
+        for key, kind, x, y in bodies:
+            seen.add(key)
+            gait = self.gaits.get(key)
+            if gait is None:
+                self.gaits[key] = Gait(x, y)
+                continue
+            moved = math.hypot(x - gait.x, y - gait.y)
+            if moved > 6.0:  # teleported, not walked
+                self.gaits[key] = Gait(x, y)
+                continue
+            gait.stride += moved
+            gait.moved = moved
+            if moved >= WALKING:
+                gait.dx = x - gait.x
+            gait.x, gait.y = x, y
+            step = walk_step(gait, kind)
+            if kind in FOOTFALLS and step != self.steps.get(key) and step in FOOT_DOWN:
+                feet, count = FOOTFALLS[kind]
+                self._burst(x, y + feet, count, "px.wall.3", 0.5)
+            self.steps[key] = step
+        for key in list(self.gaits):
+            if key not in seen:
+                del self.gaits[key]
+                self.steps.pop(key, None)
+
     def update(self, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         """Advance cosmetic state by one simulation tick. Called once per tick, never per
         rendered frame, so effects and camera behave the same at any display rate."""
@@ -276,6 +359,7 @@ class PixelView:
         before the next input is read)."""
         self.consume(run, run.world.events)
         self._tick_cosmetics()
+        self._walk(run.world)
         for wave in run.world.shockwaves:  # dust kicked up along the running ring
             for _ in range(3):
                 a = self.cosmetic.uniform(0, math.tau)
@@ -323,6 +407,8 @@ class PixelView:
         for event in events:
             if event.kind == "shot":
                 self.muzzle = 3
+            elif event.kind in ("bolt", "shell", "shards"):
+                self.recoils[event.ref] = RECOIL_TICKS
             elif event.kind == "hostile_hit":
                 self.flashes[event.ref] = 4
                 self._burst(event.x, event.y, 4, "px.spark.light", 1.2)
@@ -412,6 +498,11 @@ class PixelView:
                 self.toast("A HIDDEN ROOM", 90)
             elif event.kind == "relay_from":
                 self.blinks.append((event.x, event.y, 12))
+                self.beams.append((event.x, event.y, BEAM_TICKS))  # it beams out
+                self._burst(event.x, event.y, 6, "power.blink", 1.0)
+            elif event.kind == "relay_blink":
+                self.beams.append((event.x, event.y, BEAM_TICKS))  # and beams in
+                self._burst(event.x, event.y + 8, 8, "px.blink.light", 1.2)
             elif event.kind == "fizzle":
                 self._burst(event.x, event.y, 2, "px.bot.3", 0.6)
         if stolen:
@@ -547,8 +638,10 @@ class PixelView:
             spark.life -= 1
         self.sparks = [s for s in self.sparks if s.life > 0]
         self.flashes = {k: v - 1 for k, v in self.flashes.items() if v > 1}
+        self.recoils = {k: v - 1 for k, v in self.recoils.items() if v > 1}
         self.ghosts = [(x, y, life - 1) for x, y, life in self.ghosts if life > 1]
         self.blinks = [(x, y, life - 1) for x, y, life in self.blinks if life > 1]
+        self.beams = [(x, y, life - 1) for x, y, life in self.beams if life > 1]
         self.bursts = [(*b[:5], b[5] - 1) for b in self.bursts if b[5] > 1]
         self.chains = [(a, b, life - 1) for a, b, life in self.chains if life > 1]
         self.blasts = [(x, y, r, life - 1) for x, y, r, life in self.blasts if life > 1]
@@ -633,6 +726,8 @@ class PixelView:
                     )
         for gx, gy, _life in self.blinks:
             effects.blink_ghost(screen, self.glow.layer, v(gx, gy))
+        for bx, by, life in self.beams:
+            effects.relay_beam(screen, self.glow.layer, v(bx, by), life / BEAM_TICKS)
 
         for wave in world.shockwaves:
             robots_art.shockwave(screen, v(wave.x, wave.y), wave.radius)
@@ -641,14 +736,31 @@ class PixelView:
         for hostile in world.hostiles:
             feet = (hostile.x, hostile.y + ROBOT_FEET.get(hostile.kind, 6))
             charging = rules.telegraphing(hostile, tuning)
-            left = hostile.tell_dx < 0 if charging else player.x < hostile.x
+            gait = self.gaits.get(hostile.id)
+            walking = gait is not None and gait.moved >= WALKING
+            if charging:
+                left = hostile.tell_dx < 0
+            elif walking and abs(gait.dx) > 0.05:
+                left = gait.dx < 0  # face where it walks, never moonwalk
+            else:
+                left = player.x < hostile.x
 
-            def draw_robot(hostile=hostile, feet=feet, charging=charging, left=left) -> None:
+            def draw_robot(
+                hostile=hostile, feet=feet, charging=charging, left=left, gait=gait
+            ) -> None:
                 shadow(*v(*feet), round(hostile.radius) + 1)
-                image = robot_image(hostile, tick, left, charging, run.tuning.breaker_recover)
+                image = robot_image(
+                    hostile,
+                    tick,
+                    left,
+                    charging,
+                    run.tuning.breaker_recover,
+                    gait,
+                    self.recoils.get(hostile.id, 0),
+                )
                 if hostile.id in self.flashes:
                     image = effects.tinted(image, "fx.flash")
-                draw_at_feet(image, feet)
+                draw_at_feet(image, (feet[0], feet[1] - hover(hostile, tick)))
 
             drawables.append((feet[1], draw_robot))
 
@@ -779,7 +891,7 @@ class PixelView:
                     )
             token = CORE_GLOW.get(hostile.kind)
             if token:
-                core = v(hostile.x, hostile.y)
+                core = v(hostile.x, hostile.y - hover(hostile, tick))  # rides the hover bob
                 self.glow.layer.fill(rgb(token), (round(core[0]) - 1, round(core[1]), 2, 2))
         if rival is not None and rival.health > 0 and rival.sig_action == "tell":
             boss = BY_KIND[rival.kind]
