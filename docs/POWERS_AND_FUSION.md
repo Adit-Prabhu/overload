@@ -28,7 +28,11 @@ These come from AGENTS.md and the GDD and every part of this spec keeps them.
 
 Starting tuning, all in `Tuning` with guards: `bulwark_ticks 45`, `bulwark_radius 14.0` (the Surge's radius plus 8, written out because a dataclass default cannot refer to another field), `bulwark_cooldown 150`, `magnet_range 72`, `magnet_radius 44`, `magnet_ticks 30`, `magnet_pull 1.5` px per tick (each step under the thinnest obstacle, walls win), `magnet_cooldown 120`, `magnet_crush_damage 2`.
 
-**Fusions inherit evolutions.** A fused power uses its ingredients' evolutions, as Shock Cone's sparks chain and Arc Trail gets Overdrive today. So no rarity step may be something an evolution already gives (a legendary that "chains" when Spark chains anyway would add nothing). The power step guard (section 5) runs with the ingredients both stock and evolved.
+**Fusions inherit evolutions.** Every power of a pair inherits the evolutions its rare inherits, as Shock Cone's sparks chain and Arc Trail gets Overdrive today:
+- Spark + Blink and Blink + Burst take Overdrive.
+- Spark + Burst takes CHAIN (strikes chain) and WIDE (blasts and the aura reach 25 percent further).
+
+Inheriting both ingredients everywhere was measured and broke the power step guard (Bolt Lance at 1.50 times Arc Trail, Displacer below Impact Blink). No rarity step may be something an evolution already gives. The power step guard (section 5) runs evolved wherever an inherited evolution changes damage.
 
 **Why these robots.** The Sentry and the Sweeper carry nothing today, so the new powers need no new enemies. They get a glowing charge core in their power's color so players can see they carry something.
 
@@ -76,8 +80,8 @@ No result is another result plus an extra part, and no two results anywhere shar
 | Pair | Family | Rare | Epic | Legendary |
 | --- | --- | --- | --- | --- |
 | Spark + Blink | teleport | **Arc Trail**: Blink, leaving a line that pulses damage (as now) | **Bolt Lance**: the Surge becomes a bolt and dashes along the aim, untouchable, striking every robot it passes once | **Chain Jump**: hop to the robot nearest the cursor and strike it, then hop on to the next robot up to three more times |
-| Spark + Burst | pulse | **Shock Cone**: Burst plus a fan of 3 sparks (as now) | **Shock Mine**: lob a charge to the cursor. After a 0.5 s fuse it bursts in a full ring that hurts and knocks back | **Storm Aura**: for 3 s a field around the Surge strikes the nearest robot every 15 ticks and erases hostile shots that enter it |
-| Blink + Burst | teleport | **Impact Blink**: Blink, then a full ring blast on landing | **Displacer**: swap places with the robot nearest the cursor, and both spots blast | **Meteor**: leap toward the cursor, untouchable in the air for 0.5 s with a landing marker, and crash down in an expanding shockwave ring |
+| Spark + Burst | pulse | **Shock Cone**: Burst plus a fan of 3 sparks (as now) | **Shock Mine**: lob a charge to the cursor. After a 0.5 s fuse it bursts in a full ring that hurts and knocks back | **Storm Aura**: for 3 s a field around the Surge strikes the nearest robot every 15 ticks |
+| Blink + Burst | teleport | **Impact Blink**: Blink, then a full ring blast on landing | **Displacer**: swap places with the robot nearest the cursor, and both spots blast | **Meteor**: leap toward the cursor, untouchable in the air for 0.5 s with a landing marker, and crash down in a big blast |
 | Spark + Bulwark | shield | **Static Guard**: a shield, and each absorbed shot fires a spark at the nearest robot | **Tesla Coil**: plant a coil for 3 s that strikes the nearest robot every 20 ticks and soaks shots that hit it | **Capacitor Armor**: for 4 s the next 3 hits of any kind are absorbed, then released as a ring of sparks |
 | Spark + Magnet | shot | **Lodestone**: a slow heavy spark that drags robots near its path toward it | **Ion Hook**: a hook spark. The first robot it hits is yanked to the Surge and stunned for 0.5 s | **Magrail**: a rail shot that pierces every robot in a line and drags them along. Robots slammed into a wall take extra damage |
 | Blink + Bulwark | teleport | **Phase Guard**: Blink, arriving shielded | **Afterimage**: Blink, leaving a decoy at the take-off point that robots shoot at for 2 s | **Rewind**: snap back to where the Surge stood 2 s ago, with the charge it had then |

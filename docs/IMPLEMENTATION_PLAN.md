@@ -66,7 +66,7 @@ Each robot carries one power or none, and each attacks in its own way, so no two
   - Spark chains to one nearby robot
   - Blink gives a speed boost on arrival
   - Burst widens
-- **Fusions:** Arc Trail (Spark + Blink) and Shock Cone (Spark + Burst). Blink + Burst stays unsupported.
+- **Fusions:** Arc Trail (Spark + Blink) and Shock Cone (Spark + Burst). Blink + Burst unsupported at the G1 ceiling.
 
 Superseded on Nov 17 by chance fusion: five base powers, ten pairs and three rarities per pair. Spec, build order and cut order in [POWERS_AND_FUSION.md](POWERS_AND_FUSION.md).
 
