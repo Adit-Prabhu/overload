@@ -623,3 +623,14 @@ def relay_beam(target: pygame.Surface, light: pygame.Surface, pos: Point, life: 
         surface.fill(rgb("px.blink.light"), (x - half // 2, y + 10 - height, max(1, half), height))
         if half > 1:
             surface.fill(rgb("power.blink"), (x - half, y + 8, half * 2, 2))
+
+
+def ripple(target: pygame.Surface, pos: Point, age: float) -> None:
+    """A drop landing in a puddle: a ring that spreads and breaks up as it fades."""
+    w, h = 2 + round(age * 12), 1 + round(age * 5)
+    rect = pygame.Rect(0, 0, w, h)
+    rect.center = (round(pos[0]), round(pos[1]))
+    if age < 0.7:
+        pygame.draw.ellipse(target, rgb("px.conduit.1"), rect, 1)
+    else:
+        pygame.draw.ellipse(target, rgb("px.conduit.0"), rect, 1)

@@ -20,6 +20,7 @@ from functools import cache
 import pygame
 
 from overload.art.palette import rgb, rgba
+from overload.art.pixel import dressing
 from overload.art.pixel.grid import add_outline
 from overload.rooms import TILE, Room, footprint_tiles
 
@@ -42,6 +43,7 @@ class RoomArt:
     ceiling: list[Point] = field(default_factory=list)
     leds: list[tuple[Point, str, int]] = field(default_factory=list)
     props: list[Prop] = field(default_factory=list)
+    emitters: list[dressing.Emitter] = field(default_factory=list)  # animated ambience
 
 
 # Floors ------------------------------------------------------------------------------------
@@ -71,6 +73,9 @@ def _floor_tile(s: pygame.Surface, x0: int, y0: int, tx: int, ty: int) -> None:
     if rng.random() < 0.2:
         y = y0 + rng.randrange(4, 12)
         _px(s, "px.tile.3", x0 + rng.randrange(3, 7), y, rng.randrange(3, 7), 1)
+    for rx, ry in ((3, 3), (12, 3), (3, 12), (12, 12)):  # a bolt in each corner
+        _px(s, "px.tile.0", x0 + rx, y0 + ry + 1)
+        _px(s, "px.tile.3", x0 + rx, y0 + ry)
 
 
 def _concrete(s: pygame.Surface, x0: int, y0: int, tx: int, ty: int) -> None:
@@ -547,7 +552,18 @@ def forget_fonts() -> None:
     stencil_font.cache_clear()
 
 
-def render_room(room: Room) -> RoomArt:
+def floor_sectors(floor) -> dressing.SectorAt:
+    """Which sector a tile belongs to, by the grid cell its room sits in (corridors take the
+    cell they cross). None (a single-room arena) dresses everything as sector 1."""
+    if floor is None:
+        return lambda tx, ty: 1
+    from overload.floor import CELL
+
+    cells = {(r.rect[0] // CELL[0], r.rect[1] // CELL[1]): r.sector for r in floor.rooms}
+    return lambda tx, ty: cells.get((tx // CELL[0], ty // CELL[1]), 1)
+
+
+def render_room(room: Room, sector_at: dressing.SectorAt | None = None) -> RoomArt:
     w, h = room.size
     background = pygame.Surface((w, h))
     background.fill(rgb("px.void"))
@@ -661,6 +677,27 @@ def render_room(room: Room) -> RoomArt:
             if char in "PSLVMp" and face(tx, ty):
                 y0 = ty * TILE + (4 if not front(tx, ty) or not room.is_wall(tx, ty - 1) else 0)
                 _fixture(background, art, char, tx * TILE, y0, room, tx, ty)
+
+    prop_tiles = {
+        (tx + dx, ty + dy)
+        for ty, row in enumerate(decor)
+        for tx, char in enumerate(row)
+        if char in _PROP_IMAGES
+        for dx in range(footprint_tiles(char))
+        for dy in range(footprint_tiles(char))
+    }
+    fixture_tiles = {
+        (tx, ty) for ty, row in enumerate(decor) for tx, char in enumerate(row) if char in "PSLVMp"
+    }
+    art.emitters = dressing.dress(
+        background,
+        light,
+        room,
+        sector_at or (lambda tx, ty: 1),
+        art.lamps,
+        prop_tiles,
+        fixture_tiles,
+    )
 
     # Stenciled signage: wall words sit on the upper face, floor words are worn paint.
     for tx, ty, words, place in room.labels:

@@ -513,3 +513,57 @@ def test_footfalls_kick_dust_and_short_moves_are_walks(headless_pygame) -> None:
     view._walk(world)
     assert view.gaits[9].stride > 0
     assert view.gaits[9].dx > 0, "faces the way it walked"
+
+
+def test_the_floor_dressing_is_fixed_and_leaves_the_room_data_alone(headless_pygame) -> None:
+    """Dressing is seeded by tile: the same floor every run. It never touches the terrain or
+    decor the simulation reads, and each sector gets its own ambience."""
+    import copy
+
+    from overload.floor import FLOOR
+
+    before = copy.deepcopy((FLOOR.room.terrain, FLOOR.room.decor))
+    sectors = tiles.floor_sectors(FLOOR)
+    a = tiles.render_room(FLOOR.room, sectors)
+    b = tiles.render_room(FLOOR.room, sectors)
+    assert pygame.image.tobytes(a.background, "RGB") == pygame.image.tobytes(b.background, "RGB")
+    assert a.emitters == b.emitters
+    assert (FLOOR.room.terrain, FLOOR.room.decor) == before
+    kinds = {e.kind for e in a.emitters}
+    assert {"steam", "sparks", "drip", "flicker"} <= kinds
+    for emitter in a.emitters:
+        tx, ty = emitter.x // 16, emitter.y // 16
+        if emitter.kind == "drip":
+            assert sectors(tx, ty) == 2, "puddles belong to the cooling plant"
+        if emitter.kind == "sparks":
+            assert sectors(tx, ty) == 3, "damaged panels belong to the grid core"
+    plain = tiles.render_room(FLOOR.room)  # no sector lookup: everything as sector 1
+    assert not any(e.kind in ("drip", "sparks") for e in plain.emitters)
+
+
+def test_floor_sectors_follow_the_grid() -> None:
+    from overload.floor import FLOOR
+
+    sectors = tiles.floor_sectors(FLOOR)
+    for room in FLOOR.rooms:
+        x, y = room.center
+        assert sectors(x, y) == room.sector, room.id
+    assert tiles.floor_sectors(None)(3, 3) == 1
+
+
+def test_ambience_animates_near_the_camera_only(headless_pygame) -> None:
+    from overload.art.pixel.dressing import Emitter
+    from overload.game.view import PixelView, flickering
+    from overload.sim.campaign import Campaign
+
+    view = PixelView(Campaign(1))
+    view.room.emitters = [Emitter("drip", 10, 10, 0), Emitter("drip", 5000, 5000, 0)]
+    view.camera = [0.0, 0.0]
+    view.motes, view.ripples = [], []
+    view._ambience(0)
+    assert view.ripples == [(10, 10, 0)], "the far puddle stays still"
+    for _ in range(40):
+        view._tick_cosmetics()
+    assert view.ripples == []
+    assert any(flickering(t, 3) for t in range(600))
+    assert not all(flickering(t, 3) for t in range(30)), "a failing lamp is mostly on"
