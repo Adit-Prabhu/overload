@@ -6,8 +6,8 @@ tick reads exactly one InputFrame, either from the devices or from a replay. The
 the Surge. Rendering and cosmetic effects never feed back into the simulation.
 
 Controls: WASD or arrows move, mouse aims, hold left click to fire, Space dodges,
-Q and E use powers, R retries after going down, Esc quits. In the Fuse Box,
-W and S pick, Q and E equip, F fuses, Enter continues.
+Q and E use powers, R retries after going down. Tab or Esc opens the menu (game/menu.py),
+where Space or Enter picks and Esc goes back. Esc quits only when no menu can open.
 """
 
 from __future__ import annotations
@@ -71,7 +71,6 @@ class InputReader:
         self.quit = False
         self._dodge = False
         self._restart = False
-        self._confirm = False
         self._toggle = False
         self._power_q = False
         self._power_e = False
@@ -88,8 +87,6 @@ class InputReader:
                 self._dodge = True
             elif event.key == pygame.K_r:
                 self._restart = True
-            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                self._confirm = True
             elif event.key == pygame.K_TAB:
                 self._toggle = True
             if event.key == pygame.K_q:
@@ -100,17 +97,12 @@ class InputReader:
             if key:
                 self._menu.append(key)
 
-    def take_confirm(self) -> bool:
-        """Enter. A UI action, not simulation input (in menus it arrives as "select")."""
-        pressed, self._confirm = self._confirm, False
-        return pressed
-
     def take_escape(self) -> bool:
         pressed, self._escape = self._escape, False
         return pressed
 
     def take_toggle(self) -> bool:
-        """Tab: open or close the loadout menu."""
+        """Tab: open or close the menu."""
         pressed, self._toggle = self._toggle, False
         return pressed
 
@@ -120,7 +112,8 @@ class InputReader:
         self._power_q = self._power_e = self._dodge = self._restart = False
 
     def take_menu(self) -> list[str]:
-        """Fuse Box keys pressed since the last call. Read every frame, used in the Fuse Box."""
+        """Menu keys pressed since the last call. Read every frame, used while a menu is
+        open, dropped otherwise."""
         keys, self._menu = self._menu, []
         return keys
 
@@ -183,7 +176,6 @@ def menu_frame(
     RESUME closes the paused menu, and leaving either drops any power press still latched so
     it cannot fire on the next tick. Returns the cues to play."""
     keys = reader.take_menu()
-    reader.take_confirm()  # Enter arrives as "select"
     if not menu.open:
         return []
     cues: list[str] = []
@@ -254,6 +246,17 @@ def build_selector(options: Options) -> tuple[Selector, str | None, str]:
     return NeutralSelector(), None, "off"
 
 
+def open_menu(menu: Menu, reader: InputReader, in_fuse_box: bool) -> None:
+    """Open the hub. Keys pressed before it opened (the Esc that opened it, a W or Space
+    as the sector ended) are dropped, so none of them becomes a menu choice."""
+    menu.show(in_fuse_box=in_fuse_box)
+    reader.take_menu()
+
+
+def can_open_menu(run) -> bool:
+    return run.stage == "encounter" and run.world.outcome == "playing"
+
+
 def toggle_menu(menu: Menu, run) -> None:
     """Tab: close the menu if open, else open the hub, but only mid-sector with the Surge up
     (not while down or at the ending). In a Fuse Box the menu stays open."""
@@ -261,7 +264,7 @@ def toggle_menu(menu: Menu, run) -> None:
         return
     if menu.open:
         menu.close()
-    elif run.stage == "encounter" and run.world.outcome == "playing":
+    elif can_open_menu(run):
         menu.show(in_fuse_box=False)
 
 
@@ -378,7 +381,11 @@ def play(options: Options) -> int:
             for event in pygame.event.get():
                 reader.handle(event)
             if reader.take_escape() and not menu.open:
-                break  # Esc quits outside a menu, and goes back inside one
+                # Esc outside a menu opens it (QUIT lives there), and quits only when no
+                # menu can open (down, the ending, practice or a replay).
+                if session is None or not can_open_menu(run):
+                    break
+                open_menu(menu, reader, in_fuse_box=False)
             if scripted is None and not options.headless:
                 cursor = pygame.mouse.get_pos()
             elapsed = clock.tick(240) / 1000.0
@@ -387,6 +394,8 @@ def play(options: Options) -> int:
                 toggle_menu(menu, run)
                 if was_open and not menu.open:
                     reader.drop_power_latches()
+                if menu.open and not was_open:
+                    reader.take_menu()  # keys from before the menu opened are not choices
             paused = menu.open and getattr(run, "stage", None) != "fuse_box"
             due, accumulated = ticks_due(paused, options.headless, accumulated, elapsed)
             for _ in range(due):
@@ -434,7 +443,7 @@ def play(options: Options) -> int:
                     view.after_tick(run)
             if session is not None:
                 if run.stage == "fuse_box" and not menu.open:
-                    menu.show(in_fuse_box=True)  # arriving in a Fuse Box opens the hub
+                    open_menu(menu, reader, in_fuse_box=True)  # arriving opens the hub
                 for sound in menu_frame(session, menu, reader, recording, round(elapsed * 1000)):
                     audio.play(sound)
             audio.update(

@@ -68,8 +68,15 @@ def test_the_hub_offers_continue_in_a_fuse_box_and_resume_mid_sector() -> None:
     menu.show(in_fuse_box=False)
     assert menu.hub_items == HUB_PAUSED and HUB_PAUSED[0] == "RESUME"
     assert menu.press(session, "back") == (None, ["resume"])
-    menu.press(session, "up")  # wraps to the last item
-    assert menu.press(session, "select") == (None, ["quit"])
+    menu.press(session, "up")
+    assert menu.hub == 0, "no wrapping, so one press from the top never reaches QUIT"
+    menu.hub = len(menu.hub_items) - 1
+    assert menu.press(session, "select") == (None, ["deny"]) and menu.quitting
+    menu.press(session, "up")
+    menu.press(session, "down")
+    assert not menu.quitting, "moving away cancels"
+    menu.press(session, "select")
+    assert menu.press(session, "select") == (None, ["quit"]), "QUIT asks twice"
 
 
 @pytest.mark.parametrize("item", ["LOADOUT", "FUSE", "CONTROLS"])
@@ -189,6 +196,7 @@ def test_rolling_over_an_epic_or_legendary_asks_twice(rarity) -> None:
     session.campaign.world.unlocked.append(owned)
     socket(session, menu, "spark", "blink")
     assert menu.press(session, "roll") == (None, ["deny"]) and "REPLACES" in menu.notice
+    assert menu.cursor == ROLL, "on ROLL, so Space confirms as well as F"
     assert session.campaign.world.fusions == 0
     menu.press(session, "left")  # moving away cancels
     assert menu.press(session, "roll")[0] is None
@@ -271,9 +279,42 @@ def test_esc_goes_back_in_a_menu_and_quit_ends_the_game() -> None:
     menu_frame(session, menu, reader, recording, 16)
     assert menu.open and menu.screen == "hub" and reader.take_escape()
     menu.hub = HUB_PAUSED.index("QUIT")
-    press_keys(reader, pygame.K_RETURN)
+    press_keys(reader, pygame.K_RETURN, pygame.K_RETURN)
     menu_frame(session, menu, reader, recording, 16)
     assert reader.quit
+
+
+def test_opening_the_menu_drops_keys_pressed_before_it_opened() -> None:
+    """Review of PR #33: a W then Space as a sector ends must not pick a hub item."""
+    import pygame
+
+    from overload.game.app import menu_frame, open_menu
+
+    session, menu, reader, recording = live_setup()
+    clear_encounter(session)
+    press_keys(reader, pygame.K_s, pygame.K_SPACE)  # pressed while the sector was ending
+    open_menu(menu, reader, in_fuse_box=True)
+    assert menu_frame(session, menu, reader, recording, 16) == []
+    assert menu.screen == "hub" and menu.hub == 0
+
+
+def test_a_key_during_the_spin_never_reveals_the_result_early() -> None:
+    session, menu = bench("spark", "blink")
+    socket(session, menu, "spark", "blink")
+    menu.press(session, "roll")
+    result = menu.roll.result
+    for key in ("left", "up", "help", "q", "roll", "back"):
+        menu.press(session, key)
+    assert result not in menu.discovered and menu.roll.phase == "spin"
+
+
+def test_odds_always_add_up_to_a_hundred() -> None:
+    from overload.game.menu import percentages
+
+    for weights in ((60, 30, 10), (0, 30, 10), (1, 1, 1), (7, 5, 3), (1, 0, 2)):
+        assert sum(percentages(weights)) == 100
+    assert percentages((60, 30, 10)) == [60, 30, 10]
+    assert percentages((0, 30, 10)) == [0, 75, 25]
 
 
 def test_tab_opens_the_hub_only_mid_sector_with_the_surge_up() -> None:

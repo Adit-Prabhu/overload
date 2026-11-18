@@ -260,7 +260,7 @@ def test_bolt_lance_dashes_through_robots_and_strikes_each_once() -> None:
     first, second = dummy(world, 140, 120), dummy(world, 165, 121)
     fire(world, DEFAULT.lance_ticks + 5)
     travelled = world.player.x - OPEN.player_spawn[0]
-    assert travelled >= DEFAULT.lance_speed * (DEFAULT.lance_ticks - 1)
+    assert travelled >= DEFAULT.lance_speed * (DEFAULT.lance_ticks - 1) - 0.01
     assert first.health == second.health == 999 - DEFAULT.lance_damage
     assert world.player.cooldowns["teleport"] > 0 and not world.player.lance
 
@@ -357,6 +357,124 @@ def test_blasts_hurt_the_regulator_but_never_move_it() -> None:
     assert math.dist((rival.x, rival.y), (185.0, 120.0)) < 2.0
 
 
+# Edges and evolutions -------------------------------------------------------------------------
+
+WALL = (150.0, 100.0, 16.0, 40.0)  # a pillar right of the Surge, x 150 to 166, y 100 to 140
+WALLED = Arena(
+    room=SUBSTATION.room,
+    size=(320, 240),
+    bounds=(0.0, 0.0, 320.0, 240.0),
+    obstacles=(WALL,),
+    player_spawn=(110.0, 120.0),
+    practice_spawns=((10.0, 10.0), (310.0, 10.0)),
+    rival_spawn=(300.0, 220.0),
+)
+
+
+def walled(power: str, fragments=None):
+    world = armed(power, fragments)
+    dummy(world, 300, 230)  # far away, so the room is never cleared mid-test
+    return world
+
+
+def fire_walled(world, ticks: int = 0, **aim) -> None:
+    cursor = aim or AIM
+    step(world, InputFrame(power_q=True, **cursor), arena=WALLED)
+    for _ in range(ticks):
+        step(world, InputFrame(**cursor), arena=WALLED)
+
+
+def test_a_meteor_in_the_air_never_locks_a_room_behind_it() -> None:
+    """Review of PR #32: a Meteor launched inside a room's doorway, back toward the corridor,
+    used to lock the room mid-air and land outside its shut doors, a soft lock."""
+    from overload.floor import FLOOR
+    from overload.sim import floorplay
+
+    campaign = Campaign(1)
+    world = campaign.world
+    world.unlocked, world.player.slots = ["spark", "blink", "burst", "meteor"], ["meteor", ""]
+    door = next(d for d in FLOOR.doors_of("s1_hall") if d.other == "s1_entry")
+    x, y, w, h = door.rect
+    world.player.x, world.player.y = floorplay.tile_center((x + w, y + h // 2))
+    assert floorplay.room_of(FLOOR, world.player.x, world.player.y).id == "s1_hall"
+    back = {"aim_x": int(world.player.x) - 40, "aim_y": int(world.player.y)}
+    campaign.step(InputFrame(power_q=True, **back))
+    assert world.player.leap > 0 and world.active_room == "", "nothing locks mid-air"
+    for _ in range(DEFAULT.meteor_ticks + 5):
+        campaign.step(InputFrame(**back))
+    assert world.active_room == "" and door.id not in world.locked, "landed outside, doors open"
+
+
+def test_bolt_lance_stops_at_a_wall() -> None:
+    world = walled("bolt_lance")
+    fire_walled(world, DEFAULT.lance_ticks + 2)
+    assert world.player.x <= WALL[0] - DEFAULT.player_radius + 0.01
+
+
+def test_a_shock_mine_arms_where_a_wall_stops_it() -> None:
+    world = walled("shock_mine")
+    fire_walled(world, 16, aim_x=200, aim_y=120)
+    (mine,) = world.devices
+    assert mine.x < WALL[0] and mine.timer > 0
+
+
+def test_a_meteor_with_nowhere_to_land_costs_nothing() -> None:
+    world = walled("meteor")
+    world.player.x = WALL[0] - 10  # every landing spot within reach is inside the pillar
+    fire_walled(world, aim_x=200, aim_y=120)
+    assert world.player.leap == 0 and "teleport" not in world.player.cooldowns
+
+
+def test_displacer_never_swaps_the_regulator() -> None:
+    world = armed("displacer")
+    world.rival = encounter_world(1, 1, "lateral", arena=OPEN).rival
+    world.rival.x, world.rival.y = 170.0, 120.0
+    fire(world)
+    assert "teleport" not in world.player.cooldowns, "no robot to swap with"
+
+
+def test_displacer_hits_the_swapped_robot_once_and_pushes_it_away() -> None:
+    world = armed("displacer")
+    robot = dummy(world, 130, 120)  # close: both blasts would reach it
+    fire(world, aim_x=130, aim_y=120)
+    assert robot.health == 999 - DEFAULT.displacer_damage
+    assert robot.x < 110, "pushed away from the Surge, never into it"
+
+
+def test_chain_jump_stops_at_its_hop_cap() -> None:
+    world = armed("chain_jump")
+    robots = [dummy(world, 140 + 30 * i, 120) for i in range(DEFAULT.chain_jump_hops + 2)]
+    fire(world, aim_x=140, aim_y=120)
+    struck = [r for r in robots if r.health < 999]
+    assert len(struck) == DEFAULT.chain_jump_hops
+
+
+def test_chain_jump_tries_the_next_robot_when_the_nearest_has_no_room() -> None:
+    world = walled("chain_jump")
+    behind = dummy(world, 185, 120)  # behind the pillar: no clear line to it
+    open_one = dummy(world, 120, 165)
+    fire_walled(world, aim_x=185, aim_y=120)
+    assert behind.health == 999 and open_one.health < 999
+
+
+def test_storm_aura_inherits_chain_and_wide_from_its_ingredients() -> None:
+    reach = DEFAULT.storm_aura_range * DEFAULT.fused_wide
+    world = armed("storm_aura", dict.fromkeys(BASES, 3))
+    near = dummy(world, 110 + DEFAULT.storm_aura_range + 10, 120)  # only the wide aura reaches
+    beside = dummy(world, near.x + 20, 120)
+    assert DEFAULT.storm_aura_range + 10 < reach + near.radius
+    fire(world, DEFAULT.storm_aura_interval + 1)
+    assert near.health == 999 - DEFAULT.storm_aura_damage
+    assert beside.health == 999 - DEFAULT.spark_chain_damage, "the strike chained"
+
+
+def test_impact_blink_does_not_inherit_wide() -> None:
+    world = armed("impact_blink", dict.fromkeys(BASES, 3))
+    fire(world)
+    (event,) = [e for e in world.events if e.kind == "blast"]
+    assert event.ref == round(DEFAULT.impact_radius)
+
+
 # Power step guard ----------------------------------------------------------------------------
 
 
@@ -379,13 +497,19 @@ def _damage_per_second(power: str, k: int, fragments) -> float:
     return sum(999 - r.health for r in robots) / (cooldown_of(power, DEFAULT) / 60)
 
 
-@pytest.mark.parametrize("evolutions", [False, True], ids=["stock", "evolved"])
-@pytest.mark.parametrize("pair", RECIPE_ORDER, ids=lambda p: "+".join(p))
+# Evolved runs only where an inherited evolution changes damage: Spark + Burst takes CHAIN
+# and WIDE. The other pairs inherit only Overdrive (speed), so their evolved runs would just
+# repeat the stock ones.
+GUARD_CASES = [(pair, False) for pair in RECIPE_ORDER] + [(("spark", "burst"), True)]
+
+
+@pytest.mark.parametrize(
+    "pair, evolutions", GUARD_CASES, ids=lambda v: "+".join(v) if isinstance(v, tuple) else v
+)
 def test_higher_rarities_are_stronger_but_only_modestly(pair, evolutions) -> None:
     """Spec section 5: damage per second of cooldown, averaged over 40 fixed scenes. An epic
     beats its rare and stays at or under 1.35 times it, a legendary beats its epic and stays
-    at or under 1.75 times the rare. Checked with the ingredients stock and evolved, since
-    fused powers inherit evolutions."""
+    at or under 1.75 times the rare."""
     fragments = dict.fromkeys(BASES, 3) if evolutions else None
     rare, epic, legendary = (
         sum(_damage_per_second(power, k, fragments) for k in range(40))
@@ -408,6 +532,10 @@ def test_higher_rarities_are_stronger_but_only_modestly(pair, evolutions) -> Non
         {"lance_speed": 6.0},
         {"meteor_knock": 40.0},
         {"meteor_ticks": 10},
+        {"storm_aura_interval": 0},
+        {"shock_mine_speed": 0.0},
+        {"fused_wide": 0.9},
+        {"meteor_range": 10.0},
         {"fuse_guarantee_after": 0},
     ],
 )

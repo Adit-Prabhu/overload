@@ -22,10 +22,10 @@ CONTROLS = (
     ("FIRE", "HOLD LEFT CLICK"),
     ("DODGE", "SPACE"),
     ("POWERS", "Q AND E"),
-    ("MENU: LOADOUT AND FUSE", "TAB (PAUSES)"),
+    ("MENU: LOADOUT AND FUSE", "TAB OR ESC (PAUSES)"),
     ("IN MENUS: PICK, BACK", "SPACE, ESC"),
     ("RETRY AFTER A SHORT CIRCUIT", "R"),
-    ("QUIT", "ESC"),
+    ("QUIT", "MENU, THEN QUIT"),
 )
 
 

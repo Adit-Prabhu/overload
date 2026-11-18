@@ -585,18 +585,18 @@ def aura(target: pygame.Surface, light: pygame.Surface, pos: Point, tick: int) -
 
 
 def landing_marker(target: pygame.Surface, pos: Point, radius: float, progress: float) -> None:
-    """Meteor: a ring of dashes the size of the blast where the Surge will land, lighting up
-    around the ring as the fall goes on, with a cross at the center."""
+    """Meteor: a ring of dashes where the Surge will land, the true circle the blast hits,
+    lighting up around the ring as the fall goes on, with a cross at the center."""
     center = (round(pos[0]), round(pos[1]))
-    dashes = 20
+    dashes = 24
     lit = round(dashes * progress)
     for i in range(dashes):
         a = math.tau * i / dashes
-        x, y = center[0] + math.cos(a) * radius, center[1] + math.sin(a) * radius * 0.6
+        x, y = center[0] + math.cos(a) * radius, center[1] + math.sin(a) * radius
         token = "power.burst" if i < lit else "px.floor.3"
-        target.fill(rgb("px.outline"), (round(x) - 2, round(y) - 1, 5, 4))
-        target.fill(rgb(token), (round(x) - 1, round(y), 3, 2))
-    for dx, dy in ((-3, 0), (3, 0), (0, -2), (0, 2), (0, 0)):
+        target.fill(rgb("px.outline"), (round(x) - 2, round(y) - 2, 4, 4))
+        target.fill(rgb(token), (round(x) - 1, round(y) - 1, 2, 2))
+    for dx, dy in ((-3, 0), (3, 0), (0, -3), (0, 3), (0, 0)):
         target.fill(rgb("power.burst"), (center[0] + dx, center[1] + dy, 1, 1))
 
 
