@@ -107,6 +107,8 @@ class Hud:
     rival_health: float | None = None
     rival_protocol: str | None = None
     rival_name: str = "REGULATOR"
+    rival_phases: int = 1  # a chassis with three phases shows two notches on its bar
+    rival_venting: bool = False  # its punish window: the bar flashes
     stamp: str = ""
     tick: int = 0
 
@@ -158,7 +160,12 @@ def draw(target: pygame.Surface, hud: Hud) -> None:
         text(target, hud.rival_name, (w // 2, 2), "ui.text", "midtop")
         target.fill(rgb("px.outline"), (bx - 1, 11, bar_w + 2, 5))
         target.fill(rgb("px.hostile.1"), (bx, 12, bar_w, 3))
-        target.fill(rgb("px.hostile.3"), (bx, 12, round(bar_w * hud.rival_health), 3))
+        fill = "fx.flash" if hud.rival_venting and (hud.tick // 4) % 2 else "px.hostile.3"
+        target.fill(rgb(fill), (bx, 12, round(bar_w * hud.rival_health), 3))
+        for k in range(1, hud.rival_phases):  # where the next phases begin
+            nx = bx + round(bar_w * k / hud.rival_phases)
+            target.fill(rgb("px.outline"), (nx, 11, 1, 5))
+            target.fill(rgb("ui.text"), (nx, 16, 1, 1))
         if hud.rival_protocol:
             icon = effects.protocol_icon(hud.rival_protocol)
             target.blit(icon, icon.get_rect(midright=(bx - 3, 13)))

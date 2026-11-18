@@ -1,5 +1,5 @@
 # Overload · Boss design (the Regulator's three chassis)
-Version 0.2 · November 18, 2026 · Status: proposed, for Adit's sign-off. Production scope past the G1 ceiling, logged for the G3 scope-lock proposal like the floor and the chassis. Version 0.2 takes in the independent review of 0.1 and records the sim as built in the stacked PR after this one.
+Version 0.3 · November 18, 2026 · Presentation prototype implemented for Adit's sign-off. Production scope past the G1 ceiling, logged for the G3 scope-lock proposal like the floor and the chassis. The stacked combat and presentation PRs implement the design below.
 
 ## 1. Why
 Adit, Nov 18, after the first redraw: "the bosses need more work, like they don't have interesting attacks or attack patterns, and they look weird ... they don't look intimidating ... if it's the same as mobs then it doesn't feel different, beating a boss should feel like an achievement and I don't get that right now."
@@ -30,6 +30,25 @@ How a boss should look. These are my reading of the genre, not sourced claims:
 - **Proportions carry menace:** a heavy mass with a low head and a forward lean reads as threat. Round, chibi proportions read as cute, and the first redraw had exactly that.
 - **Dark armor with glowing accents:** dark shells, bright slit eyes rather than round lenses, rim light. Jagged or clawed limbs read as dangerous.
 - **Scale:** bosses tower. The Surge is 16 x 22 in a 256 x 144 view, so a boss should be about three times its height.
+
+### Presentation research and application
+
+- **Enter the Gungeon.** Dave Crooks describes Dodge Roll starting from a rough boss concept and letting the gameplay programmer experiment with patterns before the team iterates. He calls out the Beholster as the clearest expression of the game's fantasy and praises the High Priest's variety. For Overload, the kit already supplies the patterns. The character should embody a particular piece of substation machinery so that a wire sweep, coolant spray or reactor spiral makes sense as soon as the player sees it. [Dodge Roll developer interview](https://www.gamedeveloper.com/design/q-a-the-guns-and-dungeons-of-i-enter-the-gungeon-i-)
+- **Cuphead.** Studio MDHR describes building the battles first, then iterating on animation against the established hitboxes and timing. Escalating transformations make progression an event in itself. For Overload, this means opening armor, changing posture and damaging hardware at the existing thresholds. Each chassis keeps its recognizable silhouette and recurring face shape through all three forms. [Studio MDHR developer interview](https://www.gamedeveloper.com/business/road-to-the-igf-studio-mdhr-s-i-cuphead-i-)
+- **Hyper Light Drifter.** Alx Preston describes using visual design to carry narrative and character while keeping fast combat legible. Its approach gives the station equipment in Overload two jobs. The same ceramic insulators, panel stripes, steel pistons and status lights appear on the room props, the maintenance bots and the boss bodies. Scale, heavier joints, a deep visor and exposed high-energy machinery distinguish the bosses. [Heart Machine developer article](https://blog.playstation.com/2014/03/14/creating-the-world-of-hyper-light-drifter-on-ps4-and-ps-vita/)
+- **Attack and punish cues.** Combat designer Mike Birkhead argues for recognizable anticipation and a clear visual state when a weak point can be punished. The large silhouette changes mark persistent phases. Individual attacks still have their existing patterns and floor tells, a lowered head or raised linkage illustrates the wind-up, and a small white-hot opening with pale steam marks a vent. Both side plates and thruster fins remain visible in all three phases. [Mike Birkhead on boss design](https://www.gamedeveloper.com/design/opinion-boss-design---tips-from-a-combat-designer)
+
+### Three phases at game scale
+
+| Chassis | Phase 1 | Phase 2 | Phase 3 |
+| --- | --- | --- | --- |
+| Linesman | Upright breaker gantry, a narrow welding visor and sprung climbing gaffs | Crossarm lifts, claws swing out and the mask drops into a scowl | Crossarm spreads wide, hot leads hang from the terminals, and a torn chest plate hangs beneath the cage |
+| Transformer | Low oil-filled tank under a beveled shell, small cold stack and four piston legs | Head lowers behind the horns, radiator stack rises and the side hatch strains | Outer panel peels away, coils glow through the open side, and the bull drops its head farther into the charge |
+| Grid Core | Sealed reactor cage, close plates, upright terminals and four armored feet | Plates part around a visible reactor, knees rise, and the terminals push out | Cage opens farther, the live reactor dominates the center, and fractured leads bridge the armor |
+
+The [phase sheet](art/bosses.png) shows the three forms in their own chambers under game lighting, with the Surge for scale. The local [roster sheet](art/robot_style_frame.png) compares them to the five maintenance bots. Dark articulated legs and appendages extend beyond the damage circle. The colored armor stays near the aim point, with at least 80 percent covered in phase 1 and 65 percent in later phases. The game uses the same health breakpoints, attack rotations and attack timing values for the existing protocols.
+
+On a Grid Core win, the wreck and chained explosions run for 1.5 s and the banner holds for another 1.5 s. The results screen follows while the simulation is already at the ending. Simultaneous player death suppresses the victory presentation. The separate boss times row has its own space below shots. The entrance keeps the health and loadout HUD visible. The DEV instant defeat shortcut still skips the combat kill event. Capture the death presentation with normal damage, as the render tool does.
 
 ## 3. Rules this game must keep
 The study needs these, and the rework stays inside them:
