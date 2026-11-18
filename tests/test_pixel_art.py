@@ -882,6 +882,7 @@ def test_the_entrance_card_and_ending_rows(headless_pygame, monkeypatch) -> None
     campaign = Campaign(1)
     enter(campaign, "s2_chamber")
     view = PixelView(campaign)
+    campaign.world.rival.boot = campaign.tuning.rival_boot // 2
     with_card = pygame.Surface((256, 144))
     view.draw(with_card, campaign, (128, 72))
     campaign.world.rival.boot = 0
