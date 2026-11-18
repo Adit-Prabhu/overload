@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from overload.game.dev import DevTools
 from overload.game.flow import Session
 from overload.sim.powers import (
     BASE_POWERS,
@@ -77,7 +78,7 @@ class Roll:
 class Menu:
     open: bool = False
     in_fuse_box: bool = False
-    screen: str = "hub"  # hub, loadout, fuse, controls
+    screen: str = "hub"  # hub, loadout, fuse, controls, dev
     hub: int = 0
     row: int = 0  # loadout selection
     cursor: int = 0  # fuse: a base power's index, or len(BASE_POWERS) for the ROLL button
@@ -88,6 +89,8 @@ class Menu:
     roll: Roll | None = None
     notice: str = ""
     discovered: set[str] = field(default_factory=set)  # powers seen this session
+    dev: DevTools | None = None  # dev mode only (game/dev.py): adds the DEV page
+    dev_row: int = 0
 
     # Opening and closing ---------------------------------------------------------------
 
@@ -105,7 +108,10 @@ class Menu:
 
     @property
     def hub_items(self) -> tuple[str, ...]:
-        return HUB_FUSE_BOX if self.in_fuse_box else HUB_PAUSED
+        items = HUB_FUSE_BOX if self.in_fuse_box else HUB_PAUSED
+        if self.dev is not None:
+            items = (*items[:-1], "DEV", items[-1])  # QUIT stays last
+        return items
 
     # Keys --------------------------------------------------------------------------------
 
@@ -122,6 +128,7 @@ class Menu:
             "loadout": self._loadout,
             "fuse": self._fuse,
             "controls": self._controls,
+            "dev": self._dev,
         }[self.screen]
         return handler(session, key)
 
@@ -161,6 +168,18 @@ class Menu:
     def _controls(self, session: Session, key: str):
         if key in ("back", "select"):
             return self._back()
+        return None, []
+
+    def _dev(self, session: Session, key: str):
+        if key == "back":
+            return self._back()
+        rows = len(self.dev.rows())
+        if key in ("up", "down"):
+            self.dev_row = (self.dev_row + (1 if key == "down" else -1)) % rows
+            return None, ["move"]
+        if key in ("left", "right", "select"):
+            self.dev.press(session, self.dev_row, key)
+            return None, ["confirm" if key == "select" else "move"]
         return None, []
 
     def _loadout(self, session: Session, key: str):
@@ -237,6 +256,8 @@ class Menu:
             self.notice = f"REPLACES {owned_name(owned)}. ROLL AGAIN"
             return None, ["deny"]
         self.armed, self.notice = False, ""
+        if self.dev is not None:
+            self.dev.before_roll(session, a, b)
         result = session.fuse(a, b)
         if result != "fused":  # cannot happen after roll_terms said yes, but never animate
             self.notice = "CANNOT ROLL"

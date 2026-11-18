@@ -46,6 +46,8 @@ def parse_args(argv: list[str] | None) -> Options:
         "--mute", action="store_true", help="No sound. The game is fully playable muted."
     )
     parser.add_argument("--skip-title", action="store_true", help="Start playing at once.")
+    # Test tools for the developer, deliberately left out of --help (game/dev.py).
+    parser.add_argument("--dev", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     return Options(
         seed=args.seed,
@@ -59,6 +61,7 @@ def parse_args(argv: list[str] | None) -> Options:
         trace=args.trace,
         mute=args.mute,
         skip_title=args.skip_title,
+        dev=args.dev,
     )
 
 
