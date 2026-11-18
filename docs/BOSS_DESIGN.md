@@ -35,7 +35,7 @@ How a boss should look. These are my reading of the genre, not sourced claims:
 The study needs these, and the rework stays inside them:
 - **The protocol** (Clamp, Insulate, Oscillate) is still the only thing the rival model chooses. It moves the Regulator and fires its protocol attack. It stays frozen for the whole fight, through every phase, and a phase change makes no rival request (AGENTS.md).
 - **Kit attacks may move the body.** The Bull Charge carries the Transformer across the room. While a kit attack, a vent or a phase change runs, the protocol waits, as it waited for the old signatures. After a charge, the protocol walks it back into its own range.
-- **The protocol runs at least half of every boss fight**, in every sector, measured with the floor bot (a test holds it). The kit is not allowed to crowd out the treatment.
+- **The protocol runs at least half of every boss fight**, in every sector and protocol, measured with the floor bot (a test holds it on two seeds, Clamp included). The kit is not allowed to crowd out the treatment. The 1.5 s boot does not count as fight time, since nothing acts during it. Counted with it, Insulate's share in sector 2 drops to about 0.46.
 - **The chassis kit** is fixed per sector and identical in both comparison conditions. It never reads the model's observations.
 - **Deterministic** and fully playable with the model off. No kit attack draws from the world RNG: volley marks, debris and lattice cells sit at fixed offsets from the Surge or the impact.
 - **Telegraphs** fill up, use `hostile.danger` plus a pattern, and last at least 0.75 s for a kit attack (Tuning enforces it).
@@ -85,6 +85,7 @@ It stays at range and fills the air.
 
 - **Live Wire:** three lines fan from the crossarm toward the Surge (0.9 s tell), then crackle for 0.4 s. They hurt within 3 px. **It vents after.** "Twice" means a second set lands in the first set's gaps after a 0.9 s tell of its own.
 - **Insulator Volley:** three landing circles appear around the Surge (1 s tell), one where it stands. Each bursts into a ring of 6 bolts. The circle's own tell covers its ring, so standing on a circle is like standing on a marked mine.
+- **Cover:** Live Wire's lines and the volley's circles ignore walls and props, as they are drawn. In the open chamber that rarely matters, and the answer is always to step away or dodge, never to hide.
 
 ### 4.3 Transformer (sector 2): "bait it, then punish it"
 - **Look** (presentation step): a massive bull of a machine. It has a low, broad head with bushings as horns, a grille mouth, radiator fins that steam, and four heavy legs.
@@ -96,7 +97,7 @@ It stays at range and fills the air.
 | 3 | Coolant Spray, Double Quake, Bull Charge twice | 2.7 s |
 
 - **Bull Charge:** a lane is marked toward the Surge (1 s tell). It runs at 3.6 px a tick, below the tunneling limit, for at most 110 ticks. It stops dead on a wall or a prop, and that stuns it into its vent. Touching the Surge on the way hurts and it keeps going. Its read differs from Clamp's lunge: a wide two-sided lane instead of a dotted aim line, and a much longer run.
-- **Charge twice:** after the first run it re-aims with a 0.75 s tell and charges again. Only the second impact stuns it, and it drops three debris tiles at fixed offsets.
+- **Charge twice:** after the first run it re-aims with a 0.75 s tell and charges again. Only the second impact stuns it, and it drops up to three debris tiles at fixed offsets (any that would land outside the chamber are left out, so usually one or two by a wall). A charge runs through the Surge: one hit, then it carries on, never shoving the Surge down the lane.
 - **Coolant Spray:** a fan of 7 slow orbs (0.8 s tell), then 6 more into the gaps 0.4 s later.
 
 ### 4.4 Grid Core (sector 3): the finale

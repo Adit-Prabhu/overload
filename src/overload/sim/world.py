@@ -260,7 +260,8 @@ def _separate(world: World, tuning: Tuning, arena: Arena) -> None:
         return
     bodies = [(h.x, h.y, h.radius) for h in world.hostiles if h.health > 0]
     rival = world.rival
-    if rival is not None and rival.health > 0:
+    if rival is not None and rival.health > 0 and not bosskit.charging(rival):
+        # A Bull Charge runs through the Surge (one hit) instead of bulldozing it.
         bodies.append((rival.x, rival.y, rival.radius))
     # A few passes settle a Surge squeezed between two bodies. Pinned between a body and a
     # wall it may still overlap a little: walls always win, so it never ends up inside one.

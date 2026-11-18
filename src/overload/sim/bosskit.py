@@ -54,6 +54,18 @@ def tell_ticks(name: str, tuning: Tuning) -> int:
     }[name]
 
 
+def current_tell(rival: Rival, tuning: Tuning) -> int:
+    """The length of the tell running now: a re-aimed second charge has a shorter one."""
+    if rival.sig_name == "charge_twice" and rival.sig_step == 1:
+        return tuning.charge_again_tell
+    return tell_ticks(rival.sig_name, tuning)
+
+
+def charging(rival: Rival) -> bool:
+    """True while a Bull Charge is running down its lane."""
+    return rival.sig_action == "active" and rival.sig_name.startswith("charge")
+
+
 def lock_aim(rival: Rival, world: World) -> None:
     player = world.player
     dx, dy = normalize(player.x - rival.x, player.y - rival.y)
@@ -96,6 +108,8 @@ def phase_change(world: World, rival: Rival, boss: Boss, tuning: Tuning) -> bool
     if target > rival.phase and rival.health > 0:
         rival.phase = target
         rival.change = tuning.phase_change
+        if rival.vent:
+            world.events.append(Event("vent_end", rival.x, rival.y))
         rival.vent = 0
         rival.sig_action, rival.sig_name, rival.sig_index, rival.sig_step = "idle", "", 0, 0
         rival.sig_timer = boss.phases[target - 1].every // 2

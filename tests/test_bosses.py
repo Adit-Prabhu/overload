@@ -356,17 +356,53 @@ def test_beating_a_chassis_pays_a_spare_charge_of_every_stolen_power() -> None:
 
 
 def test_the_fight_time_is_kept_for_the_ending() -> None:
-    campaign = chamber(1)
-    for _ in range(30):
-        campaign.step(IDLE)
-    campaign.world.rival.health = 0
-    campaign.world.rival.boot = 0
     from overload.sim.damage import damage_rival
 
-    campaign.world.rival.health = 1
-    damage_rival(campaign.world, 1, 0, 0)
-    campaign._count(campaign.world.events)
-    assert campaign.stats["bosses"]["1"] > 0
+    campaign = chamber(1)
+    for _ in range(120):
+        campaign.world.player.invulnerable = 10**9
+        campaign.step(IDLE)
+    rival = campaign.world.rival
+    rival.boot, rival.change, rival.health = 0, 0, 1
+    shot_at = campaign.world.tick
+    damage_rival(campaign.world, 1, rival.x, rival.y)
+    events = list(campaign.world.events)
+    campaign.world.events = events
+    campaign._count(events)
+    assert campaign.stats["bosses"]["1"] == shot_at - campaign.boss_from
+    assert 100 <= campaign.stats["bosses"]["1"] <= 125
+
+
+def test_a_bull_charge_runs_through_the_surge_with_one_hit() -> None:
+    """It never bulldozes the Surge down the lane: one hit, then it runs on through."""
+    campaign = chamber(2)
+    rival = start(campaign, "charge")
+    player = campaign.world.player
+    player.x, player.y = rival.x + 60, rival.y  # standing in the lane
+    from overload.sim.bosskit import lock_aim
+
+    lock_aim(rival, campaign.world)
+    player.invulnerable = 0
+    stood = (player.x, player.y)
+    hits = 0
+    for _ in range(DEFAULT.charge_tell + DEFAULT.charge_ticks):
+        before = player.charge
+        campaign.step(IDLE)
+        hits += before > player.charge
+        if rival.sig_action != "tell" and rival.sig_action != "active":
+            break
+    assert hits == 1
+    moved = abs(player.x - stood[0]) + abs(player.y - stood[1])
+    assert moved < 1.0, "an idle Surge stays where it stood, never shoved down the lane"
+    assert rival.x > stood[0], "the chassis ran on past it"
+
+
+def test_the_second_lattice_leaves_time_to_cross_a_cell() -> None:
+    with pytest.raises(ValueError):
+        Tuning(lattice_again=0)
+    with pytest.raises(ValueError):
+        Tuning(lattice_again=20)
+    assert DEFAULT.lattice_again >= 30
 
 
 def test_kit_tells_respect_the_readability_minimum() -> None:
@@ -415,18 +451,20 @@ def test_every_attack_in_every_phase_runs_to_the_end(sector) -> None:
             campaign.world.hazards.clear()
 
 
-def test_the_protocol_runs_at_least_half_of_every_boss_fight() -> None:
+@pytest.mark.parametrize("seed, order", [(2, ("spacing", "lateral")), (3, ("lateral", "pressure"))])
+def test_the_protocol_runs_at_least_half_of_every_boss_fight(seed, order) -> None:
     """The protocol is the study's treatment, so the kit (its tells, attacks, vents and
-    phase changes) may take at most half of a boss fight. Measured with the floor bot."""
+    phase changes) may take at most half of a boss fight, measured with the floor bot over
+    every protocol. The 1.5 s boot is not fight time (nothing acts during it)."""
     from collections import Counter
 
     from floorbot import FloorBot
 
     from overload.sim.inputs import InputFrame
 
-    campaign = Campaign(2)
+    campaign = Campaign(seed)
     bot = FloorBot(campaign)
-    order = iter(("spacing", "lateral"))
+    order = iter(order)
     share = Counter()
     for tick in range(40_000):
         if campaign.stage == "fuse_box":
