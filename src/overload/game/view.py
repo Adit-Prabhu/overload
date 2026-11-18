@@ -81,7 +81,7 @@ EVOLVED_INFO = {
     "burst": "EVOLVED. A WIDER, LONGER CONE",
 }
 RIVAL_FEET = regulators_art.FEET  # per chassis: feet below the body center
-ROBOT_FEET = {"drone": 15, "relay": 10, "breaker": 12, "sweeper": 7, "sentry": 8}
+ROBOT_FEET = {"drone": 9, "relay": 10, "breaker": 12, "sweeper": 7, "sentry": 8}
 CORE_GLOW = {"drone": "power.spark", "relay": "power.blink", "breaker": "power.burst"}
 SHOT_ART = {
     "shard": robots_art.shard,
@@ -104,12 +104,19 @@ class Gait:
 
 STRIDE = {"relay": 2.0, "breaker": 2.0, "sweeper": 1.5, "regulator": 2.5}  # px per step
 WALKING = 0.05  # moved at least this far on the last tick: walking, not standing
-SCAN = (0, 1, 2, 3, 4, 3, 2, 1)  # the Sentry's eye sweeping its visor
-RECOIL_TICKS = 8
+SCAN = (0, 1, 2, 3, 3, 2, 1, 0)  # the Sentry's eye sweeping its visor
+RECOIL_TICKS = 12
 BEAM_TICKS = 10
 # Heavy walkers kick up dust when a foot comes down: (kind, feet below center, dust count).
-FOOTFALLS = {"breaker": (12, 3), "relay": (10, 1), "regulator": (20, 5)}
+FOOTFALLS = {"breaker": (12, 3), "regulator": (20, 5)}
 FOOT_DOWN = (2, 6)  # the walk steps where a foot lands (art/pixel/rig.py)
+
+
+def hover(robot, tick: int) -> int:
+    """How high a hovering robot floats above its shadow: a slow bob (Arc Drones only)."""
+    if robot.kind != "drone":
+        return 0
+    return 2 + round(math.sin((tick + robot.id * 17) * 0.09) * 1.5)
 
 
 def walk_step(gait: Gait | None, kind: str) -> int | None:
@@ -155,7 +162,7 @@ def robot_image(
     elif robot.kind == "sweeper":
         image = robots_art.sweeper(step, False, revving=robot.phase == "rev", tick=tick)
     elif robot.kind == "sentry":
-        scan = 4 if charging else SCAN[(tick // 12 + robot.id) % len(SCAN)]
+        scan = 3 if charging else SCAN[(tick // 12 + robot.id) % len(SCAN)]
         image = robots_art.sentry(False, scan=scan, kick=2 if recoil > RECOIL_TICKS // 2 else 0)
     else:
         image = robots_art.drone(tick // 2, False, step is not None, charging, robot.id)
@@ -766,10 +773,7 @@ class PixelView:
                 )
                 if hostile.id in self.flashes:
                     image = effects.tinted(image, "fx.flash")
-                lift = 0
-                if hostile.kind == "drone":  # it hovers: a slow bob above its shadow
-                    lift = 2 + round(math.sin((tick + hostile.id * 17) * 0.09) * 1.5)
-                draw_at_feet(image, (feet[0], feet[1] - lift))
+                draw_at_feet(image, (feet[0], feet[1] - hover(hostile, tick)))
 
             drawables.append((feet[1], draw_robot))
 
@@ -902,7 +906,7 @@ class PixelView:
                     )
             token = CORE_GLOW.get(hostile.kind)
             if token:
-                core = v(hostile.x, hostile.y)
+                core = v(hostile.x, hostile.y - hover(hostile, tick))  # rides the hover bob
                 self.glow.layer.fill(rgb(token), (round(core[0]) - 1, round(core[1]), 2, 2))
         if rival is not None and rival.health > 0 and rival.sig_action == "tell":
             boss = BY_KIND[rival.kind]
