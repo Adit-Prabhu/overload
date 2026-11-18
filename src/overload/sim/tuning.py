@@ -160,7 +160,6 @@ class Tuning:
     spiral_tell: int = 48
     spiral_ticks: int = 60
     spiral_gap: int = 5
-    overload_shield: int = 60
     # Sector 3's Overcharged robots (sim/spawns.py tiers). Sector 2's Cooled ones are stock.
     overcharged_health_pct: int = 110  # rounded up, so a 4-health Sweeper gets 5
     overcharged_speed: float = 1.05
@@ -305,7 +304,10 @@ class Tuning:
             raise ValueError("Vent windows and phase changes must last at least 1 s")
         if self.lattice_cell < 2 * (self.player_radius + 1) + 16:
             raise ValueError("A Lattice cell must hold the Surge with room to spare")
-        if self.lattice_active + self.lattice_again < 0.75 * TICK_RATE:
+        # The second Lattice lights the cells the Surge stepped onto: from a cell's middle to
+        # the next cell's middle at walking speed, and never under half a second.
+        crossing = (self.lattice_cell / 2 + self.player_radius) / self.player_speed
+        if self.lattice_again < max(crossing, 0.5 * TICK_RATE):
             raise ValueError("The second Lattice must leave time to step off its tiles")
         for name in ("breaker_tell", "sweeper_tell", "sentry_tell"):
             if getattr(self, name) < 0.50 * TICK_RATE:
