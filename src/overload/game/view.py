@@ -1168,7 +1168,7 @@ class PixelView:
         center = v(rival.x, rival.y)
         aim = math.atan2(rival.aim_y, rival.aim_x)
         if rival.sig_action == "tell":
-            progress = 1.0 - rival.sig_timer / bosskit.tell_ticks(name, tuning)
+            progress = 1.0 - rival.sig_timer / bosskit.current_tell(rival, tuning)
             base = KIT_TELLS.get(name, name)
             if base in ("ring", "quake", "summon", "spiral"):
                 effects.signature_tell(

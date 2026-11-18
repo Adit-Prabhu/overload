@@ -124,6 +124,7 @@ def _hold(world: World, tuning: Tuning, floor: Floor) -> None:
     # The fight is over: hostile shots and hazard tiles still in the air go with it.
     world.projectiles = [shot for shot in world.projectiles if not shot.hostile]
     world.hazards = []
+    world.shockwaves = []  # a quake still running can never down the Surge after the win
     world.cleared = [*world.cleared, room.id]
     world.active_room = ""
     unlock(world, [door.id for door in floor.doors_of(room.id)])
