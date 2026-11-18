@@ -21,7 +21,7 @@ from overload.art.pixel import robots as robots_art
 from overload.art.pixel.light import Glow
 from overload.art.pixel.lighting import Lighting, pool, quantize
 from overload.floor import CELL, GRID, TILE
-from overload.sim import aiming, floorplay
+from overload.sim import aiming, bosskit, floorplay
 from overload.sim import world as rules
 from overload.sim.arena import arena_id
 from overload.sim.bosses import BY_KIND
@@ -107,6 +107,15 @@ WALKING = 0.05  # moved at least this far on the last tick: walking, not standin
 SCAN = (0, 1, 2, 3, 3, 2, 1, 0)  # the Sentry's eye sweeping its visor
 RECOIL_TICKS = 12
 BEAM_TICKS = 10
+# Kit attacks drawn with another attack's tell shape (art/pixel/effects.py).
+KIT_TELLS = {
+    "double_ring": "ring",
+    "double_quake": "quake",
+    "core_spiral": "spiral",
+    "live_wire_twice": "live_wire",
+    "charge_twice": "charge",
+    "lattice_twice": "lattice",
+}
 # Heavy walkers kick up dust when a foot comes down: (kind, feet below center, dust count).
 FOOTFALLS = {"breaker": (12, 3), "regulator": (20, 5)}  # the Regulator's feet: per chassis
 FOOT_DOWN = (2, 6)  # the walk steps where a foot lands (art/pixel/rig.py)
@@ -574,6 +583,22 @@ class PixelView:
                 self.unlock_flash = 10
                 self._burst(event.x, event.y, 30, "power.burst", 2.2)
                 self.toast("GRID CORE OVERLOAD", 120)
+            elif event.kind == "phase_change":
+                self.shake = 14
+                self.unlock_flash = 8
+                self._burst(event.x, event.y, 26, "px.lamp.light", 2.4)
+                self._burst(event.x, event.y, 14, "hostile.danger", 1.8)
+                if run.world.rival is not None:
+                    name = BY_KIND[run.world.rival.kind].name
+                    self.toast(f"{name} PHASE {event.ref}", 90)
+            elif event.kind == "charge_impact":
+                self.shake = 12
+                self._burst(event.x, event.y, 20, "px.wall.3", 2.0)
+            elif event.kind == "vent":
+                self._burst(event.x, event.y - 6, 12, "px.wall.4", 1.4)
+                self.toast("VENTING. HIT IT NOW", 50)
+            elif event.kind == "boss_reward" and event.ref:
+                self.toast(f"+1 SPARE CHARGE OF {event.ref} POWERS", 120)
             elif event.kind == "boss_ring":
                 self._burst(event.x, event.y, 10, "hostile.danger", 1.2)
             elif event.kind == "summon":
@@ -792,9 +817,23 @@ class PixelView:
                 screen, self.glow.layer, v(warp.x, warp.y), 1 - warp.timer / tuning.warp_tell
             )
         for hazard in world.hazards:
-            arming = tuning.insulate_hazard_tell
+            arming = (
+                tuning.insulate_hazard_tell if hazard.kind == "insulate" else tuning.lattice_tell
+            )
             progress = 1.0 - hazard.arming / arming if hazard.arming > 0 else 1.0
-            effects.hazard_tile(screen, self.glow.layer, v(hazard.x, hazard.y), progress)
+            if hazard.kind == "insulate":
+                effects.hazard_tile(screen, self.glow.layer, v(hazard.x, hazard.y), progress)
+            else:  # a boss kit's own floor marking: a Lattice cell or falling debris
+                effects.kit_hazard(
+                    screen,
+                    self.glow.layer,
+                    v(hazard.x, hazard.y),
+                    hazard.size,
+                    progress,
+                    hazard.kind,
+                    hazard.arming == 0,
+                    self.frames,
+                )
 
         drawables = [
             (prop.base_y, lambda prop=prop: prop.draw(screen, cam)) for prop in self.room.props
@@ -890,7 +929,8 @@ class PixelView:
                     needle,
                     fins_lit,
                     kind=rival.kind,
-                    overload=rival.phase == 2,
+                    # The Grid Core overloads from phase 2, the others burn hot in phase 3.
+                    overload=rival.phase >= (2 if rival.kind == "grid_core" else 3),
                     step=rival_step(self.gaits.get(RIVAL_GAIT), rival_left),
                     charged=rival.sig_action == "tell",
                 )
@@ -1000,20 +1040,8 @@ class PixelView:
             if token:
                 core = v(hostile.x, hostile.y - hover(hostile, tick))  # rides the hover bob
                 self.glow.layer.fill(rgb(token), (round(core[0]) - 1, round(core[1]), 2, 2))
-        if rival is not None and rival.health > 0 and rival.sig_action == "tell":
-            boss = BY_KIND[rival.kind]
-            name = boss.overload if rival.phase == 2 else boss.signature
-            _, tell = rules.signature_timing(name, tuning)
-            effects.signature_tell(
-                screen,
-                self.glow.layer,
-                v(rival.x, rival.y),
-                name,
-                1.0 - rival.sig_timer / tell,
-                reach=tuning.quake_reach,
-                aim=math.atan2(rival.aim_y, rival.aim_x),
-                points=[v(x, y) for x, y in rules.summon_points(run.arena)],
-            )
+        if rival is not None and rival.health > 0:
+            self._draw_kit(screen, run, rival, v)
         if rival is not None and rival.health > 0 and rules.rival_telegraphing(rival):
             effects.aim_tell(
                 screen,
@@ -1131,6 +1159,49 @@ class PixelView:
             self._banner(screen, world.outcome)
         reticle = effects.reticle()
         screen.blit(reticle, reticle.get_rect(center=cursor))
+
+    def _draw_kit(self, screen: pygame.Surface, run, rival, v) -> None:
+        """The chassis kit on screen (sim/bosskit.py): each attack's own tell, Live Wire's
+        lines while they burn, and the vent window's steam."""
+        tuning = run.tuning
+        name = rival.sig_name
+        center = v(rival.x, rival.y)
+        aim = math.atan2(rival.aim_y, rival.aim_x)
+        if rival.sig_action == "tell":
+            progress = 1.0 - rival.sig_timer / bosskit.current_tell(rival, tuning)
+            base = KIT_TELLS.get(name, name)
+            if base in ("ring", "quake", "summon", "spiral"):
+                effects.signature_tell(
+                    screen,
+                    self.glow.layer,
+                    center,
+                    base,
+                    progress,
+                    reach=tuning.quake_reach,
+                    aim=aim,
+                    points=[v(x, y) for x, y in rules.summon_points(run.arena)],
+                    arms=4 if name == "core_spiral" else 2,
+                )
+            else:
+                effects.kit_tell(
+                    screen,
+                    self.glow.layer,
+                    center,
+                    base,
+                    progress,
+                    aim=aim,
+                    lines=[
+                        (v(x1, y1), v(x2, y2))
+                        for x1, y1, x2, y2 in bosskit.wire_segments(rival, tuning)
+                    ],
+                    marks=[v(x, y) for x, y in rival.marks],
+                    width=rival.radius,
+                )
+        elif rival.sig_action == "active" and name.startswith("live_wire"):
+            for x1, y1, x2, y2 in bosskit.wire_segments(rival, tuning):
+                effects.live_wire(screen, self.glow.layer, v(x1, y1), v(x2, y2), self.frames)
+        if rival.vent > 0 and self.frames % 5 == 0:  # it vents: steam off its core
+            self._burst(rival.x, rival.y - 6, 3, "px.wall.4", 1.0)
 
     def draw_ending(
         self,

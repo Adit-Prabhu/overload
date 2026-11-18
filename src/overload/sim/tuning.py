@@ -152,19 +152,14 @@ class Tuning:
     boost_factor: float = 1.5
 
     # Regulator chassis signatures (sim/bosses.py): time between them, and their tells.
-    ring_every: int = 300
-    ring_tell: int = 42
-    quake_every: int = 270
+    ring_tell: int = 48
     quake_tell: int = 48
     quake_reach: float = 120.0
-    summon_every: int = 420
     summon_tell: int = 48
     summon_cap: int = 2  # no summon while this many robots are already up
-    spiral_every: int = 240
-    spiral_tell: int = 36
+    spiral_tell: int = 48
     spiral_ticks: int = 60
     spiral_gap: int = 5
-    overload_shield: int = 60
     # Sector 3's Overcharged robots (sim/spawns.py tiers). Sector 2's Cooled ones are stock.
     overcharged_health_pct: int = 110  # rounded up, so a 4-health Sweeper gets 5
     overcharged_speed: float = 1.05
@@ -218,6 +213,32 @@ class Tuning:
     meteor_grace: int = 12  # untouchable for a moment after landing
     fused_wide: float = 1.25  # an evolved Burst widens its fused powers' blasts and field
 
+    # The boss kits (docs/BOSS_DESIGN.md): the phase change, the vent window and the
+    # attacks no robot uses.
+    phase_change: int = 72  # shielded, every hostile shot wiped
+    vent_ticks: int = 90  # the punish window after a chassis' biggest attack
+    core_vent_ticks: int = 105  # after the Grid Core's core spiral
+    wire_tell: int = 54
+    wire_active: int = 24
+    wire_width: float = 3.0
+    wire_reach: float = 220.0
+    ring_gap: int = 15  # between a Double Ring's rings
+    volley_tell: int = 60
+    volley_spread: float = 44.0
+    charge_tell: int = 60
+    charge_again_tell: int = 45  # a re-aimed second charge
+    charge_speed: float = 3.6
+    charge_ticks: int = 110
+    spray_tell: int = 48
+    spray_gap: int = 24
+    quake_gap: int = 30  # between a Double Quake's rings
+    lattice_tell: int = 60
+    lattice_active: int = 48
+    lattice_again: int = 36  # the second Lattice arms this long after the first burns out
+    lattice_cell: float = 32.0  # two tiles: a body fits in a dark cell, a dodge crosses one
+    lattice_cols: int = 2  # cells each side of the Surge
+    lattice_rows: int = 1
+    core_spiral_ticks: int = 90
     signature_quiet: int = 66  # the protocol rests this long after a signature (a quake's run)
 
     # Rooms (overhaul): robots warp in after a visible marker, secret walls crack open.
@@ -262,9 +283,32 @@ class Tuning:
             >= THINNEST_OBSTACLE
         ):
             raise ValueError("Overcharged robots could walk through the thinnest obstacle")
-        for name in ("ring_tell", "quake_tell", "summon_tell", "spiral_tell"):
-            if getattr(self, name) < 0.50 * TICK_RATE:
-                raise ValueError(f"{name}: chassis signature tells must last at least 0.50 s")
+        kit_tells = (
+            "ring_tell",
+            "quake_tell",
+            "summon_tell",
+            "spiral_tell",
+            "wire_tell",
+            "volley_tell",
+            "charge_tell",
+            "charge_again_tell",
+            "spray_tell",
+            "lattice_tell",
+        )
+        for name in kit_tells:
+            if getattr(self, name) < 0.75 * TICK_RATE:
+                raise ValueError(f"{name}: boss attack tells must last at least 0.75 s")
+        if self.charge_speed >= THINNEST_OBSTACLE:
+            raise ValueError("A Bull Charge could tunnel through the thinnest obstacle")
+        if self.vent_ticks < TICK_RATE or self.phase_change < TICK_RATE:
+            raise ValueError("Vent windows and phase changes must last at least 1 s")
+        if self.lattice_cell < 2 * (self.player_radius + 1) + 16:
+            raise ValueError("A Lattice cell must hold the Surge with room to spare")
+        # The second Lattice lights the cells the Surge stepped onto: from a cell's middle to
+        # the next cell's middle at walking speed, and never under half a second.
+        crossing = (self.lattice_cell / 2 + self.player_radius) / self.player_speed
+        if self.lattice_again < max(crossing, 0.5 * TICK_RATE):
+            raise ValueError("The second Lattice must leave time to step off its tiles")
         for name in ("breaker_tell", "sweeper_tell", "sentry_tell"):
             if getattr(self, name) < 0.50 * TICK_RATE:
                 raise ValueError(f"{name}: robot tells must last at least 0.50 s")

@@ -7,6 +7,7 @@ onto `light` (a black surface the bloom pass reads). Coordinates are view pixels
 from __future__ import annotations
 
 import math
+import random
 from functools import cache
 
 import pygame
@@ -270,6 +271,7 @@ def signature_tell(
     reach: float,
     aim: float,
     points: list[Point],
+    arms: int = 2,
 ) -> None:
     """A Regulator chassis winding up its signature: a ring of dots fills around it, plus a
     shape that says what is coming. Ring: eight dotted spokes grow outward. Quake: a dotted
@@ -293,7 +295,7 @@ def signature_tell(
         for point in points:
             warp_marker(target, light, point, progress)
     elif name == "spiral":
-        for a in (aim, aim + math.pi):
+        for a in (aim + math.tau * k / arms for k in range(arms)):
             for d in range(22, 70, 4):
                 target.fill(
                     rgb("power.burst"),
@@ -634,3 +636,123 @@ def ripple(target: pygame.Surface, pos: Point, age: float) -> None:
         pygame.draw.ellipse(target, rgb("px.conduit.1"), rect, 1)
     else:
         pygame.draw.ellipse(target, rgb("px.conduit.0"), rect, 1)
+
+
+def kit_tell(
+    target: pygame.Surface,
+    light: pygame.Surface,
+    center: Point,
+    name: str,
+    progress: float,
+    aim: float,
+    lines: list[tuple[Point, Point]],
+    marks: list[Point],
+    width: float,
+) -> None:
+    """The boss kit's own tells, each a different shape: Live Wire's dotted lines filling
+    outward, a volley's landing circles closing in, the Bull Charge's lane, the Coolant
+    Spray's fan. A ring of dots fills around the chassis for all of them."""
+    progress = max(0.0, min(1.0, progress))
+    danger = rgb("hostile.danger")
+    for surface in (target, light):
+        _ring_dots(surface, "hostile.danger", center, 24, progress)
+    if name == "live_wire":
+        for a, b in lines:
+            span = math.dist(a, b)
+            for d in range(24, int(span * progress), 5):
+                t = d / span
+                x, y = a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
+                for surface in (target, light):
+                    surface.fill(danger, (round(x), round(y), 2, 2))
+    elif name == "volley":
+        for mark in marks:
+            radius = 4 + (1.0 - progress) * 14
+            for surface in (target, light):
+                _ring_dots(surface, "hostile.danger", mark, radius, 1.0)
+                surface.fill(danger, (round(mark[0]) - 1, round(mark[1]) - 1, 2, 2))
+    elif name == "charge":
+        dx, dy = math.cos(aim), math.sin(aim)
+        px, py = -dy, dx
+        for d in range(int(width), int(width) + int(260 * progress), 6):
+            for side in (-1, 1):
+                x = center[0] + dx * d + px * width * side
+                y = center[1] + dy * d + py * width * side
+                for surface in (target, light):
+                    surface.fill(danger, (round(x), round(y), 2, 2))
+    elif name == "spray":
+        for k in range(-3, 4):
+            a = aim + math.radians(12 * k)
+            for d in range(26, 26 + int(40 * progress), 5):
+                target.fill(
+                    danger,
+                    (round(center[0] + math.cos(a) * d), round(center[1] + math.sin(a) * d), 2, 2),
+                )
+
+
+def live_wire(target: pygame.Surface, light: pygame.Surface, a: Point, b: Point, tick: int) -> None:
+    """A Live Wire line while it burns: a jagged arc that jumps every couple of ticks."""
+    span = math.dist(a, b)
+    steps = max(2, int(span // 8))
+    jitter = random.Random(tick // 2 + round(a[0]) * 7 + round(b[1]) * 13)
+    points = []
+    for i in range(steps + 1):
+        t = i / steps
+        off = 0 if i in (0, steps) else jitter.uniform(-3, 3)
+        dx, dy = (b[0] - a[0]) / span, (b[1] - a[1]) / span
+        points.append((a[0] + (b[0] - a[0]) * t - dy * off, a[1] + (b[1] - a[1]) * t + dx * off))
+    for surface in (target, light):
+        pygame.draw.lines(surface, rgb("hostile.danger"), False, points, 2)
+        pygame.draw.lines(surface, rgb("px.lamp.light"), False, points, 1)
+
+
+def kit_hazard(
+    target: pygame.Surface,
+    light: pygame.Surface,
+    top_left: Point,
+    size: float,
+    progress: float,
+    kind: str,
+    burning: bool,
+    tick: int,
+) -> None:
+    """A boss kit's floor marking, shaped unlike Insulate's tiles. A Lattice cell: corner
+    brackets, then cross-hatching that grows from the middle outward, then a crackling burn.
+    Debris: a shadow that grows where it will land, with a cross at its heart."""
+    x, y, n = round(top_left[0]), round(top_left[1]), round(size)
+    danger = rgb("hostile.danger")
+    if kind == "debris":
+        radius = 2 + round((n / 2 - 2) * max(0.0, min(1.0, progress)))
+        center = (x + n // 2, y + n // 2)
+        pygame.draw.circle(target, rgb("px.outline"), center, radius)
+        for surface in (target, light):
+            pygame.draw.circle(surface, danger, center, radius, 1)
+            if burning:
+                pygame.draw.circle(surface, rgb("px.lamp.light"), center, max(1, radius - 2))
+        return
+    for cx, cy, dx, dy in (
+        (x, y, 1, 1),
+        (x + n - 1, y, -1, 1),
+        (x, y + n - 1, 1, -1),
+        (x + n - 1, y + n - 1, -1, -1),
+    ):
+        for surface in (target, light):
+            surface.fill(danger, (min(cx, cx + dx * 4), cy, 5, 1))
+            surface.fill(danger, (cx, min(cy, cy + dy * 4), 1, 5))
+    if burning:
+        for surface in (target, light):
+            for k in range(2, n - 2, 3):
+                jitter = (tick // 2 + k) % 3 - 1
+                surface.fill(danger, (x + 2, y + k + jitter, n - 4, 1))
+        light.fill(rgb("px.lamp"), (x + n // 2 - 2, y + n // 2 - 2, 4, 4))
+        return
+    reach = (n / 2 - 2) * max(0.0, min(1.0, progress))
+    mid = n / 2
+    for dy in range(2, n - 2):
+        for dx in range(2, n - 2):
+            if (
+                abs(dx - mid) <= reach
+                and abs(dy - mid) <= reach
+                and (dx + dy) % 4 == 0
+                or (abs(dx - mid) <= reach and abs(dy - mid) <= reach and (dx - dy) % 4 == 0)
+            ):
+                target.set_at((x + dx, y + dy), danger)
