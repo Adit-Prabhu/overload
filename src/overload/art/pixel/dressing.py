@@ -21,6 +21,7 @@ from __future__ import annotations
 import random
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import cache
 
 import pygame
 
@@ -50,10 +51,15 @@ def _px(s: pygame.Surface, token: str, x: int, y: int, w: int = 1, h: int = 1) -
     s.fill(rgb(token), (x, y, w, h))
 
 
-def _shade(s: pygame.Surface, x: int, y: int, w: int, h: int, alpha: int) -> None:
+@cache
+def _patch(w: int, h: int, alpha: int) -> pygame.Surface:
     patch = pygame.Surface((w, h), pygame.SRCALPHA)
     patch.fill(rgba("px.outline", alpha))
-    s.blit(patch, (x, y))
+    return patch
+
+
+def _shade(s: pygame.Surface, x: int, y: int, w: int, h: int, alpha: int) -> None:
+    s.blit(_patch(w, h, alpha), (x, y))
 
 
 def dress(
@@ -80,6 +86,18 @@ def dress(
     def upper(x: int, y: int) -> bool:
         return wall(x, y) and front(x, y + 1)
 
+    def clear(x: int, y: int) -> bool:
+        """No wall among the eight neighbors: room for something wider than a tile."""
+        return not any(wall(x + dx, y + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+
+    # Wall stencils (about 6 px a letter) keep their wall face bare.
+    lettered = {
+        (tx + k, ty)
+        for tx, ty, words, place in room.labels
+        if place == "wall"
+        for k in range(len(words) * 6 // TILE + 2)
+    }
+
     for ty in range(height):
         for tx in range(width):
             x0, y0 = tx * TILE, ty * TILE
@@ -87,17 +105,19 @@ def dress(
             if not wall(tx, ty):
                 _grime(background, x0, y0, tx, ty)
                 if room.decor[ty][tx] == "." and (tx, ty) not in props:
-                    _floor_story(background, light, emitters, tx, ty, x0, y0, sector)
+                    _floor_story(background, light, emitters, tx, ty, x0, y0, sector, clear(tx, ty))
                 _contact_shadow(background, x0, y0, wall, tx, ty)
                 if sector == 1:
                     _walk_line(background, x0, y0, wall, tx, ty)
-            elif upper(tx, ty):
+            elif upper(tx, ty) and (tx, ty) not in fixtures and (tx, ty) not in lettered:
                 _upper_run(background, light, x0, y0 + 4, tx, sector)
+            elif upper(tx, ty):
+                continue
             elif front(tx, ty) and (tx, ty) not in fixtures and room.decor[ty][tx] == ".":
                 top = y0 + (4 if not wall(tx, ty - 1) else 0)
                 _lower_detail(background, light, emitters, x0, top, tx, ty, sector)
     for i, (x, y) in enumerate(lamps):
-        if _rng(x, y, 41).random() < 0.34:  # a third of the lamps are failing
+        if _rng(x, y, 41).random() < 0.34:  # some lamps are failing
             emitters.append(Emitter("flicker", x, y, i))
     for ty in range(height):
         for tx in range(width):
@@ -137,7 +157,7 @@ def _contact_shadow(s, x0: int, y0: int, wall, tx: int, ty: int) -> None:
 
 
 def _walk_line(s, x0: int, y0: int, wall, tx: int, ty: int) -> None:
-    """Switchyard: a worn painted line two pixels in from the walls."""
+    """Switchyard: a worn painted line three pixels in from the walls."""
     rng = _rng(tx, ty, 43)
     for side, rect in (
         ("W", (x0 + 3, y0, 1, TILE)),
@@ -158,7 +178,11 @@ def _walk_line(s, x0: int, y0: int, wall, tx: int, ty: int) -> None:
                 )
 
 
-def _floor_story(s, light, emitters, tx: int, ty: int, x0: int, y0: int, sector: int) -> None:
+def _floor_story(
+    s, light, emitters, tx: int, ty: int, x0: int, y0: int, sector: int, clear: bool
+) -> None:
+    """Wear, and the sector's stories. Stains and wet patches spread past their tile, so
+    they only go where no wall is near (`clear`)."""
     rng = _rng(tx, ty, 37)
     roll = rng.random()
     # Wear everywhere: a scuff, a dropped bolt.
@@ -169,7 +193,7 @@ def _floor_story(s, light, emitters, tx: int, ty: int, x0: int, y0: int, sector:
         x, y = x0 + rng.randrange(3, 12), y0 + rng.randrange(3, 12)
         _px(s, "px.outline", x, y + 1, 2, 1)
         _px(s, "px.bot.3", x, y, 2, 1)
-    if sector == 1 and roll < 0.06:  # a soft oil stain
+    if sector == 1 and roll < 0.06 and clear:  # a soft oil stain
         cx, cy = x0 + rng.randrange(5, 11), y0 + rng.randrange(5, 11)
         stain = pygame.Surface((TILE + 4, TILE), pygame.SRCALPHA)
         for _ in range(3):
@@ -177,18 +201,18 @@ def _floor_story(s, light, emitters, tx: int, ty: int, x0: int, y0: int, sector:
             pygame.draw.circle(stain, rgba("px.outline", 70), (8 + rng.randint(-3, 3), 8), r)
         s.blit(stain, (cx - 10, cy - 8))
         _px(s, "px.floor.3", cx - 1, cy - 1)  # a sheen
-    elif sector == 2 and roll < 0.045:  # a wet patch with a glint, now and then a drip
+    elif sector == 2 and roll < 0.045 and clear:  # a wet patch with a glint, now and then a drip
         cx, cy = x0 + 8, y0 + rng.randrange(7, 10)
         w, h = rng.randrange(22, 32), rng.randrange(9, 13)
         rect = pygame.Rect(0, 0, w, h)
         rect.center = (cx, cy)
         wet = pygame.Surface(rect.size, pygame.SRCALPHA)
         pygame.draw.ellipse(wet, rgba("px.outline", 120), wet.get_rect())
-        pygame.draw.ellipse(wet, rgba("px.conduit.0", 150), wet.get_rect().inflate(-6, -4))
+        # Dark wet steel, kept off the Cooled robots' teal shells, and not emissive.
+        pygame.draw.ellipse(wet, rgba("px.wall.1", 150), wet.get_rect().inflate(-6, -4))
         s.blit(wet, rect)
-        _px(s, "px.conduit.1", rect.left + 4, rect.top + 2, w // 3, 1)
+        _px(s, "px.wall.3", rect.left + 4, rect.top + 2, w // 3, 1)
         _px(s, "px.ceramic.2", rect.left + 5, rect.top + 3)
-        _px(light, "px.conduit.0", rect.left + 4, rect.top + 2, w // 3, 1)
         if rng.random() < 0.6:
             emitters.append(Emitter("drip", cx, cy, tx * 3 + ty))
     elif sector == 2 and roll < 0.07:  # a floor drain
@@ -236,8 +260,8 @@ def _upper_run(s, light, x0: int, y0: int, tx: int, sector: int) -> None:
             _px(s, top, x0, y0 + py, TILE, 1)
         if tx % 6 == 2:  # a valve wheel
             pygame.draw.circle(s, rgb("px.outline"), (x0 + 8, y0 + 4), 3)
-            pygame.draw.circle(s, rgb("px.hostile.1"), (x0 + 8, y0 + 4), 3, 1)
-            _px(s, "px.hostile.2", x0 + 7, y0 + 1, 2, 1)
+            pygame.draw.circle(s, rgb("px.wall.3"), (x0 + 8, y0 + 4), 3, 1)
+            _px(s, "px.wall.4", x0 + 7, y0 + 1, 2, 1)
         if tx % 4 == 0:  # a flange
             _px(s, "px.wall.3", x0, y0 + 2, 2, 5)
             _px(s, "px.ceramic.1", x0, y0 + 7, 2, 5)
