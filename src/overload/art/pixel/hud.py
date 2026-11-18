@@ -54,19 +54,15 @@ SHORT = {
     "blink": "BLINK",
     "burst": "BURST",
     "arc_trail": "TRAIL",
+    "bolt_lance": "LANCE",
+    "chain_jump": "JUMP",
     "shock_cone": "CONE",
+    "shock_mine": "MINE",
+    "storm_aura": "AURA",
+    "impact_blink": "BLAST",
+    "displacer": "SWAP",
+    "meteor": "METEOR",
 }
-# Short names of the epic and legendary fused powers, for the loadout cards.
-RARITY_SHORT = {
-    ("arc_trail", "epic"): "STORM",
-    ("arc_trail", "legendary"): "RING",
-    ("shock_cone", "epic"): "FAN",
-    ("shock_cone", "legendary"): "ARCS",  # not CHAIN, Spark's evolution
-}
-
-
-def short_name(ability: str, rarity: str = "") -> str:
-    return RARITY_SHORT.get((ability, rarity), SHORT[ability])
 
 
 def rarity_marks(target: pygame.Surface, rarity: str, x: int, y: int) -> None:

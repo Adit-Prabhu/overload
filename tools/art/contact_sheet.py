@@ -31,6 +31,7 @@ from overload.art.palette import rgb  # noqa: E402
 from overload.art.pixel import actors, effects, hud, tiles  # noqa: E402
 from overload.paths import ROOT  # noqa: E402
 from overload.rooms import Room  # noqa: E402
+from overload.sim.powers import ABILITIES
 
 CELL = (88, 64)
 COLUMNS = 7
@@ -113,8 +114,8 @@ def items() -> list[tuple[str, Draw]]:
         ("drum", tiles.drum()),
     ):
         entries.append((name, centered(image)))
-    for power in ("spark", "blink", "arc_trail", "burst", "shock_cone"):
-        entries.append((f"{power} charge", centered(effects.charge_icon(power))))
+    for power in ABILITIES:  # every power's icon, fused ones included
+        entries.append((f"{power} icon".replace("_", " "), centered(effects.charge_icon(power))))
     for protocol in ("clamp", "insulate", "oscillate"):
         entries.append((f"{protocol} icon", centered(effects.protocol_icon(protocol))))
 
@@ -142,6 +143,11 @@ def items() -> list[tuple[str, Draw]]:
         ("fusion rings", lambda t, c: effects.fusion_rings(t, c, 0.7)),
         ("hazard tile", lambda t, c: effects.hazard_tile(t, scratch(), (c[0] - 8, c[1] - 8), 0.7)),
         ("reticle", centered(effects.reticle())),
+        ("blast ring", lambda t, c: effects.blast_ring(t, scratch(), c, 18, 0.4)),
+        ("shock mine", lambda t, c: effects.mine(t, scratch(), c, 0.5)),
+        ("storm aura", lambda t, c: effects.aura(t, scratch(), c, 6)),
+        ("meteor marker", lambda t, c: effects.landing_marker(t, c, 16, 0.6)),
+        ("bolt lance", lambda t, c: effects.lance_streak(t, scratch(), c, 1.0, 0.0)),
     ]
     return entries
 

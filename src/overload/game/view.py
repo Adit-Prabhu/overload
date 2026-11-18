@@ -28,67 +28,64 @@ from overload.sim.campaign import Campaign
 from overload.sim.powers import (
     COOLDOWN_KEYS,
     EVOLUTIONS,
-    FUSION_NAMES,
+    FUSED,
     INGREDIENTS,
+    NAMES,
     RECIPE_ORDER,
-    RECIPES,
+    RESULTS,
     Kit,
+    cooldown_of,
     evolved,
-    fused_name,
+    owned_result,
+    rarity_of,
 )
 from overload.sim.run import Run
 from overload.sim.state import Event
 from overload.sim.tuning import DEFAULT, Tuning
 
 VIEW = (256, 144)
+BLAST_TICKS = 12
+# Why a fused power did nothing (it costs nothing and is not counted).
+REJECTED = {
+    "chain_jump": "NO ROBOT IN REACH",
+    "displacer": "NO ROBOT TO SWAP WITH",
+    "meteor": "NO ROOM TO LAND",
+}
 SURGE_FEET = 8  # sprite feet sit this many pixels below the body center
+# The glow on the Surge's pack for an equipped power: a fused power shows the ingredient
+# its effect leans on.
 SOCKET_TOKENS = {
     "spark": "spark",
     "blink": "blink",
     "burst": "burst",
     "arc_trail": "spark",
+    "bolt_lance": "spark",
+    "chain_jump": "spark",
     "shock_cone": "burst",
+    "shock_mine": "burst",
+    "storm_aura": "spark",
+    "impact_blink": "burst",
+    "displacer": "blink",
+    "meteor": "burst",
 }
 DESCRIPTIONS = {
     "spark": "A HEAVY BOLT. TWO MORE CHARGES EVOLVE IT",
     "blink": "TELEPORT TOWARD THE CURSOR",
     "burst": "KNOCKBACK CONE THAT WIPES SHOTS",
     "arc_trail": "A BLINK THAT LEAVES A SHOCK LINE",
+    "bolt_lance": "DASH AS A BOLT, STRIKING ALL YOU PASS",
+    "chain_jump": "HOP ROBOT TO ROBOT, STRIKING EACH",
     "shock_cone": "A BURST PLUS A FAN OF SPARKS",
+    "shock_mine": "LOB A CHARGE THAT BURSTS IN A RING",
+    "storm_aura": "3 S OF BOLTS AT THE NEAREST ROBOT",
+    "impact_blink": "BLINK, THEN A RING BLAST ON LANDING",
+    "displacer": "SWAP PLACES WITH A ROBOT. BOTH SPOTS BLAST",
+    "meteor": "LEAP, UNTOUCHABLE, AND CRASH DOWN",
 }
 EVOLVED_INFO = {
     "spark": "EVOLVED. HITS CHAIN TO A SECOND ROBOT",
     "blink": "EVOLVED. A BURST OF SPEED ON ARRIVAL",
     "burst": "EVOLVED. A WIDER, LONGER CONE",
-}
-NAMES = {
-    "spark": "SPARK",
-    "blink": "BLINK",
-    "burst": "BURST",
-    "arc_trail": "ARC TRAIL",
-    "shock_cone": "SHOCK CONE",
-}
-RARITY_INFO = {
-    ("arc_trail", "epic"): "A LONGER, WIDER SHOCK LINE",
-    ("arc_trail", "legendary"): "STORM STEP PLUS 8 SPARKS",
-    ("shock_cone", "epic"): "A BURST PLUS FIVE SPARKS",
-    ("shock_cone", "legendary"): "FIVE SPARKS THAT CHAIN TWICE",
-}
-
-
-def power_name(kit: Kit, ability: str) -> str:
-    """The name the player sees: a fused power's name depends on its rarity."""
-    if ability in FUSION_NAMES:
-        return fused_name(ability, kit.rarity.get(ability, "rare"))
-    return NAMES[ability]
-
-
-COOLDOWNS = {
-    "spark": "spark_cooldown",
-    "blink": "blink_cooldown",
-    "burst": "burst_cooldown",
-    "arc_trail": "arc_trail_cooldown",
-    "shock_cone": "shock_cone_cooldown",
 }
 RIVAL_FEET = 20
 ROBOT_FEET = {"drone": 9, "relay": 8, "breaker": 9, "sweeper": 5, "sentry": 6}
@@ -235,6 +232,9 @@ class PixelView:
         self.sector = 1
         self.tint = [255.0, 255.0, 255.0]
         self.chains: list[tuple] = []
+        self.blasts: list[tuple] = []  # ring blasts of fused powers: x, y, radius, life
+        self.lance_from: tuple[float, float] | None = None  # where a Bolt Lance started
+        self.lance_bolt: tuple | None = None  # (start, end, life) after the lance ends
         self.notice: tuple[str, int] | None = None
         self.unlock_flash = 0
         self.shake = 0
@@ -357,7 +357,7 @@ class PixelView:
                 self._burst(event.x, event.y, 8, "px.blink.light", 1.4)
             elif event.kind == "blink_rejected":
                 self._burst(event.x, event.y, 4, "ui.dim", 0.6)
-                self.toast("NO ROOM TO BLINK", 40)
+                self.toast(REJECTED.get(event.power, "NO ROOM TO BLINK"), 40)
             elif event.kind == "unlock":
                 self._burst(event.x, event.y, 24, f"power.{event.power}", 2.2)
                 self.unlock_flash = 12
@@ -370,6 +370,16 @@ class PixelView:
                 self.bursts.append(
                     (event.x, event.y, angle, bool(event.ref), event.power == "shock_cone", 10)
                 )
+            elif event.kind == "blast":
+                self.blasts.append((event.x, event.y, event.ref, BLAST_TICKS))
+                self._burst(event.x, event.y, 14, "power.burst", 1.8)
+                if event.power == "meteor":
+                    self.shake = 10
+            elif event.kind == "lance":
+                self._burst(event.x, event.y, 10, "power.spark", 1.6)
+                self.lance_from = (event.x, event.y)
+            elif event.kind == "leap":
+                self._burst(event.x, event.y + SURGE_FEET, 12, "px.wall.3", 1.4)
             elif event.kind == "chain_from":
                 chain_start = (event.x, event.y)
             elif event.kind == "chain" and chain_start is not None:
@@ -554,6 +564,10 @@ class PixelView:
         self.blinks = [(x, y, life - 1) for x, y, life in self.blinks if life > 1]
         self.bursts = [(*b[:5], b[5] - 1) for b in self.bursts if b[5] > 1]
         self.chains = [(a, b, life - 1) for a, b, life in self.chains if life > 1]
+        self.blasts = [(x, y, r, life - 1) for x, y, r, life in self.blasts if life > 1]
+        if self.lance_bolt:
+            start, end, life = self.lance_bolt
+            self.lance_bolt = (start, end, life - 1) if life > 1 else None
         self.unlock_flash = max(0, self.unlock_flash - 1)
         self.shake = max(0, self.shake - 1)
         self.fusion_flash = max(0, self.fusion_flash - 1)  # per tick, so any frame rate
@@ -605,14 +619,22 @@ class PixelView:
         ]
 
         for trail in world.trails:
-            storm = trail.width > tuning.trail_width  # Storm Step and Thunderhead
             effects.arc_trail(
                 screen,
                 self.glow.layer,
                 v(trail.x1, trail.y1),
                 v(trail.x2, trail.y2),
-                trail.ttl / (tuning.storm_trail_ttl if storm else tuning.trail_ttl),
-                storm,
+                trail.ttl / tuning.trail_ttl,
+            )
+        for device in world.devices:  # Shock Mines
+            fuse = device.timer / tuning.shock_mine_fuse if device.timer >= 0 else -1.0
+            effects.mine(screen, self.glow.layer, v(device.x, device.y), fuse)
+        if player.leap > 0:  # Meteor: where the Surge will come down
+            effects.landing_marker(
+                screen,
+                v(player.leap_x1, player.leap_y1),  # the true circle the blast hits
+                tuning.meteor_radius,
+                1.0 - player.leap / tuning.meteor_ticks,
             )
         for hostile in world.hostiles:
             if hostile.kind == "relay" and hostile.phase == "blink":
@@ -701,8 +723,29 @@ class PixelView:
             image = actors.surge(state, tick, facing_left, sockets)
             if hit_blink:
                 image = effects.tinted(image, "fx.flash")
-            draw_at_feet(image, surge_feet)
+            lift = 0
+            if player.leap > 0:  # Meteor: an arc up and down over the ground shadow
+                done = 1.0 - player.leap / tuning.meteor_ticks
+                lift = round(28 * 4 * done * (1.0 - done))
+            draw_at_feet(image, (surge_feet[0], surge_feet[1] - lift))
+            if player.lance and player.dodging:
+                effects.lance_streak(
+                    screen, self.glow.layer, v(player.x, player.y), player.dodge_dx, player.dodge_dy
+                )
+                if self.lance_from is not None:  # the bolt from where the dash began
+                    effects.chain_bolt(
+                        screen, self.glow.layer, v(*self.lance_from), v(player.x, player.y)
+                    )
+                    self.lance_bolt = (self.lance_from, (player.x, player.y), 8)
+            elif self.lance_bolt:
+                start, end, _life = self.lance_bolt
+                effects.chain_bolt(screen, self.glow.layer, v(*start), v(*end))
+            else:
+                self.lance_from = None
+            if player.aura > 0:
+                effects.aura(screen, self.glow.layer, v(player.x, player.y), tick)
             hand = v(*aiming.hand(player, tuning))
+            hand = (hand[0], hand[1] - lift)  # the caster rises with a Meteor
             caster = pygame.transform.rotate(actors.caster(), -math.degrees(aim))
             screen.blit(
                 caster,
@@ -805,6 +848,8 @@ class PixelView:
             )
         for a, b, _life in self.chains:
             effects.chain_bolt(screen, self.glow.layer, v(*a), v(*b))
+        for x, y, radius, life in self.blasts:
+            effects.blast_ring(screen, self.glow.layer, v(x, y), radius, life / BLAST_TICKS)
         for spark in self.sparks:
             sx, sy = v(spark.x, spark.y)
             for surface in (screen, self.glow.layer):
@@ -847,8 +892,7 @@ class PixelView:
                 cooldowns=tuple(
                     min(
                         1.0,
-                        player.cooldowns.get(COOLDOWN_KEYS[slot], 0)
-                        / getattr(tuning, COOLDOWNS[slot]),
+                        player.cooldowns.get(COOLDOWN_KEYS[slot], 0) / cooldown_of(slot, tuning),
                     )
                     if slot
                     else 0.0
@@ -918,7 +962,7 @@ class PixelView:
                 screen.fill(rgb("px.wall.1"), (left - 2, y - 1, 104, 10))
             icon = effects.charge_icon(ability)
             screen.blit(icon, icon.get_rect(midleft=(left + 1, y + 4)))
-            name = power_name(kit, ability)
+            name = NAMES[ability]
             hud.text(screen, name, (left + 12, y), "ui.text" if chosen else "ui.dim")
             if ability in EVOLUTIONS:
                 count = min(kit.fragments.get(ability, 0), tuning.evolve_at)
@@ -928,8 +972,8 @@ class PixelView:
                 spare = kit.bank.get(ability, 0)
                 if spare:  # spare charges, spent on rerolls
                     hud.text(screen, f"+{spare}", (left + 86, y), "ui.dim", "topright")
-            elif ability in FUSION_NAMES:
-                hud.rarity_marks(screen, kit.rarity.get(ability, "rare"), left + 88, y + 2)
+            elif ability in FUSED:
+                hud.rarity_marks(screen, rarity_of(ability), left + 88, y + 2)
         divider_x = left + 108
         screen.fill(rgb("px.wall.1"), (divider_x, col_y, 1, 64))
 
@@ -944,14 +988,14 @@ class PixelView:
             if ability:
                 icon = effects.charge_icon(ability)
                 screen.blit(icon, icon.get_rect(midleft=(card.x + 8, card.centery)))
-                short = hud.short_name(ability, kit.rarity.get(ability, ""))
-                hud.text(screen, short, (card.x + 18, card.y + 4), "ui.text")
+                hud.text(screen, hud.SHORT[ability], (card.x + 18, card.y + 4), "ui.text")
             else:
                 hud.text(screen, "EMPTY", (card.x + 18, card.y + 4), "px.floor.3")
         hud.text(screen, "FUSIONS", (rx, col_y + 31), "ui.dim")
         for row, (a, b) in enumerate(RECIPE_ORDER):
             y = col_y + 42 + row * 11
-            result = RECIPES[frozenset((a, b))]
+            owned = owned_result(kit.unlocked, a, b)
+            result = owned or RESULTS[frozenset((a, b))][0]
             for i, ability in enumerate((a, b, result)):
                 icon = effects.charge_icon(ability)
                 spot = icon.get_rect(center=(rx + 4 + i * 17, y + 4))
@@ -961,15 +1005,15 @@ class PixelView:
             hud.text(screen, "+", (rx + 13, y), "ui.dim", "midtop")
             hud.text(screen, "=", (rx + 30, y), "ui.dim", "midtop")
             missing = [p for p in (a, b) if p not in kit.unlocked]
-            if result in kit.unlocked:
-                rarity = kit.rarity.get(result, "rare")
+            if owned:
+                rarity = rarity_of(owned)
                 status, token = rarity.upper(), f"px.rarity.{rarity}"
             elif missing:
                 status, token = f"NEED {missing[0].upper()}", "px.floor.3"
             else:
                 status, token = "F FUSE", "px.hazard.1"
             hud.text(screen, status, (right, y), token, "topright")
-            if result in kit.unlocked and self.fusion_flash > 0:  # the fusion just made
+            if owned and self.fusion_flash > 0:  # the fusion just made
                 glow = round(255 * self.fusion_flash / FUSION_TICKS)
                 ring = pygame.Rect(rx - 3, y - 2, right - rx + 6, 12)
                 frame = pygame.Surface(ring.size, pygame.SRCALPHA)
@@ -984,13 +1028,11 @@ class PixelView:
             lines, token = _wrap(message.upper(), 38), "px.lamp"
         elif pick >= 0:
             ability = rows[pick]
-            name = power_name(kit, ability)
+            name = NAMES[ability]
             info = DESCRIPTIONS[ability]
             if evolved(kit.fragments, ability, tuning) and ability in EVOLVED_INFO:
                 info = EVOLVED_INFO[ability]
-            if ability in FUSION_NAMES:
-                rarity = kit.rarity.get(ability, "rare")
-                info = RARITY_INFO.get((ability, rarity), info)
+            if ability in FUSED:
                 a, b = INGREDIENTS[ability]
                 cost = tuning.reroll_cost
                 info = f"{info}. REROLL {cost} {a.upper()} + {cost} {b.upper()}"

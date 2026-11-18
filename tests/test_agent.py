@@ -21,6 +21,7 @@ from overload.agent.tactics import catalogue, schedules, validate
 from overload.session.trace import TraceWriter, context_hash
 from overload.sim.inputs import InputFrame
 from overload.sim.run import Run
+from overload.sim.state import Device
 
 SESSION = "11111111-2222-3333-4444-555555555555"
 
@@ -356,7 +357,8 @@ def test_hidden_state_never_changes_the_summary() -> None:
         twin.fragments = {"spark": 5, "blink": 3}
         twin.player.slots = ["arc_trail", "blink"]
         twin.bank = {"spark": 4, "blink": 2}
-        twin.rarity = {"arc_trail": "legendary"}
+        twin.player.aura, twin.player.lance, twin.player.struck = 50, True, [3]
+        twin.devices = [Device(99, "mine", 10.0, 10.0, 20.0, 20.0, 5)]
         twin.fusions, twin.streak = 6, 2
         twin.player.cooldowns = {"teleport": 40}
         for hostile in twin.hostiles:

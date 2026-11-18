@@ -136,7 +136,8 @@ class Campaign:
                 return
             player = self.world.player
             room = floorplay.room_of(self.arena.floor, player.x, player.y)
-            if room is not None and room.id == f"fuse_{self.encounter}":
+            landed = player.leap == 0  # never enter the Fuse Box mid-Meteor
+            if landed and room is not None and room.id == f"fuse_{self.encounter}":
                 self.world.player.charge = self.tuning.player_max_charge  # the safe room
                 self.kit = Kit.from_world(self.world)
                 self.stage = "fuse_box"

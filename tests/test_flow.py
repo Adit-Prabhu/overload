@@ -13,7 +13,7 @@ from overload.game.flow import FALLBACK_LINE, FUSE_NOTICES, MIN_FUSE_TICKS, Fuse
 from overload.session.trace import TraceWriter
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import IDLE, InputFrame
-from overload.sim.powers import fused_name
+from overload.sim.powers import NAMES, RESULTS, rarity_of
 from overload.sim.tuning import DEFAULT
 
 
@@ -203,9 +203,10 @@ def test_menu_fusion_shows_the_supported_recipe_when_it_fails() -> None:
     session.campaign.world.unlocked.append("blink")
     menu.press(session, "fuse")
     world = session.campaign.world
-    assert world.unlocked == ["spark", "blink", "arc_trail"]
-    rarity = world.rarity["arc_trail"]
-    assert menu.notice == f"{fused_name('arc_trail', rarity)} {rarity.upper()}"
+    power = world.unlocked[-1]
+    assert world.unlocked[:2] == ["spark", "blink"]
+    assert power in RESULTS[frozenset(("spark", "blink"))]
+    assert menu.notice == f"{NAMES[power]} {rarity_of(power).upper()}"
 
 
 def test_menu_with_nothing_stolen_ignores_equip_keys() -> None:
@@ -336,7 +337,7 @@ def test_the_paused_loadout_menu_works_mid_sector() -> None:
     session.campaign.world.unlocked = ["spark", "blink"]
     press_keys(reader, pygame.K_f, pygame.K_RETURN)
     sounds = fuse_box_frame(session, menu, reader, recording, was_in_fuse_box=False, paused=True)
-    assert "arc_trail" in session.campaign.world.unlocked and "fusion" in sounds
+    assert len(session.campaign.world.unlocked) == 3 and "fusion" in sounds
     assert recording.menu[-1][1:] == ["fuse", "spark", "blink"]
     assert session.campaign.stage == "encounter", "Enter does nothing outside the Fuse Box"
 

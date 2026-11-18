@@ -307,22 +307,17 @@ def test_sector_variants_recolor_the_shell_but_not_the_danger_red(headless_pygam
     assert tier_colors(stock, 1) is stock
 
 
-@pytest.mark.parametrize("rarity", ["rare", "epic", "legendary"])
-def test_the_menu_names_fused_powers_by_rarity_and_marks_it(headless_pygame, rarity) -> None:
+@pytest.mark.parametrize(
+    "power, rarity",
+    [("arc_trail", "rare"), ("bolt_lance", "epic"), ("chain_jump", "legendary")],
+)
+def test_the_menu_marks_each_fused_power_with_its_rarity(headless_pygame, power, rarity) -> None:
     from overload.art.palette import rgb
-    from overload.game.view import PixelView, power_name
+    from overload.game.view import PixelView
     from overload.sim.campaign import Campaign
-    from overload.sim.powers import Kit, fused_name
+    from overload.sim.powers import Kit
 
-    kit = Kit(
-        ["spark", "blink", "arc_trail"],
-        {"spark": 2},
-        ["arc_trail", ""],
-        bank={"spark": 1},
-        rarity={"arc_trail": rarity},
-    )
-    assert power_name(kit, "arc_trail") == fused_name("arc_trail", rarity)
-    assert power_name(kit, "spark") == "SPARK"
+    kit = Kit(["spark", "blink", power], {"spark": 2}, [power, ""], bank={"spark": 1})
     screen = pygame.Surface((256, 144))
     PixelView(Campaign(1)).draw_fuse_box(screen, 1, True, None, kit, 2, None, title="LOADOUT")
     mark = rgb(f"px.rarity.{rarity}")

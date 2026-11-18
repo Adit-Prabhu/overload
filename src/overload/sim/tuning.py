@@ -93,11 +93,6 @@ class Tuning:
     trail_width: float = 4.0
     trail_damage: int = 1
     trail_interval: int = 12  # ticks between trail damage pulses
-    storm_trail_ttl: int = 138  # Storm Step and Thunderhead (epic and legendary Arc Trail)
-    storm_trail_width: float = 5.0
-    thunder_spark_damage: int = 1  # each spark of Thunderhead's ring
-    fan_spark_damage: int = 1  # the outer pair of Shock Fan's and Overcurrent's fans
-    overcurrent_chain_damage: int = 1  # each arc of an Overcurrent spark (Spark not evolved)
     arc_trail_cooldown: int = 150
 
     # The Relay: blinks to a marked spot, then aims and fires. It carries Blink.
@@ -181,6 +176,47 @@ class Tuning:
     fuse_odds: tuple[int, int, int] = (60, 30, 10)
     fuse_guarantee_after: int = 2
     reroll_cost: int = 1
+    # The fused powers (sim/fusions.py). Each has its own cooldown.
+    bolt_lance_cooldown: int = 100
+    lance_ticks: int = 15
+    lance_speed: float = 4.6
+    lance_reach: float = 3.0  # past the Surge's body
+    lance_damage: int = 6
+    chain_jump_cooldown: int = 240
+    chain_jump_range: float = 96.0  # the first hop, from the Surge
+    chain_jump_hop: float = 72.0  # each later hop, from the last body struck
+    chain_jump_hops: int = 4
+    chain_jump_damage: int = 4
+    chain_jump_grace: int = 12  # untouchable for a moment after the last hop
+    shock_mine_cooldown: int = 120
+    shock_mine_range: float = 80.0
+    shock_mine_speed: float = 3.0
+    shock_mine_fuse: int = 30
+    shock_mine_radius: float = 34.0
+    shock_mine_damage: int = 4
+    shock_mine_knock: float = 12.0
+    storm_aura_cooldown: int = 330
+    storm_aura_ticks: int = 180
+    storm_aura_interval: int = 15
+    storm_aura_range: float = 64.0
+    storm_aura_damage: int = 2
+    impact_blink_cooldown: int = 135
+    impact_radius: float = 30.0
+    impact_damage: int = 3
+    impact_knock: float = 12.0
+    displacer_cooldown: int = 150
+    displacer_range: float = 110.0
+    displacer_radius: float = 26.0
+    displacer_damage: int = 2
+    displacer_knock: float = 10.0
+    meteor_cooldown: int = 270
+    meteor_range: float = 96.0
+    meteor_ticks: int = 30
+    meteor_radius: float = 48.0
+    meteor_damage: int = 4
+    meteor_knock: float = 12.0
+    meteor_grace: int = 12  # untouchable for a moment after landing
+    fused_wide: float = 1.25  # an evolved Burst widens its fused powers' blasts and field
 
     signature_quiet: int = 66  # the protocol rests this long after a signature (a quake's run)
 
@@ -249,13 +285,24 @@ class Tuning:
         odds = self.fuse_odds
         if len(odds) != 3 or any(type(w) is not int or w < 0 for w in odds) or sum(odds[1:]) <= 0:
             raise ValueError("Fusion odds need three whole weights and a chance of epic or better")
-        light = (self.fan_spark_damage, self.thunder_spark_damage, self.overcurrent_chain_damage)
-        if min(light) < 1:
-            raise ValueError("Every fused spark and arc must deal at least 1 damage")
         if self.reroll_cost < 1 or self.fuse_guarantee_after < 1:
             raise ValueError("A reroll must cost a charge and the guarantee needs a streak")
-        if self.storm_trail_ttl < self.trail_ttl or self.storm_trail_width < self.trail_width:
-            raise ValueError("A Storm Step trail cannot be weaker than an Arc Trail")
+        if self.lance_speed >= self.player_radius:
+            raise ValueError(
+                "Bolt Lance speed must stay below the player radius to avoid tunneling"
+            )
+        for name in ("shock_mine_knock", "impact_knock", "displacer_knock", "meteor_knock"):
+            if getattr(self, name) / 2 >= THINNEST_OBSTACLE:
+                raise ValueError(f"{name}: knockback steps could push a robot through a prop")
+        if self.shock_mine_speed >= THINNEST_OBSTACLE or self.meteor_ticks < 0.4 * TICK_RATE:
+            raise ValueError("A mine could tunnel, or a Meteor's landing marker shows too briefly")
+        positive = ("storm_aura_interval", "shock_mine_fuse", "chain_jump_hops", "lance_ticks")
+        if any(getattr(self, name) < 1 for name in positive) or self.shock_mine_speed <= 0:
+            raise ValueError("Fused power timers, counts and speeds must be positive")
+        if self.fused_wide < 1.0:
+            raise ValueError("An evolution never shrinks a blast")
+        if self.blink_min_distance > self.meteor_range:
+            raise ValueError("Meteor range is below the Blink minimum")
         if self.dodge_speed >= self.player_radius:
             raise ValueError("Dodge speed must stay below the player radius to avoid tunneling")
 

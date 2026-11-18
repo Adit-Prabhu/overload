@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import random
 
-from overload.sim import floorplay, robots
+from overload.sim import floorplay, fusions, robots
 from overload.sim.aiming import aim, launch_point
 from overload.sim.arena import SUBSTATION, Arena
 from overload.sim.bosses import BY_KIND, COS20, RING, SIN20
@@ -81,6 +81,7 @@ def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena =
     _move_player(world, inp, tuning, arena)
     _fire(world, inp, tuning, arena)
     use_powers(world, inp, tuning, arena)
+    fusions.tick(world, tuning, arena)
     robots.tick(world, tuning, arena)
     _rival(world, tuning, arena)
     _hazards(world, tuning)
@@ -108,7 +109,7 @@ def tell_progress(hostile: Hostile, tuning: Tuning = DEFAULT) -> float:
 
 def _dodge(world: World, inp: InputFrame, tuning: Tuning) -> None:
     player = world.player
-    if not inp.dodge or player.dodging or player.dodge_cooldown > 0:
+    if not inp.dodge or player.busy or player.dodge_cooldown > 0:
         return
     dx, dy = normalize(inp.move_x, inp.move_y)
     if not (dx or dy):
@@ -121,8 +122,11 @@ def _dodge(world: World, inp: InputFrame, tuning: Tuning) -> None:
 
 def _move_player(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> None:
     player = world.player
+    if player.leap > 0:
+        return  # in the air: sim/fusions.py flies the Meteor
     if player.dodging:
-        vx, vy = player.dodge_dx * tuning.dodge_speed, player.dodge_dy * tuning.dodge_speed
+        speed = tuning.lance_speed if player.lance else tuning.dodge_speed
+        vx, vy = player.dodge_dx * speed, player.dodge_dy * speed
     else:
         nx, ny = normalize(inp.move_x, inp.move_y)
         speed = tuning.player_speed * (tuning.boost_factor if player.boost > 0 else 1.0)
@@ -132,7 +136,7 @@ def _move_player(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) ->
 
 def _fire(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> None:
     player = world.player
-    if not inp.fire or player.gun_cooldown > 0 or player.dodging:
+    if not inp.fire or player.gun_cooldown > 0 or player.busy:
         return
     player.gun_cooldown = tuning.gun_cooldown
     world.events.append(Event("shot", player.x, player.y))  # a visible shot, even a fizzle
@@ -204,8 +208,8 @@ def _hits(world: World, tuning: Tuning) -> None:
             if target is not None:
                 target.health -= shot.damage
                 world.events.append(Event("hostile_hit", target.x, target.y, target.id))
-                if shot.kind == "spark" and shot.arc != "none":
-                    spark_chain(world, tuning, target, shot.arc == "overcurrent")
+                if shot.kind == "spark":
+                    spark_chain(world, tuning, target)
                 continue
         survivors.append(shot)
     world.projectiles = survivors
@@ -230,6 +234,8 @@ def _timers(player: Player) -> None:
     player.dodge_cooldown = max(0, player.dodge_cooldown - 1)
     player.invulnerable = max(0, player.invulnerable - 1)
     player.boost = max(0, player.boost - 1)
+    if player.dodge_ticks == 0:
+        player.lance = False
 
 
 def _outcome(world: World, tuning: Tuning) -> None:
@@ -249,9 +255,10 @@ def _outcome(world: World, tuning: Tuning) -> None:
 
 def _separate(world: World, tuning: Tuning, arena: Arena) -> None:
     """Bodies are solid: the Surge cannot stand inside the Regulator or a machine. It is the
-    one pushed (it is the lightest body), then kept out of walls. A dodge slips through."""
+    one pushed (it is the lightest body), then kept out of walls. A dodge, a Bolt Lance and
+    a Meteor in the air slip through."""
     player = world.player
-    if player.dodging:
+    if player.busy:
         return
     bodies = [(h.x, h.y, h.radius) for h in world.hostiles if h.health > 0]
     rival = world.rival
