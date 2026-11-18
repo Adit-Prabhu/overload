@@ -146,8 +146,9 @@ Each step is its own PR with an independent review. Adit merges.
 | --- | --- | --- |
 | 1 | This document | 1.5 |
 | 2 | The sim (phases, rotations, vents, the eight new kit attacks, the reward, guards, tests, hashes, bot balance) | 5, done overnight |
-| 3 | The look: intimidating chassis at boss scale, vent and core poses, name card, phase effect, death sequence, notched bar, own sound cues | 5 to 6 |
-| 4 | Fused-power protocol check on the new kits, with numbers in the PR | 1.5 |
+| 3 | Presentation implemented: new phase silhouettes, vent poses, entrance, notched bar, victory animation and results | PR #41 |
+| 3 follow-up | Sound implemented: distinct attack-family, damage, vent and victory cues | Boss audio PR |
+| 4 | Fused-power protocol check on the new kits during the planned roster balance pass, with numbers in its PR | 1.5 |
 
 The kit attacks are Arc Ring (existing), Double Ring, Live Wire, Insulator Volley, Quake (existing), Double Quake, Bull Charge, Coolant Spray, Summon (existing), Lattice, Spiral (existing) and Core Spiral. The variants "twice" reuse their base attack.
 

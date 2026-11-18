@@ -166,7 +166,7 @@
       "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
       "license": "CC-BY-4.0",
       "license_file": "assets/audio/LICENSE.txt",
-      "sha256": "d2bf9c50de4df97e2a8b615359ffd3bfc6dde475d68a855b07024ac164244989",
+      "sha256": "513aaa4e1319d7ac08ec4ef04f47df8e6cecf79b2cdef4538771359d7d965024",
       "added": "2026-11-18",
       "approval": "Pending Adit's listen-through"
     },
@@ -564,6 +564,18 @@
       "license_file": "assets/audio/LICENSE.txt",
       "sha256": "79bd7a9705b0ac98c81cfd8c501c30a8a437084091f234af58ad09eb0fc4462c",
       "added": "2026-11-17",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
+      "id": "SFX.spiral",
+      "path": "assets/audio/sfx_spiral.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "CC-BY-4.0",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "d7c4cf149e3aa2200185d910b27e5e8f9891d26e5c33b5ebfbe9aa7d21a5f74b",
+      "added": "2026-11-18",
       "approval": "Pending Adit's listen-through"
     },
     {

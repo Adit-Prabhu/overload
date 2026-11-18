@@ -398,7 +398,9 @@ def _live_wire() -> np.ndarray:
     rng = np.random.default_rng(31)
     buzz = square(MAINS_HZ * 4 * (1 + 0.02 * sine(37, n)), n, duty=0.2)
     crackle = noise(n, "wire") * (rng.random(n) > 0.8)
-    return crush(svf(buzz, 2600) * 0.45 + crackle * 0.45, bits=6) * envelope(n, 0.005, 0.05, 0.85, 0.15)
+    return crush(svf(buzz, 2600) * 0.45 + crackle * 0.45, bits=6) * envelope(
+        n, 0.005, 0.05, 0.85, 0.15
+    )
 
 
 def _volley() -> np.ndarray:
@@ -449,6 +451,16 @@ def _lattice() -> np.ndarray:
     return svf(chord, sweep(300, 3000, n), q=2.0) * envelope(n, 0.02, 0.1, 0.8, 0.3) * 0.25
 
 
+def _spiral() -> np.ndarray:
+    """The Grid Core spiral: a descending coil sweep with a rotating upper voice."""
+    n = samples(0.58)
+    rotor = 0.55 + 0.45 * sine(11, n)
+    low = saw(sweep(hz("B3"), hz("B2"), n), n)
+    high = sine(sweep(hz("B4"), hz("F#5"), n), n) * rotor
+    mix = svf(low, sweep(2400, 550, n), q=1.3) * 0.36 + high * 0.28
+    return mix * envelope(n, 0.012, 0.08, 0.8, 0.23)
+
+
 def _vent() -> np.ndarray:
     """Venting: a long steam release that falls away. The cue that says hit it now."""
     n = samples(1.1)
@@ -474,9 +486,12 @@ def _boss_down() -> np.ndarray:
     for i in range(6):
         m = samples(0.4)
         boom = sine(sweep(110 - i * 8, 30, m), m) * decay(m, 0.25)
-        place(out, drive(boom + noise(m, f"boom{i}") * decay(m, 0.05) * 0.5, 1.8) * 0.6,
-              samples(i * 0.17 + rng.random() * 0.03))
-    place(out, _motif(("B3", "D4", "F#4", "A#4", "B4"), 0.11, 0.5) * 1.2, samples(1.2))
+        place(
+            out,
+            drive(boom + noise(m, f"boom{i}") * decay(m, 0.05) * 0.5, 1.8) * 0.6,
+            samples(i * 0.17 + rng.random() * 0.03),
+        )
+    place(out, _motif(("B3", "D#4", "F#4", "A#4", "B4"), 0.11, 0.5) * 1.2, samples(1.2))
     return out
 
 
@@ -588,6 +603,7 @@ SFX: dict[str, Callable[[], np.ndarray]] = {
     "sfx_charge_impact": _charge_impact,
     "sfx_spray": _spray,
     "sfx_lattice": _lattice,
+    "sfx_spiral": _spiral,
     "sfx_vent": _vent,
     "sfx_phase_change": _phase_change,
     "sfx_boss_down": _boss_down,
