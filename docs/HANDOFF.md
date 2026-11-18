@@ -12,6 +12,7 @@ Snapshot of November 17, 2026. For any agent or chat picking up the work. The st
   - the rival service: Cloudflare Worker, deployed, with both smoke tests passing (docs/evidence/LIVE_SMOKE_2026-11-17.md)
   - evidence version 3, and the MIT and CC BY 4.0 licenses
 - The current focus is making powers and fusion the heart of the game. The spec is [POWERS_AND_FUSION.md](POWERS_AND_FUSION.md) (version 0.3), and its section 9 has the build order.
+- Until the stack below is merged, the spec and everything in "How the fusion system fits together" exist only in PRs #30 to #34, not on `main`.
 
 ## Open PRs (stacked, reviewed, waiting for Adit to merge in this order)
 | PR | What | Key files |
@@ -33,7 +34,7 @@ git switch main && git pull --ff-only
 1. Bulwark (from the Sentry) and Magnet (from the Sweeper) base powers: drops, charge cores, evolutions (REFLECT, CRUSH), effects, sounds, and the slotting banner. Then a bot protocol check that shields do not trivialize projectile protocols.
 2. `config/evidence.json` version 4, which counts power uses by cooldown family (shot, teleport, pulse, shield, pull). Make `config_hash` cover it. Adit then redeploys the Worker and runs the smoke test (docs/DEPLOY.md).
 3. The 21 powers of the Bulwark and Magnet pairs (spec section 5), each its own verb and icon, held to the power step guard. The cut order is whole pairs (section 9).
-4. Balance with the floor bot over 8 seeds, before the Nov 25 playtest.
+4. Balance with the floor bot over 8 seeds and Adit's playtest notes, Nov 26 to 27 (spec section 9, step 8).
 
 ## Open decisions for Adit
 - The playtest seed rule (spec section 11). Recommendation: one seed per participant for both conditions, and different seeds across participants.
