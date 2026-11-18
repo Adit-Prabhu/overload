@@ -107,15 +107,24 @@ class Rival:
     # The chassis (sim/bosses.py) and its signature attack, on a timer of its own.
     kind: str = "regulator"
     phase: int = 1
-    sig_action: str = "idle"  # idle, tell, fire (the spiral) or quiet
+    # The chassis kit (sim/bosses.py): which attack runs and where it is in its rotation.
+    sig_action: str = "idle"  # idle, tell, active (lines live, charging, spiral) or quiet
     sig_timer: int = 0
     spin_x: float = 1.0
     spin_y: float = 0.0
+    sig_name: str = ""
+    sig_index: int = 0  # how far round the phase's rotation it is
+    sig_step: int = 0  # which part of a multi-part attack (the second ring, the second charge)
+    vent: int = 0  # ticks left venting: standing still, taking extra damage
+    change: int = 0  # ticks left of a phase change: shielded, nothing fires
+    wires: list[tuple[float, float]] = field(default_factory=list)  # Live Wire directions
+    marks: list[tuple[float, float]] = field(default_factory=list)  # where volleys land
 
 
 @dataclass(slots=True)
 class Hazard:
-    """An Insulate hazard tile: it arms (the telegraph), then hurts while active."""
+    """A hazard tile: it arms (the telegraph), then hurts while active. `kind` is who laid
+    it, so each reads differently: Insulate's tiles, a Lattice cell or falling debris."""
 
     id: int
     x: float
@@ -123,6 +132,7 @@ class Hazard:
     size: float
     arming: int
     active: int
+    kind: str = "insulate"
 
 
 @dataclass(slots=True)

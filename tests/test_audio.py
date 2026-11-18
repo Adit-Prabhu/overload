@@ -152,6 +152,22 @@ def test_effects_never_take_a_music_channel(live_audio) -> None:
     assert pygame.mixer.get_num_channels() == 32
 
 
+def test_boss_cues_signal_the_outcome_and_distinguish_the_spiral(live_audio, monkeypatch) -> None:
+    from overload.sim.campaign import Campaign
+    from overload.sim.state import Event
+
+    world = Campaign(1).world
+    heard = []
+    monkeypatch.setattr(live_audio, "play", lambda name, _: heard.append(name))
+    live_audio.events([Event(kind, 0, 0) for kind in ("phase_change", "overload")], world)
+    live_audio.events([Event(kind, 0, 0) for kind in ("boss_ring", "boss_spiral")], world)
+    event = Event("rival_destroyed", 0, 0)
+    live_audio.events([event], world)
+    world.outcome = "down"
+    live_audio.events([event], world)
+    assert heard == ["phase_change", "ring_burst", "spiral", "boss_down"]
+
+
 def test_the_boot_sting_reaches_the_mixer(live_audio) -> None:
     import pygame
     from floorbot import enter
