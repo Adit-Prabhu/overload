@@ -567,3 +567,59 @@ def test_ambience_animates_near_the_camera_only(headless_pygame) -> None:
     assert view.ripples == []
     assert any(flickering(t, 3) for t in range(600))
     assert not all(flickering(t, 3) for t in range(30)), "a failing lamp is mostly on"
+
+
+def test_each_chassis_body_sits_on_its_hit_circle(headless_pygame) -> None:
+    """Drawn at its feet anchor, each chassis' body center lands on the sim position, so
+    shots that visibly hit the body hit the circle. Measured on the body's own colors."""
+    from overload.art.pixel import regulators
+    from overload.game.view import RIVAL_FEET
+
+    for kind in regulators.KINDS:
+        image = regulators.body(kind)
+        shell = {rgb(token) for token in regulators.SHELLS[kind]}
+        rows = [
+            y
+            for y in range(image.get_height())
+            for x in range(image.get_width())
+            if tuple(image.get_at((x, y)))[:3] in shell
+        ]
+        center = (min(rows) + max(rows)) / 2  # the shell's extent
+        offset = RIVAL_FEET[kind] - (image.get_height() - center)  # body center below sim y
+        assert abs(offset) <= 6, (kind, offset)
+
+
+def test_no_chassis_is_cut_off_at_the_top(headless_pygame) -> None:
+    from overload.art.pixel import regulators
+
+    for kind in regulators.KINDS:
+        for step in (None, *range(8)):
+            for charged in (False, True):
+                image = regulators.body(kind, step, charged)
+                # Row 1 is the canvas' first row (row 0 is the outline pad). Only the
+                # outline of something below may reach it, never the art itself.
+                top = {
+                    tuple(image.get_at((x, 1)))
+                    for x in range(image.get_width())
+                    if image.get_at((x, 1)).a
+                }
+                assert top <= {(*rgb("px.outline"), 255)}, (kind, step)
+
+
+def test_the_legacy_regulator_draws_as_the_linesman(headless_pygame) -> None:
+    from overload.art.pixel import regulators
+
+    a = regulators.regulator("clamp", False, 0.3, kind="regulator")
+    b = regulators.regulator("clamp", False, 0.3, kind="linesman")
+    assert pygame.image.tobytes(a, "RGBA") == pygame.image.tobytes(b, "RGBA")
+
+
+def test_the_regulator_steps_forward_when_it_walks_forward() -> None:
+    from overload.game.view import Gait, rival_step
+
+    right = Gait(0.0, 0.0, stride=5.0, moved=1.0, dx=1.0)
+    assert rival_step(right, facing_left=False) == rival_step(
+        Gait(0.0, 0.0, stride=5.0, moved=1.0, dx=-1.0), facing_left=True
+    )
+    vertical = Gait(0.0, 0.0, stride=5.0, moved=1.0, dx=0.01)  # inside the dead zone
+    assert rival_step(vertical, False) == rival_step(vertical, True)
