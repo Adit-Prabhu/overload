@@ -26,6 +26,7 @@ GDF v2.1 Sections 5.1/5.2 and Gate 1 read. Required live deployed model behavior
 | Nov 16, 2026 | G1 approved by the instructor. No conditions reported | Adit, from the CourseWorks gate comment |
 | Nov 16, 2026 | D1 theme (Surge versus the Regulator), D2 Spark and Blink with Arc Trail, D3 40 hours through Nov 28 | Adit, recorded in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) |
 | Nov 16, 2026 | OQ1 resolved: the project lives in the public repository Adit-Prabhu/overload | Adit |
+| Nov 17, 2026 | Standing authorization for agents to push feature branches and open PRs, recorded so AGENTS.md can say so. Never `main`. Merges, deploys, credentials, smoke tests and paid calls still need Adit each time | Adit, in the build sessions (pushes and PRs authorized, he merges and deploys himself) |
 | Nov 16, 2026 | D8: art direction changes from neon vector to original pixel art in a 3/4 top-down view, in the spirit of Soul Knight. Substation setting kept, the Surge becomes a lineworker, the camera follows the player | Adit, after playing the vector build |
 | Nov 16, 2026 | Asset source: original code-authored pixel art, with free CC0 packs as the fallback if it did not look good. CC0 packs were evaluated (0x72 Robot Tileset is side-view, Kenney roguelike packs are fantasy and village themed) and none fit a top-down industrial setting | Adit chose the rule, the assistant ran the comparison |
 | Nov 16, 2026 | Pixel style frame round 2 approved ("much much better"). Make it playable | Adit |
