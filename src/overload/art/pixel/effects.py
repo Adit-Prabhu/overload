@@ -611,3 +611,15 @@ def lance_streak(
     for surface in (target, light):
         pygame.draw.lines(surface, rgb("power.spark"), False, points, 2)
         pygame.draw.lines(surface, rgb("px.blink.light"), False, points, 1)
+
+
+def relay_beam(target: pygame.Surface, light: pygame.Surface, pos: Point, life: float) -> None:
+    """A Relay Bot beaming out or in: a column of Blink light over the spot that narrows as
+    it fades, so its teleport reads as a jump, not a glitch."""
+    x, y = round(pos[0]), round(pos[1])
+    half = max(0, round(life * 4))
+    height = round(10 + 18 * life)
+    for surface in (target, light):
+        surface.fill(rgb("px.blink.light"), (x - half // 2, y + 10 - height, max(1, half), height))
+        if half > 1:
+            surface.fill(rgb("power.blink"), (x - half, y + 8, half * 2, 2))
