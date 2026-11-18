@@ -66,10 +66,12 @@ Each robot carries one power or none, and each attacks in its own way, so no two
   - Spark chains to one nearby robot
   - Blink gives a speed boost on arrival
   - Burst widens
-- **Fusions:** Arc Trail (Spark + Blink) and Shock Cone (Spark + Burst). Blink + Burst stays unsupported.
+- **Fusions:** Arc Trail (Spark + Blink) and Shock Cone (Spark + Burst). Blink + Burst unsupported at the G1 ceiling.
+
+Superseded on Nov 17 by chance fusion: five base powers, ten pairs and three rarities per pair. Spec, build order and cut order in [POWERS_AND_FUSION.md](POWERS_AND_FUSION.md).
 
 ### Order of work
-This scope needs the instructor's G3 approval (Nov 30) before it counts. If cuts are needed, the G1 cut order applies: the second recipe first, then the hidden branch, then extra rooms. Rooms are data, so cutting one is cheap.
+This scope needs the instructor's G3 approval (Nov 30) before it counts. If cuts are needed, the G1 cut order applies to rooms: the hidden branch, then extra rooms. Rooms are data, so cutting one is cheap. Powers follow the cut order in [POWERS_AND_FUSION.md](POWERS_AND_FUSION.md) section 9, which keeps Shock Cone.
 
 Each item is its own reviewed PR:
 1. The robot style frame, for Adit's approval.
@@ -289,7 +291,7 @@ Options for D3:
 Adit chose option A on November 16, 2026.
 
 ## 7. Cut order
-1. **Gameplay** (unchanged from the Initial plan): second recipe, then the hidden branch, then extra rooms.
+1. **Gameplay:** powers follow [POWERS_AND_FUSION.md](POWERS_AND_FUSION.md) section 9 (it replaces "second recipe" first). Then the hidden branch, then extra rooms, as in the Initial plan.
 2. **Assets:** P2 assets, then P1 animation polish (animated Fuse Box, lighting states, title cue), then showcase material.
 
 Never cut these:
