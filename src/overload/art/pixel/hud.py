@@ -108,6 +108,8 @@ class Hud:
     rival_protocol: str | None = None
     rival_name: str = "REGULATOR"
     rival_phases: int = 1  # a chassis with three phases shows two notches on its bar
+    rival_phase: int = 1
+    rival_changing: bool = False
     rival_venting: bool = False  # its punish window: the bar flashes
     stamp: str = ""
     tick: int = 0
@@ -166,6 +168,18 @@ def draw(target: pygame.Surface, hud: Hud) -> None:
             nx = bx + round(bar_w * k / hud.rival_phases)
             target.fill(rgb("px.outline"), (nx, 11, 1, 5))
             target.fill(rgb("ui.text"), (nx, 16, 1, 1))
+        if hud.rival_phases > 1:
+            phase_color = ("ui.text", "px.lamp.light", "px.hostile.3")[hud.rival_phase - 1]
+            # The active phase stays visible after the shielded transition finishes.
+            panel = pygame.Rect(0, 18, 102 if hud.rival_changing else 70, 13)
+            panel.centerx = w // 2
+            target.fill(rgb("px.outline"), panel)
+            if hud.rival_changing:
+                pygame.draw.rect(target, rgb(phase_color), panel, 1)
+            label = f"PHASE {hud.rival_phase}/{hud.rival_phases}"
+            if hud.rival_changing:
+                label += " SHIFTING"
+            text(target, label, (w // 2, 20), phase_color, "midtop")
         if hud.rival_protocol:
             icon = effects.protocol_icon(hud.rival_protocol)
             target.blit(icon, icon.get_rect(midright=(bx - 3, 13)))

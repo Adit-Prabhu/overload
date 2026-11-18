@@ -99,10 +99,16 @@ class Gait:
     y: float
     stride: float = 0.0  # pixels walked so far
     moved: float = 0.0  # pixels moved on the last tick
-    dx: float = 0.0  # direction of the last move, for facing
+    dx: float = 0.0  # actual direction of the last move
+    dy: float = 0.0
 
 
-STRIDE = {"relay": 2.0, "breaker": 2.0, "sweeper": 1.5, "regulator": 2.5}  # px per step
+STRIDE = {
+    "relay": 2.0,
+    "breaker": 2.0,
+    "sweeper": 1.5,
+    "regulator": regulators_art.STEP_DISTANCE,
+}  # px per step
 WALKING = 0.05  # moved at least this far on the last tick: walking, not standing
 SCAN = (0, 1, 2, 3, 3, 2, 1, 0)  # the Sentry's eye sweeping its visor
 RECOIL_TICKS = 12
@@ -139,15 +145,12 @@ def walk_step(gait: Gait | None, kind: str) -> int | None:
     return int(gait.stride / STRIDE.get(kind, 3.0)) % rig.STEPS
 
 
-def rival_step(gait: Gait | None, facing_left: bool) -> int | None:
-    """The Regulator's walk step. It faces the Surge, so when it backs away (Insulate) or
-    strafes against its facing, the cycle runs backward and its feet step back instead of
-    moonwalking."""
-    step = walk_step(gait, "regulator")
-    if step is None or gait is None:
-        return step
-    backward = gait.dx > 0.05 if facing_left else gait.dx < -0.05
-    return (rig.STEPS - step) % rig.STEPS if backward else step
+def rival_heading(gait: Gait | None, facing_left: bool) -> int:
+    """Direction of travel in sprite space, independent of where the boss is facing."""
+    if gait is None or gait.moved < WALKING:
+        return 0
+    x = -gait.dx if facing_left else gait.dx
+    return round(math.atan2(gait.dy, x) / (math.tau / 8)) % 8
 
 
 def robot_image(
@@ -406,13 +409,16 @@ class PixelView:
             gait.stride += moved
             gait.moved = moved
             if moved >= WALKING:
-                gait.dx = x - gait.x
+                gait.dx, gait.dy = x - gait.x, y - gait.y
             gait.x, gait.y = x, y
             step = walk_step(gait, kind)
             if kind in FOOTFALLS and step != self.steps.get(key) and step in FOOT_DOWN:
                 feet, count = FOOTFALLS[kind]
                 if key == RIVAL_GAIT:
-                    feet = RIVAL_FEET.get(world.rival.kind, feet)
+                    feet = (
+                        RIVAL_FEET.get(world.rival.kind, RIVAL_FEET["linesman"])
+                        - regulators_art.GROUND_PAD
+                    )
                 self._burst(x, y + feet, count, "px.wall.3", 0.5)
             self.steps[key] = step
         for key in list(self.gaits):
@@ -562,7 +568,7 @@ class PixelView:
                 rival = self.rival_last
                 if rival is not None:
                     image = self._rival_sprite(rival, run.world.player, run.world.tick)
-                    feet = (event.x, event.y + RIVAL_FEET.get(rival.kind, 20))
+                    feet = (event.x, event.y + RIVAL_FEET.get(rival.kind, RIVAL_FEET["linesman"]))
                     self.wreck = (image, feet, event.x, event.y, WRECK_TICKS)
                     self.boss_banner = (f"{BY_KIND[rival.kind].name} DOWN", DOWNED_TICKS)
                 self.shake = 16
@@ -616,19 +622,11 @@ class PixelView:
                 self.shake = 14
                 self._burst(event.x, event.y + 10, 30, "px.wall.3", 2.0)
                 self._burst(event.x, event.y + 10, 12, "px.coil.3", 1.6)
-            elif event.kind == "overload":
-                self.shake = 12
-                self.unlock_flash = 10
-                self._burst(event.x, event.y, 30, "power.burst", 2.2)
-                self.toast("GRID CORE OVERLOAD", 120)
             elif event.kind == "phase_change":
                 self.shake = 14
                 self.unlock_flash = 8
                 self._burst(event.x, event.y, 26, "px.lamp.light", 2.4)
                 self._burst(event.x, event.y, 14, "hostile.danger", 1.8)
-                if run.world.rival is not None:
-                    name = BY_KIND[run.world.rival.kind].name
-                    self.toast(f"{name} PHASE {event.ref}", 90)
             elif event.kind == "charge_impact":
                 self.shake = 12
                 self._burst(event.x, event.y, 20, "px.wall.3", 2.0)
@@ -967,14 +965,16 @@ class PixelView:
 
         rival = world.rival
         if rival is not None and rival.health > 0:
-            rival_feet = (rival.x, rival.y + RIVAL_FEET.get(rival.kind, 20))
+            rival_feet = (rival.x, rival.y + RIVAL_FEET.get(rival.kind, RIVAL_FEET["linesman"]))
 
             def draw_rival() -> None:
-                shadow(*v(*rival_feet), round(rival.radius))
+                shadow(*v(rival.x, rival_feet[1] - regulators_art.GROUND_PAD), round(rival.radius))
                 image = self._rival_sprite(rival, player, tick)
-                if RIVAL_FLASH in self.flashes:
-                    image = effects.tinted(image, "fx.flash")
                 draw_at_feet(image, rival_feet)
+                if RIVAL_FLASH in self.flashes:
+                    flash = effects.tinted(image, "fx.flash")
+                    flash.set_alpha(self.flashes[RIVAL_FLASH] * 24)
+                    draw_at_feet(flash, rival_feet)
                 if rival.boot > 0 and (tick // 4) % 3:
                     cx, cy = v(rival.x, rival.y)
                     ring = pygame.Rect(0, 0, 40, 46)
@@ -1197,6 +1197,8 @@ class PixelView:
                 rival_protocol=POSES[rival.protocol] if rival else None,
                 rival_name=BY_KIND[rival.kind].name if rival else "REGULATOR",
                 rival_phases=max(1, len(BY_KIND[rival.kind].phases)) if rival else 1,
+                rival_phase=rival.phase if rival else 1,
+                rival_changing=bool(rival and rival.change > 0),
                 rival_venting=bool(rival and rival.vent > 0),
                 tick=tick,
             ),
@@ -1211,7 +1213,8 @@ class PixelView:
         if self.notice:
             message, ticks = self.notice
             if ticks > 8 or ticks % 2:
-                hud.text(screen, message, (VIEW[0] // 2, 26), "power.spark", "midtop")
+                y = 33 if rival and BY_KIND[rival.kind].phases else 26
+                hud.text(screen, message, (VIEW[0] // 2, y), "power.spark", "midtop")
         stage = getattr(run, "stage", None)
         if world.outcome == "down" or (stage is None and world.outcome == "clear"):
             self._banner(screen, world.outcome)
@@ -1224,6 +1227,7 @@ class PixelView:
         charging = bosskit.charging(rival)
         if charging or (rival.sig_action == "tell" and rival.sig_name.startswith("charge")):
             facing_left = rival.aim_x < 0
+        gait = self.gaits.get(RIVAL_GAIT)
         return regulators_art.regulator(
             POSES[rival.protocol],
             facing_left,
@@ -1231,7 +1235,8 @@ class PixelView:
             rival.protocol == "lateral" and rival.action == "tell" and (tick // 4) % 2 == 0,
             kind=rival.kind,
             phase=rival.phase,
-            step=rival_step(self.gaits.get(RIVAL_GAIT), facing_left),
+            step=walk_step(gait, "regulator"),
+            heading=rival_heading(gait, facing_left),
             charged=rival.sig_action == "tell" or charging or rival.change > 0,
             vent=rival.vent > 0,
         )

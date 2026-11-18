@@ -50,6 +50,8 @@ The [phase sheet](art/bosses.png) shows the three forms in their own chambers un
 
 On a Grid Core win, the wreck and chained explosions run for 1.5 s and the banner holds for another 1.5 s. The results screen follows while the simulation is already at the ending. Simultaneous player death suppresses the victory presentation. The separate boss times row has its own space below shots. The entrance keeps the health and loadout HUD visible. The DEV instant defeat shortcut still skips the combat kill event. Capture the death presentation with normal damage, as the render tool does.
 
+The follow-up uses a distance-driven foot step along each chassis' actual heading, including strafes, retreats and vertical movement. A foot swings up to nine screen pixels clear of the floor. During the planted part of the cycle, its offset counters the body's movement. The boss HUD keeps its current phase visible, including a bordered `SHIFTING` badge during the shielded transition. The capture tool crosses the breakpoints with projectiles and lets the simulation change phase.
+
 ## 3. Rules this game must keep
 The study needs these, and the rework stays inside them:
 - **The protocol** (Clamp, Insulate, Oscillate) is still the only thing the rival model chooses. It moves the Regulator and fires its protocol attack. It stays frozen for the whole fight, through every phase, and a phase change makes no rival request (AGENTS.md).

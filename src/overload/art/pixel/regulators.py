@@ -24,7 +24,23 @@ SHELLS = {
     "grid_core": ("px.core.0", "px.core.1", "px.core.2", "px.core.3"),
 }
 SHELLS["regulator"] = SHELLS["linesman"]
-SIZE = (100, 84)
+SIZE = (100, 90)
+GROUND_PAD = 6  # space for forward foot placement on a downward step
+STEP_DISTANCE = 2.5
+_DIAGONAL = math.sqrt(0.5)
+DIRECTIONS = (
+    (1.0, 0.0),
+    (_DIAGONAL, _DIAGONAL),
+    (0.0, 1.0),
+    (-_DIAGONAL, _DIAGONAL),
+    (-1.0, 0.0),
+    (-_DIAGONAL, -_DIAGONAL),
+    (0.0, -1.0),
+    (_DIAGONAL, -_DIAGONAL),
+)
+# Contact through toe-off spans four steps. Its 10 px travel counters body movement.
+_REACH = (0, 4, 5, 3, 0, -3, -5, -4)
+_LIFT = (9, 6, 0, 0, 0, 0, 0, 6)
 CX = 50
 # Standing-pose coordinates. Walking lifts the armor and gauge together.
 GAUGE = {
@@ -153,17 +169,26 @@ def _insulator(canvas, x: int, y: int, hot: bool) -> None:
         paint(canvas, [".EwE."], x - 2, y)
 
 
-def _linesman(canvas, step, charged: bool, phase: int, vent: bool) -> None:
+def foot_pose(step: int | None, pair: int, heading: int) -> tuple[int, int, int]:
+    """Reach along the actual travel direction and lift the foot off the ground."""
+    if step is None:
+        return 0, 0, 0
+    index = (step + pair * (rig.STEPS // 2)) % rig.STEPS
+    dx, dy = DIRECTIONS[heading]
+    return round(dx * _REACH[index]), round(dy * _REACH[index]), _LIFT[index]
+
+
+def _linesman(canvas, step, charged: bool, phase: int, vent: bool, heading: int) -> None:
     """A switchyard gantry with climbing gaffs and a suspended welding mask."""
     y = _bob(step)
     spread = (0, 5, 10)[phase - 1]
     tilt = (0, 4, 7)[phase - 1]
     mask_y = 23 + tilt + y
     for half, side in enumerate((-1, 1)):
-        swing, lift = rig.pose(step, half, _GANTRY_GAIT)
+        sx, sy, lift = foot_pose(step, half, heading)
         hip = (50 + side * 7, 50 + y)
-        knee = (50 + side * (11 + phase) + swing // 2, 64 - lift + y)
-        foot = (50 + side * 12 + swing, 80 - lift - (2 if half == 0 else 0))
+        knee = (50 + side * (11 + phase) + sx // 2, 64 + sy // 2 - lift + y)
+        foot = (50 + side * 12 + sx, 80 + sy - lift - (2 if half == 0 else 0))
         _link(canvas, hip, knee, foot, "dmX", 7)
         _plate(
             canvas,
@@ -187,9 +212,9 @@ def _linesman(canvas, step, charged: bool, phase: int, vent: bool) -> None:
         _insulator(canvas, tip[0], tip[1] - 4, charged or phase == 3)
         port = (shoulder[0] + side * 5, shoulder[1] - 7)
         _insulator(canvas, *port, charged)
-        swing, lift = rig.pose(step, 1 - half, _GANTRY_GAIT)
+        sx, sy, lift = foot_pose(step, 1 - half, heading)
         elbow = (50 + side * (22 + spread // 2), 37 + y - (10 if charged else 0))
-        claw = (elbow[0] + swing - side * 2, (44 if charged else 61) - lift + y - tilt // 2)
+        claw = (elbow[0] + sx - side * 2, (44 if charged else 61) + sy - lift // 2 + y - tilt // 2)
         _link(canvas, shoulder, elbow, claw, "RrO", 7)
         _poly(
             canvas,
@@ -268,20 +293,16 @@ def _linesman(canvas, step, charged: bool, phase: int, vent: bool) -> None:
     _gauge(canvas, "linesman", step)
 
 
-_GANTRY_GAIT = rig.LegStyle("", "", "", "", heel=0, swing=5, lift=4)
-_BULL_GAIT = rig.LegStyle("", "", "", "", heel=0, swing=4, lift=4)
-
-
-def _transformer(canvas, step, charged: bool, phase: int, vent: bool) -> None:
+def _transformer(canvas, step, charged: bool, phase: int, vent: bool, heading: int) -> None:
     """An oil-cooled transformer on a low four-legged carrier."""
     y = _bob(step)
     drop = (0, 3, 7)[phase - 1] + (4 if charged else 0)
     for i, (x, hip_y, foot_y) in enumerate(
         ((26, 47, 70), (49, 44, 67), (37, 54, 79), (61, 55, 81))
     ):
-        swing, lift = rig.pose(step, i % 2 ^ i // 2, _BULL_GAIT)
-        knee = (x - 5 + swing // 2, hip_y + 10 - lift + y)
-        foot = (x + swing, foot_y - lift)
+        sx, sy, lift = foot_pose(step, i % 2 ^ i // 2, heading)
+        knee = (x - 5 + sx // 2, hip_y + 10 + sy // 2 - lift + y)
+        foot = (x + sx, foot_y + sy - lift)
         _link(canvas, (x, hip_y + y), knee, foot, "dmM" if i < 2 else "RrO", 9)
         _plate(
             canvas,
@@ -386,16 +407,18 @@ def _transformer(canvas, step, charged: bool, phase: int, vent: bool) -> None:
     _gauge(canvas, "transformer", step)
 
 
-def _grid_core(canvas, step, charged: bool, phase: int, vent: bool) -> None:
+def _grid_core(canvas, step, charged: bool, phase: int, vent: bool, heading: int) -> None:
     """A reactor cage on spring-loaded switchgear legs."""
     y = _bob(step)
     spread = (0, 5, 8)[phase - 1]
     for i, (side, rear) in enumerate(((-1, True), (1, True), (-1, False), (1, False))):
-        swing, lift = rig.pose(step, i % 2 ^ i // 2, _BULL_GAIT)
+        sx, sy, lift = foot_pose(step, i % 2 ^ i // 2, heading)
         hip = (50 + side * 11, (30 if rear else 42) + y)
-        knee_x = 50 + side * (25 + (0 if rear else 7) + spread // 3) + swing // 2
-        knee_y = (18 if rear else 39) - spread // 2 - lift - (4 if charged else 0) + y
-        foot = (50 + side * (31 if rear else 40) + swing, (57 if rear else 80) - lift)
+        knee_x = 50 + side * (25 + (0 if rear else 7) + spread // 3) + sx // 2
+        knee_y = (
+            (18 if rear else 39) - spread // 2 + sy // 2 - lift // 2 - (4 if charged else 0) + y
+        )
+        foot = (50 + side * (31 if rear else 40) + sx, (57 if rear else 80) + sy - lift)
         _link(canvas, hip, (knee_x, knee_y), foot, "dmX", 6 if rear else 9)
         _line(canvas, (knee_x, knee_y), (foot[0] - side * 3, foot[1] - 7), "d", 2)
         _line(canvas, foot, (foot[0] - side * 5, foot[1] + 1), "X", 3)
@@ -462,12 +485,13 @@ def body(
     charged: bool = False,
     phase: int = 1,
     vent: bool = False,
+    heading: int = 0,
 ) -> pygame.Surface:
     """A chassis without its protocol modules, on a canvas every pose shares."""
     canvas = blank(*SIZE)
     kind = "linesman" if kind == "regulator" else kind
     draw = {"grid_core": _grid_core, "transformer": _transformer, "linesman": _linesman}[kind]
-    draw(canvas, step, charged, phase, vent)
+    draw(canvas, step, charged, phase, vent, heading)
     return render(rows_of(canvas), legend(kind))
 
 
@@ -502,8 +526,9 @@ def _posed(
     charged: bool,
     phase: int,
     vent: bool,
+    heading: int,
 ) -> pygame.Surface:
-    image = body(kind, step, charged, phase, vent).copy()
+    image = body(kind, step, charged, phase, vent, heading).copy()
     left, right = MODULES[kind]
     if protocol == "clamp":
         parts = [(_recolored("clamp", kind), (right[0] + 4, right[1] + 4))]
@@ -530,13 +555,16 @@ def regulator(
     step: int | None = None,
     charged: bool = False,
     vent: bool = False,
+    heading: int = 0,
 ) -> pygame.Surface:
     """The chassis in its protocol pose, walking at `step` (None stands). `needle` (radians,
     screen space) points the gauge at the Surge. `lit` flashes the Oscillate fins before a
     volley, `charged` is the wind-up before a kit attack, `vent` its punish window with the
-    core exposed."""
+    core exposed. `heading` is the foot travel direction in sprite coordinates."""
     kind = "linesman" if kind == "regulator" else kind
-    image = _posed(protocol, kind, step, lit, charged, phase, vent)
+    image = _posed(
+        protocol, kind, step, lit, charged, phase, vent, heading if step is not None else 0
+    )
     if needle is not None:
         image = image.copy()
         angle = math.pi - needle if facing_left else needle

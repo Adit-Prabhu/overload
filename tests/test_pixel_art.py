@@ -448,15 +448,17 @@ def test_the_regulator_walks_and_its_poses_read(headless_pygame) -> None:
     assert raw(calm) != raw(hot)
 
 
-def test_the_regulator_steps_backward_when_it_backs_away(headless_pygame) -> None:
-    from overload.game.view import Gait, rival_step
+def test_regulator_feet_reach_in_the_direction_it_moves() -> None:
+    from overload.game.view import Gait, rival_heading
 
-    gait = Gait(0.0, 0.0, stride=5.0, moved=1.0, dx=-1.0)  # moving left
-    forward = rival_step(gait, facing_left=True)
-    backward = rival_step(gait, facing_left=False)  # facing right while moving left
-    assert forward is not None and backward is not None
-    assert (forward + backward) % 8 == 0
-    assert rival_step(Gait(0.0, 0.0), False) is None
+    left = Gait(0.0, 0.0, moved=1.0, dx=-1.0)
+    assert rival_heading(left, facing_left=True) == 0
+    assert rival_heading(left, facing_left=False) == 4
+    down = Gait(0.0, 0.0, moved=1.0, dy=1.0)
+    assert rival_heading(down, facing_left=True) == rival_heading(down, facing_left=False) == 2
+    upper_left = Gait(0.0, 0.0, moved=1.0, dx=-1.0, dy=-1.0)
+    assert rival_heading(upper_left, facing_left=False) == 5
+    assert rival_heading(upper_left, facing_left=True) == 7
 
 
 def test_the_drone_core_glow_sits_on_its_core(headless_pygame) -> None:
@@ -617,6 +619,18 @@ def test_no_chassis_pose_is_cut_off(headless_pygame) -> None:
                 assert bounds.bottom < image.get_height(), (kind, step, phase, protocol)
 
 
+def test_directional_walk_poses_fit_the_chassis_canvas(headless_pygame) -> None:
+    from overload.art.pixel import regulators
+
+    for kind, heading, step in itertools.product(regulators.KINDS, range(8), range(8)):
+        image = regulators.regulator(
+            "clamp", False, kind=kind, phase=3, step=step, heading=heading, charged=True
+        )
+        frame = image.get_bounding_rect()
+        assert frame.left > 0 and frame.top > 0
+        assert frame.right < image.get_width() and frame.bottom < image.get_height()
+
+
 def test_the_legacy_regulator_draws_as_the_linesman(headless_pygame) -> None:
     from overload.art.pixel import regulators
 
@@ -625,15 +639,20 @@ def test_the_legacy_regulator_draws_as_the_linesman(headless_pygame) -> None:
     assert pygame.image.tobytes(a, "RGBA") == pygame.image.tobytes(b, "RGBA")
 
 
-def test_the_regulator_steps_forward_when_it_walks_forward() -> None:
-    from overload.game.view import Gait, rival_step
+def test_regulator_stance_counters_body_translation() -> None:
+    from overload.art.pixel import regulators
 
-    right = Gait(0.0, 0.0, stride=5.0, moved=1.0, dx=1.0)
-    assert rival_step(right, facing_left=False) == rival_step(
-        Gait(0.0, 0.0, stride=5.0, moved=1.0, dx=-1.0), facing_left=True
-    )
-    vertical = Gait(0.0, 0.0, stride=5.0, moved=1.0, dx=0.01)  # inside the dead zone
-    assert rival_step(vertical, False) == rival_step(vertical, True)
+    for heading, (dx, dy) in enumerate(regulators.DIRECTIONS):
+        positions = []
+        for step in range(2, 7):
+            sx, sy, lift = regulators.foot_pose(step, 0, heading)
+            assert lift == 0
+            distance = (step - 2) * regulators.STEP_DISTANCE
+            positions.append((sx + dx * distance, sy + dy * distance))
+        x, y = zip(*positions, strict=True)
+        assert max(x) - min(x) <= 1.5 and max(y) - min(y) <= 1.5
+        assert regulators.foot_pose(0, 0, heading)[2] >= 8
+        assert regulators.foot_pose(0, 1, heading)[2] == 0
 
 
 def test_ambience_does_not_pile_up_while_the_world_waits(headless_pygame) -> None:
@@ -871,6 +890,67 @@ def test_the_boss_bar_shows_its_phases_and_flashes_while_it_vents(headless_pygam
     hud.draw(calm, hud.Hud(charge=6, max_charge=6, rival_health=1.0, tick=4))
     hud.draw(venting, hud.Hud(charge=6, max_charge=6, rival_health=1.0, tick=4, rival_venting=True))
     assert pygame.image.tobytes(calm, "RGB") != pygame.image.tobytes(venting, "RGB")
+
+
+@pytest.mark.parametrize("sector", (1, 2, 3))
+def test_real_health_thresholds_reach_the_permanent_phase_hud(headless_pygame, monkeypatch, sector):
+    from floorbot import enter, skip_sector
+
+    from overload.game.view import VIEW, PixelView
+    from overload.sim.campaign import Campaign
+    from overload.sim.inputs import IDLE
+    from overload.sim.state import Projectile
+
+    run = Campaign(1)
+    for _ in range(sector - 1):
+        skip_sector(run)
+        run.begin_next("pressure")
+    enter(run, f"s{sector}_chamber")
+    rival = run.world.rival
+    rival.boot = 0
+    run.world.player.invulnerable = 10000
+    view = PixelView(run)
+    display = pygame.Surface(VIEW)
+    calls = []
+    text = hud.text
+
+    def track(surface, label, *rest):
+        calls.append(label)
+        return text(surface, label, *rest)
+
+    monkeypatch.setattr(hud, "text", track)
+    view.draw(display, run, (128, 72))
+    assert "PHASE 1/3" in calls
+
+    for phase in (2, 3):
+        target_health = rival.max_health * (4 - phase) // 3
+        run.world.projectiles.append(
+            Projectile(
+                run.world.new_id(),
+                rival.x,
+                rival.y,
+                0,
+                0,
+                1,
+                rival.health - target_health,
+                False,
+                5,
+            )
+        )
+        for _ in range(10):
+            run.step(IDLE)
+            view.after_tick(run)
+            if rival.phase == phase:
+                break
+        calls.clear()
+        view.draw(display, run, (128, 72))
+        assert f"PHASE {phase}/3 SHIFTING" in calls
+        while rival.change:
+            run.step(IDLE)
+            view.after_tick(run)
+        calls.clear()
+        view.draw(display, run, (128, 72))
+        assert f"PHASE {phase}/3" in calls
 
 
 def test_the_entrance_card_and_ending_rows(headless_pygame, monkeypatch) -> None:

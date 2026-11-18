@@ -12,33 +12,14 @@ Snapshot of November 18, 2026. For any agent or chat picking up the work. The st
   - the rival service: Cloudflare Worker, deployed, with both smoke tests passing (docs/evidence/LIVE_SMOKE_2026-11-17.md)
   - evidence version 3, and the MIT and CC BY 4.0 licenses
   - the chance-fusion spec, nine distinct fusion outcomes, the pause and Fuse menus, and dev mode from PRs #30 to #35
-- **Boss rework implementation is complete on the stack below.** All three Regulators have distinct bodies in each of their three phases. The original rework's attack rotations, tells and vent windows carry through. The Grid Core's defeat gets its own on-screen sequence before the results, and all boss attack families have their own sound. The stronger Transformer hitbox affects body contact and attack origins, as documented.
+- **Boss rework implementation is complete on the integration branch below.** All three Regulators have distinct bodies in each of their three phases. The original rework's attack rotations, tells and vent windows carry through. The Grid Core's defeat gets its own on-screen sequence before the results, and all boss attack families have their own sound. The stronger Transformer hitbox affects body contact and attack origins, as documented.
 - Review the [nine phase images](art/bosses.png), the [Grid Core victory](art/boss_down.png), and the [design and original developer research](BOSS_DESIGN.md). These are headless fixture renders. Adit owns sign-off, merge, and the human playtest. Production scope remains subject to G3.
 
-## Open boss stack
+## Boss rework integration
 
-| PR | What |
-| --- | --- |
-| [#36](https://github.com/Adit-Prabhu/overload/pull/36) | Walking robots and more detailed mob sprites |
-| [#37](https://github.com/Adit-Prabhu/overload/pull/37) | First redraw of the Regulator walk cycles |
-| [#38](https://github.com/Adit-Prabhu/overload/pull/38) | Dressed floor, contact shadows and sector ambience |
-| [#39](https://github.com/Adit-Prabhu/overload/pull/39) | Boss design and scope proposal |
-| [#40](https://github.com/Adit-Prabhu/overload/pull/40) | Three-phase combat kit, damage and reward rules, Transformer radius and replay pins |
-| [#41](https://github.com/Adit-Prabhu/overload/pull/41) | Phase-specific chassis art, camera, victory, retry and replay presentation |
-| [#42](https://github.com/Adit-Prabhu/overload/pull/42) | Ten new original cues, event bindings and the completion record on `feat/boss-sounds` |
+GitHub merged #36 to `main`. It closed #37 through #42 by merging each into its feature base, so `main` still ran the older boss presentation. The follow-up branch `fix/boss-walk-and-phases` incorporates the exact merged tree from #42 and targets `main` directly.
 
-Adit merges in this order. GitHub keeps the branch after each merge, so retarget the next PR to main and let its required checks pass before merging it.
-
-```sh
-gh pr merge 36 --merge
-gh pr edit 37 --base main && gh pr checks 37 --watch --required && gh pr merge 37 --merge
-gh pr edit 38 --base main && gh pr checks 38 --watch --required && gh pr merge 38 --merge
-gh pr edit 39 --base main && gh pr checks 39 --watch --required && gh pr merge 39 --merge
-gh pr edit 40 --base main && gh pr checks 40 --watch --required && gh pr merge 40 --merge
-gh pr edit 41 --base main && gh pr checks 41 --watch --required && gh pr merge 41 --merge
-gh pr edit 42 --base main && gh pr checks 42 --watch --required && gh pr merge 42 --merge
-git switch main && git pull --ff-only
-```
+This build shows the current phase throughout each fight and highlights the shielded transition. The feet reach in the actual direction of travel, with longer planted steps and visibly higher lifts. Verify these in the campaign or the headless captures rather than the single-arena practice mode, which has no three-phase chassis. See [boss design and captures](BOSS_DESIGN.md).
 
 ## Next steps (spec section 9)
 1. Bulwark (from the Sentry) and Magnet (from the Sweeper) base powers: drops, charge cores, evolutions (REFLECT, CRUSH), effects, sounds, and the slotting banner. Then a bot protocol check that shields do not trivialize projectile protocols.

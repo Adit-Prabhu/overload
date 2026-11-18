@@ -48,6 +48,28 @@ def shot(campaign: Campaign, view: PixelView) -> pygame.Surface:
     return screen
 
 
+def reach_phase(campaign: Campaign, view: PixelView, phase: int) -> None:
+    """Cross a breakpoint with a projectile, then capture the actual phase transition."""
+    rival = campaign.world.rival
+    player = campaign.world.player
+    player.invulnerable = 1000
+    for _ in range(campaign.tuning.phase_change + 2):
+        if not rival.change:
+            break
+        campaign.step(IDLE)
+        view.update(campaign, (197, 82))
+    target = rival.max_health * (4 - phase) // 3
+    campaign.world.projectiles.append(
+        Projectile(
+            campaign.world.new_id(), rival.x, rival.y, 0, 0, 1, rival.health - target, False, 5
+        )
+    )
+    for _ in range(24):
+        campaign.step(IDLE)
+        view.update(campaign, (197, 82))
+    assert rival.phase == phase and rival.change > 0
+
+
 def main(output: Path) -> None:
     pygame.init()
     pygame.display.set_mode((1, 1))
@@ -67,8 +89,8 @@ def main(output: Path) -> None:
             )
         rival.boot = 0
         for phase in range(1, 4):
-            rival.phase = phase
-            rival.health = rival.max_health * (4 - phase) // 3
+            if phase > 1:
+                reach_phase(campaign, view, phase)
             screen = shot(campaign, view)
             x, y = 6 + (phase - 1) * pitch_x, 6 + (sector - 1) * pitch_y
             sheet.blit(screen, (x, y + 15))
