@@ -227,7 +227,7 @@ def test_tell_states_look_different_from_rest_states(headless_pygame) -> None:
 
 
 def test_every_robot_and_shot_renders(headless_pygame) -> None:
-    from overload.art.pixel import robots
+    from overload.art.pixel import regulators, robots
 
     for left in (False, True):
         robots.drone(0, left)
@@ -239,11 +239,12 @@ def test_every_robot_and_shot_renders(headless_pygame) -> None:
         robots.sweeper(0, left, revving=True)
         robots.sentry(left)
         for protocol in ("clamp", "insulate", "oscillate"):
-            robots.regulator_mech(protocol, left, needle=0.5, lit=True)
+            for kind in regulators.KINDS:
+                regulators.regulator(protocol, left, needle=0.5, lit=True, kind=kind)
     for shot in (robots.shard(), robots.shell(), robots.needle_dart(), robots.orb()):
         assert shot.get_width() > 0
     with pytest.raises(KeyError):
-        robots.regulator_mech("berserk", False)
+        regulators.regulator("berserk", False)
 
 
 def _colors(image: pygame.Surface) -> set[tuple[int, int, int]]:
@@ -406,3 +407,53 @@ def test_relay_teleports_beam_and_shots_recoil(headless_pygame) -> None:
     for _ in range(20):
         view._tick_cosmetics()
     assert not view.beams and 4 not in view.recoils
+
+
+def test_each_chassis_has_its_own_silhouette(headless_pygame) -> None:
+    """Adit, Nov 17: the bosses were one box in three colors. Each chassis now has its own
+    shape, told apart without color, on one canvas size. The old chassis shared one mask
+    (overlap 1.0). The tall Linesman and the wide Transformer still share a torso band, so
+    the bar is under 0.65."""
+    from overload.art.pixel import regulators
+
+    masks = {}
+    for kind in regulators.KINDS:
+        image = regulators.body(kind)
+        assert image.get_size() == regulators.body("linesman").get_size()
+        masks[kind] = pygame.mask.from_surface(image)
+    for a, b in itertools.combinations(regulators.KINDS, 2):
+        overlap = masks[a].overlap_area(masks[b], (0, 0))
+        union = masks[a].count() + masks[b].count() - overlap
+        assert overlap / union < 0.65, (a, b)
+
+
+def test_the_regulator_walks_and_its_poses_read(headless_pygame) -> None:
+    """Legs move through the cycle, the protocol arms change the silhouette, the signature
+    charge lights the chassis, and the Grid Core cracks when it overloads."""
+    from overload.art.pixel import regulators
+
+    def raw(image):
+        return pygame.image.tobytes(image, "RGBA")
+
+    for kind in regulators.KINDS:
+        still = raw(regulators.regulator("clamp", False, kind=kind))
+        steps = {raw(regulators.regulator("clamp", False, kind=kind, step=s)) for s in range(8)}
+        assert still not in steps and len(steps) >= 4, kind
+        poses = {raw(regulators.regulator(p, False, kind=kind)) for p in ("clamp", "insulate")}
+        assert len(poses) == 2
+        charged = raw(regulators.regulator("clamp", False, kind=kind, charged=True))
+        assert charged != still, kind
+    calm = regulators.regulator("clamp", False, kind="grid_core")
+    hot = regulators.regulator("clamp", False, kind="grid_core", overload=True)
+    assert raw(calm) != raw(hot)
+
+
+def test_the_regulator_steps_backward_when_it_backs_away(headless_pygame) -> None:
+    from overload.game.view import Gait, rival_step
+
+    gait = Gait(0.0, 0.0, stride=5.0, moved=1.0, dx=-1.0)  # moving left
+    forward = rival_step(gait, facing_left=True)
+    backward = rival_step(gait, facing_left=False)  # facing right while moving left
+    assert forward is not None and backward is not None
+    assert (forward + backward) % 8 == 0
+    assert rival_step(Gait(0.0, 0.0), False) is None
