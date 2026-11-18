@@ -35,14 +35,28 @@ SHELLS = {
     "grid_core": ("px.core.0", "px.core.1", "px.core.2", "px.core.3"),
 }
 SHELLS["regulator"] = SHELLS["linesman"]
-SIZE = (68, 50)
+SIZE = (68, 54)
+HEAD = 4  # headroom above the tallest part (crown, cab, insulators) on rising steps
 CX = 34
 # Per chassis, in the standing pose (a walking body rides a pixel higher on passing steps):
 # where the gauge sits (center, radius), where the protocol arms mount (the right shoulder,
-# mirrored for the left), and how far below the body center its feet are.
-GAUGE = {"linesman": ((CX, 29), 3), "transformer": ((CX - 2, 25), 3), "grid_core": ((CX, 26), 3)}
-SHOULDER = {"linesman": (14, 25), "transformer": (19, 20), "grid_core": (13, 17)}
-FEET = {"linesman": 20, "transformer": 18, "grid_core": 22}
+# mirrored for the left), and the canvas row of the body's center (the Linesman's torso,
+# the Transformer's tank, the Grid Core's sphere). The body center sits on the sim position,
+# so the hit circle covers the body and the legs reach below it.
+GAUGE = {
+    "linesman": ((CX, 29 + HEAD), 4),
+    "transformer": ((CX - 2, 25 + HEAD), 4),
+    "grid_core": ((CX, 29 + HEAD), 3),  # small, under the reactor window
+}
+SHOULDER = {
+    "linesman": (14, 25 + HEAD),
+    "transformer": (19, 20 + HEAD),
+    "grid_core": (13, 17 + HEAD),
+}
+CENTER = {"linesman": 26 + HEAD, "transformer": 20 + HEAD, "grid_core": 18 + HEAD}
+# How far below the sim position the feet (the image's bottom edge) are. The rendered image
+# has a one pixel outline pad, so its bottom is SIZE[1] + 1 rows below the canvas top.
+FEET = {kind: SIZE[1] + 1 - row for kind, row in CENTER.items()}
 _HOSTILE = ("px.hostile.0", "px.hostile.1", "px.hostile.2", "px.hostile.3")
 
 
@@ -96,7 +110,7 @@ _LINESMAN_LEG = rig.LegStyle(
 
 
 def _linesman(canvas, step, charged: bool, overload: bool) -> None:
-    top = 0 if rig.rising(step) else 1
+    top = HEAD + (0 if rig.rising(step) else 1)
     # Two long legs.
     hips = top + 35
     for half, hip in ((0, CX - 8), (1, CX + 4)):
@@ -141,7 +155,7 @@ def _linesman(canvas, step, charged: bool, overload: bool) -> None:
     _rect(canvas, CX - 6, top + 19, 13, 2, "R")
     _rect(canvas, CX - 6, top + 21, 13, 1, "m")
     _disc(canvas, CX + 3, top + 15, 3.2, "v")
-    _disc(canvas, CX + 3, top + 15, 2.0, "e" if overload else "E")
+    _disc(canvas, CX + 3, top + 15, 2.0, "J" if overload else "E")
     paint(canvas, ["w"], CX + 2, top + 14)
     paint(canvas, ["Q"], CX - 4, top + 12)
 
@@ -155,7 +169,7 @@ _TRANSFORMER_LEG = rig.LegStyle(
 
 
 def _transformer(canvas, step, charged: bool, overload: bool) -> None:
-    top = 6 if rig.rising(step) else 7
+    top = HEAD + (6 if rig.rising(step) else 7)
     hips = top + 27
     # Four stubby legs on a trot: diagonal pairs step together.
     for i, hip in enumerate((CX - 16, CX - 8, CX + 4, CX + 12)):
@@ -191,7 +205,7 @@ def _transformer(canvas, step, charged: bool, overload: bool) -> None:
     hx, hy = CX + 5, top - 7
     paint(canvas, shaded_ellipse(15, 12, "RroO"), hx, hy)
     _rect(canvas, hx + 4, hy + 4, 11, 3, "v")
-    eye = "e" if overload else "E"
+    eye = "J" if overload else "E"
     paint(canvas, [eye + eye + "." + eye + eye, eye + "w." + eye + "w"], hx + 8, hy + 4)
     for x in range(hx + 5, hx + 14, 2):
         paint(canvas, ["d", "d"], x, hy + 8)
@@ -205,7 +219,7 @@ def _transformer(canvas, step, charged: bool, overload: bool) -> None:
 
 
 def _grid_core(canvas, step, charged: bool, overload: bool) -> None:
-    top = 4 if rig.rising(step) else 5
+    top = HEAD + (4 if rig.rising(step) else 5)
     center = (CX, top + 13)
     # Three arched legs, lifting one at a time.
     for i, (hip, knee, foot) in enumerate(
@@ -238,13 +252,15 @@ def _grid_core(canvas, step, charged: bool, overload: bool) -> None:
     for x in range(CX - 11, CX + 12, 4):
         paint(canvas, ["d"], x, top + 16)
     glow = 4.6 if (charged or overload) else 3.6
-    _disc(canvas, center[0] + 1, center[1] - 2, glow + 1.2, "d")
-    _disc(canvas, center[0] + 1, center[1] - 2, glow, "U")
-    _disc(canvas, center[0] + 1, center[1] - 2, glow - 1.8, "u")
-    paint(canvas, ["w"], center[0], center[1] - 3)
+    # The reactor burns hot amber, kept off Burst's magenta so it never reads as a Burst
+    # core to steal (art direction rule 4). Only its crown tips carry magenta, as before.
+    _disc(canvas, center[0] + 1, center[1] - 3, glow + 1.2, "d")
+    _disc(canvas, center[0] + 1, center[1] - 3, glow, "j")
+    _disc(canvas, center[0] + 1, center[1] - 3, glow - 1.8, "J")
+    paint(canvas, ["w"], center[0], center[1] - 4)
     # A ring of eyes above the core.
     for dx, dy in ((-7, -6), (-3, -9), (5, -9), (9, -6)):
-        paint(canvas, ["e" if overload else "E"], center[0] + dx, center[1] + dy)
+        paint(canvas, ["J" if overload else "E"], center[0] + dx, center[1] + dy)
     if overload:  # glowing cracks through the shell
         for x, y in ((-10, -4), (-9, -3), (-9, -2), (-8, -1), (8, 2), (9, 3), (10, 4), (-6, 6)):
             paint(canvas, ["E"], center[0] + x, center[1] + y)
@@ -262,9 +278,18 @@ def body(kind: str, step: int | None = None, charged: bool = False, overload: bo
     return render(rows_of(canvas), legend(kind))
 
 
+_ARMS = {
+    "clamp": actors.clamp_arm,
+    "plate": actors.insulate_plate,
+    "fin": lambda: actors.fin(False),
+    "fin_lit": lambda: actors.fin(True),
+}
+
+
 @cache
-def _recolored(image: pygame.Surface, kind: str) -> pygame.Surface:
+def _recolored(part: str, kind: str) -> pygame.Surface:
     """A protocol arm in this chassis' shell colors (the arms are drawn in hostile orange)."""
+    image = _ARMS[part]()
     if SHELLS[kind] == _HOSTILE:
         return image
     swapped = image.copy()
@@ -285,15 +310,15 @@ def _posed(
     sx, sy = CX + 1 + dx, dy + 1 + _bob(step)
     front = []  # drawn over the body
     if protocol == "clamp":
-        arm = _recolored(actors.clamp_arm(), kind)
+        arm = _recolored("clamp", kind)
         front.append((arm, (sx - 3, sy - arm.get_height() // 2)))
     elif protocol == "insulate":
-        plate = _recolored(actors.insulate_plate(), kind)
+        plate = _recolored("plate", kind)
         pw, ph = plate.get_size()
         front.append((plate, (sx - 2, sy - ph // 2 + 2)))
         canvas.blit(plate, (2 * CX + 2 - sx - pw + 2, sy - ph // 2 + 2))
     elif protocol == "oscillate":
-        right = _recolored(actors.fin(lit), kind)
+        right = _recolored("fin_lit" if lit else "fin", kind)
         fw, fh = right.get_size()
         front.append((right, (sx - 1, sy - fh // 2)))
         canvas.blit(flipped(right), (2 * CX + 2 - sx - fw + 1, sy - fh // 2))

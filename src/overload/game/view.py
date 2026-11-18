@@ -108,7 +108,7 @@ SCAN = (0, 1, 2, 3, 3, 2, 1, 0)  # the Sentry's eye sweeping its visor
 RECOIL_TICKS = 12
 BEAM_TICKS = 10
 # Heavy walkers kick up dust when a foot comes down: (kind, feet below center, dust count).
-FOOTFALLS = {"breaker": (12, 3), "regulator": (20, 5)}
+FOOTFALLS = {"breaker": (12, 3), "regulator": (20, 5)}  # the Regulator's feet: per chassis
 FOOT_DOWN = (2, 6)  # the walk steps where a foot lands (art/pixel/rig.py)
 
 
@@ -354,6 +354,8 @@ class PixelView:
             step = walk_step(gait, kind)
             if kind in FOOTFALLS and step != self.steps.get(key) and step in FOOT_DOWN:
                 feet, count = FOOTFALLS[kind]
+                if key == RIVAL_GAIT:
+                    feet = RIVAL_FEET.get(world.rival.kind, feet)
                 self._burst(x, y + feet, count, "px.wall.3", 0.5)
             self.steps[key] = step
         for key in list(self.gaits):
@@ -815,7 +817,7 @@ class PixelView:
                     icon = pygame.transform.scale_by(
                         effects.protocol_icon(POSES[rival.protocol]), 2
                     )
-                    top = v(rival.x, rival_feet[1] - image.get_height() - 6)
+                    top = v(rival.x, rival_feet[1] - image.get_height() - 4)
                     screen.blit(icon, icon.get_rect(center=(round(top[0]), round(top[1]))))
 
             drawables.append((rival_feet[1], draw_rival))
