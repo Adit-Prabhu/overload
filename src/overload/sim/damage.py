@@ -7,15 +7,19 @@ from overload.sim.tuning import Tuning
 
 
 def damage_rival(world: World, damage: int, x: float, y: float) -> None:
-    """Hurt the Regulator unless its protocol boot shield is up."""
+    """Hurt the Regulator unless its protocol boot shield or a phase change shields it.
+    While it vents (its punish window) every hit lands half again as hard, rounded up."""
     rival = world.rival
     if rival is None or rival.health <= 0:
         return
-    if rival.boot > 0:
+    if rival.boot > 0 or rival.change > 0:
         world.events.append(Event("rival_shielded", x, y))
         return
+    venting = rival.vent > 0
+    if venting:
+        damage += (damage + 1) // 2
     rival.health -= damage
-    world.events.append(Event("rival_hit", rival.x, rival.y))
+    world.events.append(Event("rival_hit", rival.x, rival.y, damage, "vent" if venting else ""))
     if rival.health <= 0:
         world.events.append(Event("rival_destroyed", rival.x, rival.y))
 

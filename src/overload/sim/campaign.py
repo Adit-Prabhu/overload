@@ -105,7 +105,8 @@ class Campaign:
         self.retries: dict[int, int] = {1: 0}
         self.kit = Kit()
         # The ending readout: playing time, shots and every power use, across retries.
-        self.stats: dict = {"ticks": 0, "shots": 0, "powers": {}}
+        self.stats: dict = {"ticks": 0, "shots": 0, "powers": {}, "bosses": {}}
+        self.boss_from = 0  # the tick the current chassis booted, for its fight time
         self.world = floor_world(seed, tuning, arena)
         self.checkpoint = copy.deepcopy(self.world)
 
@@ -148,6 +149,11 @@ class Campaign:
         for event in events:
             if event.kind == "shot":
                 self.stats["shots"] += 1
+            elif event.kind == "protocol_boot":
+                self.boss_from = self.world.tick
+            elif event.kind == "rival_destroyed":
+                # The fight time of the winning attempt, in ticks, per sector.
+                self.stats["bosses"][str(self.encounter)] = self.world.tick - self.boss_from
             elif event.kind.startswith("power_"):
                 name = event.kind.removeprefix("power_")
                 powers[name] = powers.get(name, 0) + 1

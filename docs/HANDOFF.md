@@ -1,5 +1,5 @@
 # Overload · Handoff
-Snapshot of November 17, 2026. For any agent or chat picking up the work. The standing rules are in [AGENTS.md](../AGENTS.md) (Workflow). This file says where things stand, so check `gh pr list` and `git log` before trusting it, and update it when a milestone lands.
+Snapshot of November 18, 2026. For any agent or chat picking up the work. The standing rules are in [AGENTS.md](../AGENTS.md) (Workflow). This file says where things stand, so check `gh pr list` and `git log` before trusting it, and update it when a milestone lands.
 
 ## Where the project is
 - G1 approved Nov 16. The combined G2/G3 review is Nov 30, the recording Nov 28, the external playtest Nov 25. Past-G1 scope is logged for the G3 scope-lock proposal.
@@ -11,22 +11,32 @@ Snapshot of November 17, 2026. For any agent or chat picking up the work. The st
   - the HUD, the title screen, audio and pixel art
   - the rival service: Cloudflare Worker, deployed, with both smoke tests passing (docs/evidence/LIVE_SMOKE_2026-11-17.md)
   - evidence version 3, and the MIT and CC BY 4.0 licenses
-- The current focus is making powers and fusion the heart of the game. The spec is [POWERS_AND_FUSION.md](POWERS_AND_FUSION.md) (version 0.3), and its section 9 has the build order.
-- Until the stack below is merged, the spec and everything in "How the fusion system fits together" exist only in PRs #30 to #34, not on `main`.
+  - the chance-fusion spec, nine distinct fusion outcomes, the pause and Fuse menus, and dev mode from PRs #30 to #35
+- **Boss rework implementation is complete on the stack below.** All three Regulators have distinct bodies in each of their three phases. The original rework's attack rotations, tells and vent windows carry through. The Grid Core's defeat gets its own on-screen sequence before the results, and all boss attack families have their own sound. The stronger Transformer hitbox affects body contact and attack origins, as documented.
+- Review the [nine phase images](art/bosses.png), the [Grid Core victory](art/boss_down.png), and the [design and original developer research](BOSS_DESIGN.md). These are headless fixture renders. Adit owns sign-off, merge, and the human playtest. Production scope remains subject to G3.
 
-## Open PRs (stacked, reviewed, waiting for Adit to merge in this order)
-| PR | What | Key files |
-| --- | --- | --- |
-| #30 | Spec 0.3 and decision rows, including every as-built deviation | docs/POWERS_AND_FUSION.md, docs/DECISIONS_AND_OPEN_QUESTIONS.md |
-| #31 | Roll system: spare-charge bank, reroll cost, odds 60/30/10, guarantee after two rares, roll stream seeded by run seed and fusion count | src/overload/sim/powers.py |
-| #32 | Nine unique fused powers. Spark + Blink: Arc Trail, Bolt Lance, Chain Jump. Spark + Burst: Shock Cone, Shock Mine, Storm Aura. Blink + Burst: Impact Blink, Displacer, Meteor | src/overload/sim/fusions.py, tests/test_fusion.py |
-| #33 | Tab menu hub (Resume or Continue, Loadout, Fuse, Controls, Quit) and the Fuse screen: sockets, outcome cards, odds, luck meter, roll spin and reveal | src/overload/game/menu.py, menu_view.py, app.py, tests/test_menu.py |
-| #34 | Dev mode: `--dev` plus a git-ignored `.overload-dev` file. God mode, unlimited charges, forced roll rarity, grant power, room and sector skips | src/overload/game/dev.py, tests/test_dev.py |
+## Open boss stack
 
-This PR (handoff docs and `tools/pin_hashes.py`) is independent of the stack. Merge commands:
+| PR | What |
+| --- | --- |
+| [#36](https://github.com/Adit-Prabhu/overload/pull/36) | Walking robots and more detailed mob sprites |
+| [#37](https://github.com/Adit-Prabhu/overload/pull/37) | First redraw of the Regulator walk cycles |
+| [#38](https://github.com/Adit-Prabhu/overload/pull/38) | Dressed floor, contact shadows and sector ambience |
+| [#39](https://github.com/Adit-Prabhu/overload/pull/39) | Boss design and scope proposal |
+| [#40](https://github.com/Adit-Prabhu/overload/pull/40) | Three-phase combat kit, damage and reward rules, Transformer radius and replay pins |
+| [#41](https://github.com/Adit-Prabhu/overload/pull/41) | Phase-specific chassis art, camera, victory, retry and replay presentation |
+| [#42](https://github.com/Adit-Prabhu/overload/pull/42) | Ten new original cues, event bindings and the completion record on `feat/boss-sounds` |
+
+Adit merges in this order. GitHub keeps the branch after each merge, so retarget the next PR to main and let its required checks pass before merging it.
+
 ```sh
-gh pr merge 30 --merge && gh pr merge 31 --merge && gh pr merge 32 --merge
-gh pr merge 33 --merge && gh pr merge 34 --merge
+gh pr merge 36 --merge
+gh pr edit 37 --base main && gh pr checks 37 --watch --required && gh pr merge 37 --merge
+gh pr edit 38 --base main && gh pr checks 38 --watch --required && gh pr merge 38 --merge
+gh pr edit 39 --base main && gh pr checks 39 --watch --required && gh pr merge 39 --merge
+gh pr edit 40 --base main && gh pr checks 40 --watch --required && gh pr merge 40 --merge
+gh pr edit 41 --base main && gh pr checks 41 --watch --required && gh pr merge 41 --merge
+gh pr edit 42 --base main && gh pr checks 42 --watch --required && gh pr merge 42 --merge
 git switch main && git pull --ff-only
 ```
 
@@ -34,7 +44,7 @@ git switch main && git pull --ff-only
 1. Bulwark (from the Sentry) and Magnet (from the Sweeper) base powers: drops, charge cores, evolutions (REFLECT, CRUSH), effects, sounds, and the slotting banner. Then a bot protocol check that shields do not trivialize projectile protocols.
 2. `config/evidence.json` version 4, which counts power uses by cooldown family (shot, teleport, pulse, shield, pull). Make `config_hash` cover it. Adit then redeploys the Worker and runs the smoke test (docs/DEPLOY.md).
 3. The 21 powers of the Bulwark and Magnet pairs (spec section 5), each its own verb and icon, held to the power step guard. The cut order is whole pairs (section 9).
-4. Balance with the floor bot over 8 seeds and Adit's playtest notes, Nov 26 to 27 (spec section 9, step 8).
+4. Balance the planned power roster against the new boss kits with the floor bot over 8 seeds and Adit's playtest notes, Nov 26 to 27 (spec section 9, step 8). The three-seed boss protocol guard includes the slower seed 3 bot run. Details in [BOSS_DESIGN.md](BOSS_DESIGN.md).
 
 ## Open decisions for Adit
 - The playtest seed rule (spec section 11). Recommendation: one seed per participant for both conditions, and different seeds across participants.

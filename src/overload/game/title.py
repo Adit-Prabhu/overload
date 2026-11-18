@@ -31,7 +31,7 @@ CONTROLS = (
 
 @cache
 def _backdrop() -> pygame.Surface:
-    return tiles.render_room(FLOOR.room).background
+    return tiles.render_room(FLOOR.room, tiles.floor_sectors(FLOOR)).background
 
 
 @cache

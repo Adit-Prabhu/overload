@@ -60,7 +60,7 @@ Use these names everywhere: UI text, logs shown to players, recordings and docs.
 Original pixel art in a 3/4 top-down view, in the spirit of action roguelikes like Soul Knight: chunky characters, readable machines, a lit and detailed station. Nothing is copied from any other game.
 
 - **Resolution:** 256 × 144 internal, scaled up by whole numbers (5× gives 1280 × 720), nearest-neighbor only.
-- **Tiles:** 16 × 16. Characters are about 16 × 22, small enemies 16 to 20 px, and the Regulator about 46 × 42.
+- **Tiles:** 16 × 16. Characters are about 16 × 22, small enemies 16 to 20 px, and the Regulator about three times the Surge's height (up to 100 × 84 with its legs).
 - **Outline:** every sprite gets the same 1 px dark outline automatically.
 - **Light:** comes from the top left. Every material has a dark, mid and light tone.
 - **Camera:** follows the Surge with a slight lead toward the aim, inside rooms larger than the screen.
@@ -107,7 +107,7 @@ A glow pass then blooms the emissive layer.
 | --- | --- | --- |
 | Surge | Responsive | 2-frame idle breathing, 4-frame walk with body bob, dodge ghosts |
 | Machines | Mechanical and twitchy | Walkers step on jointed legs with an eight-step cycle driven by the distance walked, so a robot that stops stands still and a faster one steps faster (`art/pixel/rig.py`). The Breaker walks, swings its fists and kicks up dust at each footfall, the Sweeper scuttles on four spider legs and digs in to rev, the Arc Drone hovers with a spinning rotor and leans into its flight, the Sentry sweeps its eye and its barrel kicks back when it fires. The Relay Bot crouches before a blink and beams out and in on a column of Blink light |
-| Regulator | Heavy and deliberate | Treads, a gauge needle that always points at the Surge, pose changes per protocol |
+| Regulator | Heavy and deliberate | Each chassis walks on its own legs (`art/pixel/regulators.py`): the Linesman on two long legs, the Transformer on a four-legged trot, the Grid Core on four arched legs stepping in pairs. When it backs away it steps backward. A gauge needle always points at the Surge, the pose changes per protocol, and the chassis lights up before its signature attack |
 
 Timing standards apply to both comparison conditions identically:
 
@@ -136,8 +136,7 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | ID | Asset | Look | Motion and tells | Pri | Status |
 | --- | --- | --- | --- | --- | --- |
 | CH-01 | Surge | Lineworker: white hard hat with a headlamp and reflective band, goggles, teal jacket with a reflective strip, utility belt, battery pack with two power sockets, siphon glove, spark caster | 2-frame idle, 4-frame walk, dodge ghosts, hit flicker, headlamp light follows the aim | P0 | Done |
-| CH-02 | Regulator | Orange machine with a big gauge face, ceramic insulator shoulders, vents, status lights, hazard-striped hip, treads. The needle tracks the Surge | Pose per protocol, protocol boot cue | P0 | Done (poses and boot cue: shield ring, protocol icon and sting) |
-| CH-02d | Regulator chassis (Nov 17) | One mech per sector chamber, same silhouette and protocol arms so it stays the same rival. Linesman: orange shell, one amber beacon. Transformer: brass shell (`px.coil`), coil bands, two ceramic bushings on its head. Grid Core: violet shell (`px.core`), magenta gauge rim and a crown of three magenta pylons. Overloaded, its shell cracks with red light and its eyes go pink | Signature tells: a filling dot ring plus eight growing spokes (ring), a dotted ring at full reach (quake), warp markers (summon), two magenta arms (spiral) | P0 | Done |
+| CH-02 | Regulator chassis | Linesman gantry and mask, oil-cooled Transformer, fractured reactor cage. Core armor anchors aim and the protocol modules attach on both sides | Three distinct silhouettes per chassis, articulated walks, notched health bar, vent steam, boss entrance and a defeat sequence before the ending | P0 | Implemented in the boss stack. See [design and review renders](BOSS_DESIGN.md) |
 | CH-02a | Clamp protocol | Pincers forward | Lunge with a filling tell, then recovery | P0 | Done |
 | CH-02b | Insulate protocol | Hatched shield plates on both sides | Backs off, lays hatched hazard tiles, slow orbs | P0 | Done |
 | CH-02c | Oscillate protocol | Side thruster fins | Strafes, fins flash before a volley | P0 | Done (fins flash during the volley tell, with the aim line and ring) |
@@ -178,6 +177,7 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | EN-08 | Fuse Box room | P0 | Fuse Box menu screen done over the dimmed room. A separate room is not drawn |
 | EN-09 | Lighting states per encounter (standby, rising, overload) | P1 | Partly done: one light per sector (below) |
 | EN-10 | Sector identity (Nov 17) | P0 | Done, see below |
+| EN-11 | Set dressing (Nov 18, `art/pixel/dressing.py`) | P1 | Done. Seeded by tile, cosmetic only. Contact shadows at wall bases, low-frequency grime, bolts and scuffs on every floor. Switchyard: painted walk lines, oil stains, cable trays on the upper walls. Cooling plant: wet patches (kept off the Cooled robots' teal) that catch drips, drains, rust streaks, pipes with valve wheels, steam from the vents. Grid core: scorch marks, cracks leaking conduit light, a lit conduit strip on the upper walls, damaged panels that spit sparks. Bare wall faces get junction boxes, numbered plates and fans. Some emergency lamps flicker, lens and light together. Dust drifts through lamp light |
 
 #### Sector identity (Nov 17)
 Each sector should read as a different part of the station within a second of walking in, without changing the rules.
