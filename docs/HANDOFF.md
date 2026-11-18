@@ -27,12 +27,16 @@ Snapshot of November 18, 2026. For any agent or chat picking up the work. The st
 | [#41](https://github.com/Adit-Prabhu/overload/pull/41) | Phase-specific chassis art, camera, victory, retry and replay presentation |
 | [#42](https://github.com/Adit-Prabhu/overload/pull/42) | Ten new original cues, event bindings and the completion record on `feat/boss-sounds` |
 
-Adit merges in this order.
+Adit merges in this order. GitHub keeps the branch after each merge, so retarget the next PR to main and let its required checks pass before merging it.
 
 ```sh
-gh pr merge 36 --merge && gh pr merge 37 --merge && gh pr merge 38 --merge
-gh pr merge 39 --merge && gh pr merge 40 --merge && gh pr merge 41 --merge
-gh pr merge 42 --merge
+gh pr merge 36 --merge
+gh pr edit 37 --base main && gh pr checks 37 --watch --required && gh pr merge 37 --merge
+gh pr edit 38 --base main && gh pr checks 38 --watch --required && gh pr merge 38 --merge
+gh pr edit 39 --base main && gh pr checks 39 --watch --required && gh pr merge 39 --merge
+gh pr edit 40 --base main && gh pr checks 40 --watch --required && gh pr merge 40 --merge
+gh pr edit 41 --base main && gh pr checks 41 --watch --required && gh pr merge 41 --merge
+gh pr edit 42 --base main && gh pr checks 42 --watch --required && gh pr merge 42 --merge
 git switch main && git pull --ff-only
 ```
 
