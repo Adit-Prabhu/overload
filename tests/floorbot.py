@@ -59,6 +59,7 @@ class FloorBot:
         self.goal: tuple[int, int] | None = None
         self.last = (0, 0)
         self.still = 0
+        self.around = 0  # ticks left walking around a wall to its target
 
     def _open(self, tx: int, ty: int) -> bool:
         room = self.campaign.arena.room
@@ -154,6 +155,13 @@ class FloorBot:
             )
             for i in range(1, steps)
         )
+        # Hysteresis: once a wall hides the target, keep walking around it for a moment, or
+        # the line of sight can flicker at a wall's end and leave the bot dithering there.
+        if hidden:
+            self.around = 30
+        elif self.around:
+            self.around -= 1
+            hidden = True
         if hidden:  # a wall is in the way: walk around it toward the target
             sx, sy = self._walk_to((target.x, target.y), tick)
             mx, my = float(sx), float(sy)

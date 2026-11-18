@@ -110,11 +110,10 @@ def spawn_rival(
         raise ValueError(f"unknown protocol {protocol!r}")
     boss = BOSSES[sector] if sector is not None else REGULATOR
     health = boss.health or tuning.rival_health
-    first = {"ring": tuning.ring_every, "quake": tuning.quake_every, "summon": tuning.summon_every}
     world.rival = Rival(
         x=x,
         y=y,
-        radius=tuning.rival_radius,
+        radius=boss.radius or tuning.rival_radius,
         health=health,
         max_health=health,
         protocol=protocol,
@@ -122,7 +121,7 @@ def spawn_rival(
         cooldown=tuning.clamp_rest,
         timer=tuning.oscillate_interval if protocol == "lateral" else tuning.insulate_orb_interval,
         kind=boss.kind,
-        sig_timer=first.get(boss.signature, 0) // 2,  # the first one comes sooner
+        sig_timer=boss.phases[0].every // 2 if boss.phases else 0,  # the first comes sooner
     )
     world.events.append(Event("protocol_boot", x, y))
     return world.rival

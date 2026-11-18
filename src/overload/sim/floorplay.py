@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from overload.floor import TILE, WAVES, Floor, FloorRoom
 from overload.sim.geometry import circle_hits_rect
-from overload.sim.powers import absorb_charges
+from overload.sim.powers import BASE_POWERS, absorb_charges
 from overload.sim.spawns import spawn_rival, spawn_robot
 from overload.sim.state import Event, Warp, World
 from overload.sim.tuning import Tuning
@@ -111,6 +111,8 @@ def _hold(world: World, tuning: Tuning, floor: Floor) -> None:
     elif world.rival is not None and world.rival.health > 0:
         return
     else:
+        if world.rival is not None:
+            _boss_reward(world, room)
         world.rival = None
         # Anything the chassis warped in shorts out with it.
         for hostile in world.hostiles:
@@ -126,6 +128,15 @@ def _hold(world: World, tuning: Tuning, floor: Floor) -> None:
     world.active_room = ""
     unlock(world, [door.id for door in floor.doors_of(room.id)])
     world.events.append(Event("room_clear", *tile_center(room.center)))
+
+
+def _boss_reward(world: World, room: FloorRoom) -> None:
+    """Beating a chassis pays: one spare charge of every base power the Surge has stolen,
+    for the Fuse Box's rerolls (docs/BOSS_DESIGN.md)."""
+    paid = [power for power in BASE_POWERS if power in world.unlocked]
+    for power in paid:
+        world.bank[power] = world.bank.get(power, 0) + 1
+    world.events.append(Event("boss_reward", *tile_center(room.center), len(paid)))
 
 
 def shot_hits_wall(world: World, tuning: Tuning, arena, center, radius: float) -> None:

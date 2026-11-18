@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import random
 
-from overload.sim import floorplay, fusions, robots
+from overload.sim import bosskit, floorplay, fusions, robots
 from overload.sim.aiming import aim, launch_point
 from overload.sim.arena import SUBSTATION, Arena
-from overload.sim.bosses import BY_KIND, COS20, RING, SIN20
+from overload.sim.bosses import BY_KIND
 from overload.sim.collision import blocked, move_body  # noqa: F401 (move_body re-exported)
 from overload.sim.damage import damage_rival, hurt_player
 from overload.sim.geometry import (
@@ -51,8 +51,6 @@ from overload.sim.state import (
     Player,
     Projectile,
     Rival,
-    Shockwave,
-    Warp,
     World,
 )
 from overload.sim.tuning import DEFAULT, Tuning
@@ -345,25 +343,13 @@ def _rival(world: World, tuning: Tuning, arena: Arena) -> None:
     if rival is None or rival.health <= 0:
         return
     boss = BY_KIND[rival.kind]
-    if boss.overload and rival.phase == 1 and rival.health * 2 <= rival.max_health:
-        # Phase 2: a shield flicker (the boot shield), then the overload signature.
-        rival.phase, rival.boot = 2, tuning.overload_shield
-        first = (
-            tuning.oscillate_interval
-            if rival.protocol == "lateral"
-            else tuning.insulate_orb_interval
-        )
-        rest = (
-            tuning.clamp_rest if rival.protocol == "pressure" else tuning.insulate_hazard_interval
-        )
-        rival.action, rival.timer, rival.cooldown = "move", first // 2, rest // 2
-        rival.sig_action, rival.sig_timer = "idle", tuning.spiral_every // 2
-        world.events.append(Event("overload", rival.x, rival.y))
     if rival.boot > 0:
         rival.boot -= 1
         return
-    if _signature(world, rival, boss, tuning, arena):
-        return  # the protocol waits while a signature attack runs
+    if bosskit.phase_change(world, rival, boss, tuning):
+        return  # shielded while the next phase starts
+    if bosskit.run(world, rival, tuning, arena):
+        return  # the protocol waits while a kit attack runs, or while it vents
     player = world.player
     if rival.protocol == "pressure":
         _clamp(world, rival, player, tuning, arena)
@@ -374,126 +360,11 @@ def _rival(world: World, tuning: Tuning, arena: Arena) -> None:
 
 
 def _rest(rival: Rival, ticks: int) -> int:
-    """The protocol's rest between attacks, scaled by the chassis pace."""
-    boss = BY_KIND[rival.kind]
-    pace = boss.overload_pace if rival.phase == 2 else boss.pace
-    return max(1, round(ticks * pace))
+    """The protocol's rest between attacks, scaled by the chassis' current phase."""
+    return max(1, round(ticks * bosskit.pace(rival)))
 
 
-def _signature_name(rival: Rival, boss) -> str:
-    return boss.overload if rival.phase == 2 else boss.signature
-
-
-def signature_timing(name: str, tuning: Tuning) -> tuple[int, int]:
-    """(ticks between, tell ticks) for a chassis signature."""
-    return {
-        "ring": (tuning.ring_every, tuning.ring_tell),
-        "quake": (tuning.quake_every, tuning.quake_tell),
-        "summon": (tuning.summon_every, tuning.summon_tell),
-        "spiral": (tuning.spiral_every, tuning.spiral_tell),
-    }[name]
-
-
-def _signature(world: World, rival: Rival, boss, tuning: Tuning, arena: Arena) -> bool:
-    """Run the chassis signature on its own timer. It starts only between protocol attacks
-    (action "move"), shows its tell, fires, then stays quiet while its bolts or wave are out.
-    True while it is busy (the protocol waits)."""
-    name = _signature_name(rival, boss)
-    if not name:
-        return False
-    every, tell = signature_timing(name, tuning)
-    if rival.sig_action == "idle":
-        rival.sig_timer -= 1
-        if rival.sig_timer <= 0 and rival.action == "move":
-            if name == "summon" and not _can_summon(world, arena, tuning):
-                rival.sig_timer = every // 3  # the room is busy, look again soon
-                return False
-            _lock_aim(rival, world.player)  # the spiral's first arm shows during the tell
-            rival.sig_action, rival.sig_timer = "tell", tell
-            world.events.append(Event("boss_tell", rival.x, rival.y))
-            return True
-        return False
-    if rival.sig_action == "tell":
-        rival.sig_timer -= 1
-        if rival.sig_timer > 0:
-            return True
-        if name == "ring":
-            for dx, dy in RING:
-                _rival_shoot(
-                    world,
-                    rival,
-                    dx,
-                    dy,
-                    tuning.bolt_speed,
-                    tuning.bolt_radius,
-                    tuning.bolt_ttl,
-                    tuning,
-                )
-            world.events.append(Event("boss_ring", rival.x, rival.y))
-        elif name == "quake":
-            world.shockwaves.append(
-                Shockwave(world.new_id(), rival.x, rival.y, rival.radius, False, tuning.quake_reach)
-            )
-            world.events.append(Event("quake", rival.x, rival.y))
-        elif name == "summon":
-            _summon(world, arena, tuning)
-            world.events.append(Event("summon", rival.x, rival.y))
-        elif name == "spiral":
-            rival.spin_x, rival.spin_y = rival.aim_x, rival.aim_y
-            rival.sig_action, rival.sig_timer = "fire", tuning.spiral_ticks
-            world.events.append(Event("boss_spiral", rival.x, rival.y))
-            return True
-        rival.sig_action, rival.sig_timer = "quiet", tuning.signature_quiet
-        return True
-    if rival.sig_action == "quiet":
-        rival.sig_timer -= 1
-        if rival.sig_timer <= 0:
-            rival.sig_action, rival.sig_timer = "idle", every
-        return True
-    # "fire": the spiral streams two opposite bolts every few ticks, turning 20 degrees.
-    if rival.sig_timer % tuning.spiral_gap == 0:
-        sx, sy = rival.spin_x, rival.spin_y
-        for dx, dy in ((sx, sy), (-sx, -sy)):
-            _rival_shoot(
-                world,
-                rival,
-                dx,
-                dy,
-                tuning.bolt_speed,
-                tuning.bolt_radius,
-                tuning.bolt_ttl,
-                tuning,
-            )
-        rival.spin_x, rival.spin_y = sx * COS20 - sy * SIN20, sx * SIN20 + sy * COS20
-    rival.sig_timer -= 1
-    if rival.sig_timer <= 0:
-        rival.sig_action, rival.sig_timer = "quiet", tuning.signature_quiet
-    return True
-
-
-def summon_points(arena: Arena) -> list[tuple[float, float]]:
-    """Where the Grid Core warps its drones in: either side of the chamber's middle row."""
-    floor = arena.floor
-    if floor is None:
-        return []
-    points = []
-    for room in floor.rooms:
-        if room.kind == "chamber" and room.sector == 3:
-            x, y, w, _ = room.rect
-            for tx in (x + 6, x + w - 7):
-                points.append((tx * 16 + 8.0, (y + 9) * 16 + 8.0))
-    return points
-
-
-def _can_summon(world: World, arena: Arena, tuning: Tuning) -> bool:
-    alive = sum(1 for h in world.hostiles if h.health > 0) + len(world.warps)
-    return bool(summon_points(arena)) and alive < tuning.summon_cap
-
-
-def _summon(world: World, arena: Arena, tuning: Tuning) -> None:
-    for x, y in summon_points(arena):
-        world.warps.append(Warp(world.new_id(), "drone", x, y, tuning.warp_tell))
-        world.events.append(Event("warp", x, y))
+summon_points = bosskit.summon_points  # the view draws the Grid Core's summon markers
 
 
 def _clamp(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Arena) -> None:
