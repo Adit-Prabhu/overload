@@ -583,7 +583,7 @@ def test_each_chassis_body_sits_on_its_hit_circle(headless_pygame) -> None:
             for x in range(image.get_width())
             if tuple(image.get_at((x, y)))[:3] in shell
         ]
-        center = (min(rows) + max(rows)) / 2  # the shell's extent
+        center = sum(rows) / len(rows)  # the shell's mass (long arms stretch its extent)
         offset = RIVAL_FEET[kind] - (image.get_height() - center)  # body center below sim y
         assert abs(offset) <= 6, (kind, offset)
 
@@ -697,3 +697,80 @@ def test_floor_sectors_cover_walls_corridors_and_the_hidden_room() -> None:
             if (r.rect[0] // CELL[0], r.rect[1] // CELL[1]) == (dx // CELL[0], dy // CELL[1])
         )
         assert sectors(dx, dy) == cell_room.sector, door.id
+
+
+def test_a_chassis_falls_in_a_death_sequence_then_a_banner(headless_pygame) -> None:
+    """View only: the wreck flickers and sinks while explosions chain over it, then its
+    name and DOWN. The room has already cleared in the sim."""
+    from floorbot import enter
+
+    from overload.game.view import DOWNED_TICKS, WRECK_TICKS, PixelView
+    from overload.sim.campaign import Campaign
+    from overload.sim.damage import damage_rival
+    from overload.sim.inputs import IDLE
+
+    campaign = Campaign(1)
+    enter(campaign, "s1_chamber")
+    view = PixelView(campaign)
+    screen = pygame.Surface((256, 144))
+    rival = campaign.world.rival
+    rival.boot = 0
+    view.draw(screen, campaign, (128, 72))  # remembers the chassis' last image
+    rival.health = 1
+    damage_rival(campaign.world, 1, rival.x, rival.y)
+    view.consume(campaign, campaign.world.events)
+    assert view.wreck is not None and view.downed[0] == "LINESMAN DOWN"
+    booms = 0
+    for _ in range(WRECK_TICKS):
+        campaign.step(IDLE)
+        view.after_tick(campaign)
+        booms = max(booms, len(view.booms))
+        view.draw(screen, campaign, (128, 72))
+    assert view.wreck is None and booms > 0
+    for _ in range(DOWNED_TICKS):
+        view.after_tick(campaign)
+    assert view.downed is None
+
+
+def test_the_boss_bar_shows_its_phases_and_flashes_while_it_vents(headless_pygame) -> None:
+    plain = pygame.Surface((256, 144))
+    notched = pygame.Surface((256, 144))
+    hud.draw(plain, hud.Hud(charge=6, max_charge=6, rival_health=1.0, rival_phases=1))
+    hud.draw(notched, hud.Hud(charge=6, max_charge=6, rival_health=1.0, rival_phases=3))
+    assert pygame.image.tobytes(plain, "RGB") != pygame.image.tobytes(notched, "RGB")
+    calm = pygame.Surface((256, 144))
+    venting = pygame.Surface((256, 144))
+    hud.draw(calm, hud.Hud(charge=6, max_charge=6, rival_health=1.0, tick=4))
+    hud.draw(venting, hud.Hud(charge=6, max_charge=6, rival_health=1.0, tick=4, rival_venting=True))
+    assert pygame.image.tobytes(calm, "RGB") != pygame.image.tobytes(venting, "RGB")
+
+
+def test_the_entrance_card_and_the_ending_times_draw(headless_pygame) -> None:
+    from floorbot import enter
+
+    from overload.game.view import PixelView
+    from overload.sim.campaign import Campaign
+
+    campaign = Campaign(1)
+    enter(campaign, "s2_chamber")
+    view = PixelView(campaign)
+    with_card = pygame.Surface((256, 144))
+    view.draw(with_card, campaign, (128, 72))
+    campaign.world.rival.boot = 0
+    without = pygame.Surface((256, 144))
+    view.draw(without, campaign, (128, 72))
+    assert pygame.image.tobytes(with_card, "RGB") != pygame.image.tobytes(without, "RGB")
+    ending = pygame.Surface((256, 144))
+    view.draw_ending(ending, 120.0, 1, 50, {}, {"1": 1500, "2": 2400})
+
+
+def test_every_chassis_pose_renders(headless_pygame) -> None:
+    from overload.art.pixel import regulators
+
+    sizes = set()
+    for kind in regulators.KINDS:
+        for flags in itertools.product((False, True), repeat=4):
+            charged, overload, vent, opened = flags
+            image = regulators.body(kind, None, charged, overload, vent, opened)
+            sizes.add(image.get_size())
+    assert len(sizes) == 1, "every pose on one canvas, so the anchor never jumps"

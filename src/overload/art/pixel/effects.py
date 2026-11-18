@@ -756,3 +756,16 @@ def kit_hazard(
                 or (abs(dx - mid) <= reach and abs(dy - mid) <= reach and (dx - dy) % 4 == 0)
             ):
                 target.set_at((x + dx, y + dy), danger)
+
+
+def explosion(target: pygame.Surface, light: pygame.Surface, pos: Point, age: float) -> None:
+    """An explosion on a dying chassis: a hot core that swells and a ring that runs out,
+    in fire colors, never a power's."""
+    x, y = round(pos[0]), round(pos[1])
+    radius = 3 + round(age * 11)
+    core = max(0, round((1.0 - age) * 6))
+    for surface in (target, light):
+        pygame.draw.circle(surface, rgb("px.hostile.2"), (x, y), radius, 1)
+        if core:
+            pygame.draw.circle(surface, rgb("px.lamp"), (x, y), core + 1)
+            pygame.draw.circle(surface, rgb("px.lamp.light"), (x, y), core)

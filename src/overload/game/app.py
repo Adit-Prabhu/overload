@@ -481,6 +481,7 @@ def play(options: Options) -> int:
                     sum(run.retries.values()),
                     run.stats["shots"],
                     run.stats["powers"],
+                    run.stats.get("bosses"),
                 )
             if dev_tools is not None:
                 draw_dev_tag(screen)
