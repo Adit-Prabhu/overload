@@ -16,6 +16,7 @@ import pygame
 from overload import __version__
 from overload.art.palette import rgb, rgba
 from overload.art.pixel import actors, effects, hud, rig, tiles
+from overload.art.pixel import regulators as regulators_art
 from overload.art.pixel import robots as robots_art
 from overload.art.pixel.light import Glow
 from overload.art.pixel.lighting import Lighting, pool, quantize
@@ -79,7 +80,7 @@ EVOLVED_INFO = {
     "blink": "EVOLVED. A BURST OF SPEED ON ARRIVAL",
     "burst": "EVOLVED. A WIDER, LONGER CONE",
 }
-RIVAL_FEET = 20
+RIVAL_FEET = regulators_art.FEET  # per chassis: feet below the body center
 ROBOT_FEET = {"drone": 9, "relay": 10, "breaker": 12, "sweeper": 7, "sentry": 8}
 CORE_GLOW = {"drone": "power.spark", "relay": "power.blink", "breaker": "power.burst"}
 SHOT_ART = {
@@ -101,13 +102,13 @@ class Gait:
     dx: float = 0.0  # direction of the last move, for facing
 
 
-STRIDE = {"relay": 2.0, "breaker": 2.0, "sweeper": 1.5, "regulator": 3.0}  # px per step
+STRIDE = {"relay": 2.0, "breaker": 2.0, "sweeper": 1.5, "regulator": 2.5}  # px per step
 WALKING = 0.05  # moved at least this far on the last tick: walking, not standing
 SCAN = (0, 1, 2, 3, 3, 2, 1, 0)  # the Sentry's eye sweeping its visor
 RECOIL_TICKS = 12
 BEAM_TICKS = 10
 # Heavy walkers kick up dust when a foot comes down: (kind, feet below center, dust count).
-FOOTFALLS = {"breaker": (12, 3)}
+FOOTFALLS = {"breaker": (12, 3), "regulator": (20, 5)}  # the Regulator's feet: per chassis
 FOOT_DOWN = (2, 6)  # the walk steps where a foot lands (art/pixel/rig.py)
 
 
@@ -123,6 +124,17 @@ def walk_step(gait: Gait | None, kind: str) -> int | None:
     if gait is None or gait.moved < WALKING:
         return None
     return int(gait.stride / STRIDE.get(kind, 3.0)) % rig.STEPS
+
+
+def rival_step(gait: Gait | None, facing_left: bool) -> int | None:
+    """The Regulator's walk step. It faces the Surge, so when it backs away (Insulate) or
+    strafes against its facing, the cycle runs backward and its feet step back instead of
+    moonwalking."""
+    step = walk_step(gait, "regulator")
+    if step is None or gait is None:
+        return step
+    backward = gait.dx > 0.05 if facing_left else gait.dx < -0.05
+    return (rig.STEPS - step) % rig.STEPS if backward else step
 
 
 def robot_image(
@@ -184,6 +196,7 @@ def tier_colors(image: pygame.Surface, tier: int) -> pygame.Surface:
 
 
 RIVAL_FLASH = -1  # flash key for the Regulator (hostile IDs are positive)
+RIVAL_GAIT = -1  # and its key among the walk cycles
 POSES = {"pressure": "clamp", "spacing": "insulate", "lateral": "oscillate"}
 
 
@@ -321,7 +334,7 @@ class PixelView:
         kick up dust as they come down."""
         bodies = [(h.id, h.kind, h.x, h.y) for h in world.hostiles if h.health > 0]
         if world.rival is not None and world.rival.health > 0:
-            bodies.append((-1, "regulator", world.rival.x, world.rival.y))
+            bodies.append((RIVAL_GAIT, "regulator", world.rival.x, world.rival.y))
         seen = set()
         for key, kind, x, y in bodies:
             seen.add(key)
@@ -341,6 +354,8 @@ class PixelView:
             step = walk_step(gait, kind)
             if kind in FOOTFALLS and step != self.steps.get(key) and step in FOOT_DOWN:
                 feet, count = FOOTFALLS[kind]
+                if key == RIVAL_GAIT:
+                    feet = RIVAL_FEET.get(world.rival.kind, feet)
                 self._burst(x, y + feet, count, "px.wall.3", 0.5)
             self.steps[key] = step
         for key in list(self.gaits):
@@ -769,7 +784,7 @@ class PixelView:
 
         rival = world.rival
         if rival is not None and rival.health > 0:
-            rival_feet = (rival.x, rival.y + RIVAL_FEET)
+            rival_feet = (rival.x, rival.y + RIVAL_FEET.get(rival.kind, 20))
             needle = math.atan2(player.y - rival.y, player.x - rival.x)
             busy = rival.action in ("tell", "dash")
             rival_left = rival.aim_x < 0 if busy else player.x < rival.x
@@ -779,13 +794,15 @@ class PixelView:
                 fins_lit = (
                     rival.protocol == "lateral" and rival.action == "tell" and (tick // 4) % 2 == 0
                 )
-                image = robots_art.regulator_mech(
+                image = regulators_art.regulator(
                     POSES[rival.protocol],
                     rival_left,
                     needle,
                     fins_lit,
                     kind=rival.kind,
                     overload=rival.phase == 2,
+                    step=rival_step(self.gaits.get(RIVAL_GAIT), rival_left),
+                    charged=rival.sig_action == "tell",
                 )
                 if RIVAL_FLASH in self.flashes:
                     image = effects.tinted(image, "fx.flash")
@@ -800,7 +817,7 @@ class PixelView:
                     icon = pygame.transform.scale_by(
                         effects.protocol_icon(POSES[rival.protocol]), 2
                     )
-                    top = v(rival.x, rival.y + RIVAL_FEET - image.get_height() - 12)
+                    top = v(rival.x, rival_feet[1] - image.get_height() - 4)
                     screen.blit(icon, icon.get_rect(center=(round(top[0]), round(top[1]))))
 
             drawables.append((rival_feet[1], draw_rival))

@@ -1,6 +1,6 @@
 """Render the robot roster style frame (overhaul, Nov 17) for Adit's approval: every robot
-next to the Surge for scale, the Regulator mech in its three protocols, and one hostile shot
-shape per attacker.
+next to the Surge for scale, the Regulator's three chassis (each in one of the protocols),
+and one hostile shot shape per attacker.
 
 Usage: uv run python tools/art/robot_style_frame.py docs/art/robot_style_frame.png
 """
@@ -15,9 +15,9 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pygame  # noqa: E402
 
 from overload.art.palette import rgb  # noqa: E402
-from overload.art.pixel import actors, effects, hud, robots  # noqa: E402
+from overload.art.pixel import actors, effects, hud, regulators, robots  # noqa: E402
 
-SIZE = (320, 150)
+SIZE = (320, 160)
 
 
 def main(argv: list[str]) -> int:
@@ -43,13 +43,16 @@ def main(argv: list[str]) -> int:
     put(robots.breaker(False, raising=True), 172, 56)
     put(robots.sweeper(0, False), 214, 56, "SWEEPER")
     put(robots.sentry(False), 258, 56, "SENTRY")
-    for i, protocol in enumerate(("clamp", "insulate", "oscillate")):
-        put(robots.regulator_mech(protocol, False, -0.6), 34 + i * 72, 132, protocol.upper())
+    for i, (kind, protocol) in enumerate(
+        zip(regulators.KINDS, ("clamp", "insulate", "oscillate"), strict=True)
+    ):
+        image = regulators.regulator(protocol, False, -0.6, kind=kind)
+        put(image, 38 + i * 72, 140, kind.replace("_", " ").upper())
     shots = (effects.hostile_bolt(), robots.shard(), robots.shell(), robots.needle_dart())
     for i, image in enumerate((*shots, robots.orb())):
         x, y = 236 + (i % 3) * 26, 84 + (i // 3) * 22
         sheet.blit(image, (x - image.get_width() // 2, y))
-    robots.shockwave(sheet, (280, 132), 12)
+    robots.shockwave(sheet, (280, 136), 12)
     pygame.image.save(pygame.transform.scale_by(sheet, 4), out)
     pygame.quit()
     print(f"wrote {out}")

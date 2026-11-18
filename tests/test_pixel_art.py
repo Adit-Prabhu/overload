@@ -227,7 +227,7 @@ def test_tell_states_look_different_from_rest_states(headless_pygame) -> None:
 
 
 def test_every_robot_and_shot_renders(headless_pygame) -> None:
-    from overload.art.pixel import robots
+    from overload.art.pixel import regulators, robots
 
     for left in (False, True):
         robots.drone(0, left)
@@ -239,11 +239,12 @@ def test_every_robot_and_shot_renders(headless_pygame) -> None:
         robots.sweeper(0, left, revving=True)
         robots.sentry(left)
         for protocol in ("clamp", "insulate", "oscillate"):
-            robots.regulator_mech(protocol, left, needle=0.5, lit=True)
+            for kind in regulators.KINDS:
+                regulators.regulator(protocol, left, needle=0.5, lit=True, kind=kind)
     for shot in (robots.shard(), robots.shell(), robots.needle_dart(), robots.orb()):
         assert shot.get_width() > 0
     with pytest.raises(KeyError):
-        robots.regulator_mech("berserk", False)
+        regulators.regulator("berserk", False)
 
 
 def _colors(image: pygame.Surface) -> set[tuple[int, int, int]]:
@@ -408,6 +409,56 @@ def test_relay_teleports_beam_and_shots_recoil(headless_pygame) -> None:
     assert not view.beams and 4 not in view.recoils
 
 
+def test_each_chassis_has_its_own_silhouette(headless_pygame) -> None:
+    """Adit, Nov 17: the bosses were one box in three colors. Each chassis now has its own
+    shape, told apart without color, on one canvas size. The old chassis shared one mask
+    (overlap 1.0). The tall Linesman and the wide Transformer still share a torso band, so
+    the bar is under 0.65."""
+    from overload.art.pixel import regulators
+
+    masks = {}
+    for kind in regulators.KINDS:
+        image = regulators.body(kind)
+        assert image.get_size() == regulators.body("linesman").get_size()
+        masks[kind] = pygame.mask.from_surface(image)
+    for a, b in itertools.combinations(regulators.KINDS, 2):
+        overlap = masks[a].overlap_area(masks[b], (0, 0))
+        union = masks[a].count() + masks[b].count() - overlap
+        assert overlap / union < 0.65, (a, b)
+
+
+def test_the_regulator_walks_and_its_poses_read(headless_pygame) -> None:
+    """Legs move through the cycle, the protocol arms change the silhouette, the signature
+    charge lights the chassis, and the Grid Core cracks when it overloads."""
+    from overload.art.pixel import regulators
+
+    def raw(image):
+        return pygame.image.tobytes(image, "RGBA")
+
+    for kind in regulators.KINDS:
+        still = raw(regulators.regulator("clamp", False, kind=kind))
+        steps = {raw(regulators.regulator("clamp", False, kind=kind, step=s)) for s in range(8)}
+        assert still not in steps and len(steps) >= 4, kind
+        poses = {raw(regulators.regulator(p, False, kind=kind)) for p in ("clamp", "insulate")}
+        assert len(poses) == 2
+        charged = raw(regulators.regulator("clamp", False, kind=kind, charged=True))
+        assert charged != still, kind
+    calm = regulators.regulator("clamp", False, kind="grid_core")
+    hot = regulators.regulator("clamp", False, kind="grid_core", overload=True)
+    assert raw(calm) != raw(hot)
+
+
+def test_the_regulator_steps_backward_when_it_backs_away(headless_pygame) -> None:
+    from overload.game.view import Gait, rival_step
+
+    gait = Gait(0.0, 0.0, stride=5.0, moved=1.0, dx=-1.0)  # moving left
+    forward = rival_step(gait, facing_left=True)
+    backward = rival_step(gait, facing_left=False)  # facing right while moving left
+    assert forward is not None and backward is not None
+    assert (forward + backward) % 8 == 0
+    assert rival_step(Gait(0.0, 0.0), False) is None
+
+
 def test_the_drone_core_glow_sits_on_its_core(headless_pygame) -> None:
     """The glow is drawn at the sim position minus the hover, so it must land on the yellow
     Spark core of the sprite drawn at the drone's feet minus the same hover."""
@@ -462,3 +513,59 @@ def test_footfalls_kick_dust_and_short_moves_are_walks(headless_pygame) -> None:
     view._walk(world)
     assert view.gaits[9].stride > 0
     assert view.gaits[9].dx > 0, "faces the way it walked"
+
+
+def test_each_chassis_body_sits_on_its_hit_circle(headless_pygame) -> None:
+    """Drawn at its feet anchor, each chassis' body center lands on the sim position, so
+    shots that visibly hit the body hit the circle. Measured on the body's own colors."""
+    from overload.art.pixel import regulators
+    from overload.game.view import RIVAL_FEET
+
+    for kind in regulators.KINDS:
+        image = regulators.body(kind)
+        shell = {rgb(token) for token in regulators.SHELLS[kind]}
+        rows = [
+            y
+            for y in range(image.get_height())
+            for x in range(image.get_width())
+            if tuple(image.get_at((x, y)))[:3] in shell
+        ]
+        center = (min(rows) + max(rows)) / 2  # the shell's extent
+        offset = RIVAL_FEET[kind] - (image.get_height() - center)  # body center below sim y
+        assert abs(offset) <= 6, (kind, offset)
+
+
+def test_no_chassis_is_cut_off_at_the_top(headless_pygame) -> None:
+    from overload.art.pixel import regulators
+
+    for kind in regulators.KINDS:
+        for step in (None, *range(8)):
+            for charged in (False, True):
+                image = regulators.body(kind, step, charged)
+                # Row 1 is the canvas' first row (row 0 is the outline pad). Only the
+                # outline of something below may reach it, never the art itself.
+                top = {
+                    tuple(image.get_at((x, 1)))
+                    for x in range(image.get_width())
+                    if image.get_at((x, 1)).a
+                }
+                assert top <= {(*rgb("px.outline"), 255)}, (kind, step)
+
+
+def test_the_legacy_regulator_draws_as_the_linesman(headless_pygame) -> None:
+    from overload.art.pixel import regulators
+
+    a = regulators.regulator("clamp", False, 0.3, kind="regulator")
+    b = regulators.regulator("clamp", False, 0.3, kind="linesman")
+    assert pygame.image.tobytes(a, "RGBA") == pygame.image.tobytes(b, "RGBA")
+
+
+def test_the_regulator_steps_forward_when_it_walks_forward() -> None:
+    from overload.game.view import Gait, rival_step
+
+    right = Gait(0.0, 0.0, stride=5.0, moved=1.0, dx=1.0)
+    assert rival_step(right, facing_left=False) == rival_step(
+        Gait(0.0, 0.0, stride=5.0, moved=1.0, dx=-1.0), facing_left=True
+    )
+    vertical = Gait(0.0, 0.0, stride=5.0, moved=1.0, dx=0.01)  # inside the dead zone
+    assert rival_step(vertical, False) == rival_step(vertical, True)
