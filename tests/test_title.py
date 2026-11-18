@@ -59,7 +59,7 @@ def test_both_pages_draw_and_list_every_control(display) -> None:
     title.page = "controls"
     title.draw(display)
     actions = {action for action, _ in CONTROLS}
-    assert {"MOVE", "FIRE", "DODGE", "POWERS", "LOADOUT AND FUSION"} <= actions
+    assert {"MOVE", "FIRE", "DODGE", "POWERS", "MENU: LOADOUT AND FUSE"} <= actions
 
 
 def test_closing_the_window_at_the_title_quits(display) -> None:

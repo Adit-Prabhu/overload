@@ -12,10 +12,10 @@ import random
 from collections import Counter
 
 import pytest
-from floorbot import clear_encounter, fuse_box_with
+from floorbot import clear_encounter
 
 from overload.agent.selector import NeutralSelector
-from overload.game.flow import FUSE_NOTICES, FuseBoxMenu, Session
+from overload.game.flow import Session
 from overload.session.trace import TraceWriter
 from overload.sim.arena import SUBSTATION, Arena
 from overload.sim.campaign import Campaign, encounter_world
@@ -224,58 +224,6 @@ def test_fusions_are_traced_with_their_roll(tmp_path) -> None:
     assert fuses[-1]["power"] == power and fuses[-1]["rarity"] == rarity_of(power)
     assert fuses[-1]["replaced"] == fuses[0]["power"] and fuses[0]["replaced"] == ""
     assert all(r["guaranteed"] is False for r in fuses)
-
-
-# The menu ------------------------------------------------------------------------------------
-
-
-def test_the_menu_rerolls_the_picked_fusion_and_says_when_it_cannot() -> None:
-    session = fuse_box_with("spark", "blink")
-    menu = FuseBoxMenu()
-    world = session.campaign.world
-    assert menu.press(session, "fuse") == ["fuse", "spark", "blink"]
-    # Burst is not stolen: with a base power picked, F reports what Shock Cone still needs.
-    assert menu.press(session, "fuse") == ["fuse", "spark", "burst"]
-    assert menu.notice == FUSE_NOTICES["missing"] and world.fusions == 1
-    world.unlocked[-1] = "arc_trail"  # a rare rerolls at once (an epic asks first)
-    menu.press(session, "up")  # wraps to the last row, Arc Trail: F now rerolls it
-    assert menu.press(session, "fuse") == ["fuse", "spark", "blink"]
-    assert menu.notice == FUSE_NOTICES["no_charges"] and world.fusions == 1
-    world.bank = {"spark": 1, "blink": 1}
-    assert menu.press(session, "fuse") == ["fuse", "spark", "blink"]
-    power = world.unlocked[-1]
-    assert world.fusions == 2 and world.bank == {"spark": 0, "blink": 0}
-    assert menu.notice == f"{NAMES[power]} {rarity_of(power).upper()}"
-
-
-def test_with_every_recipe_fused_f_spends_nothing_until_a_fusion_is_picked() -> None:
-    session = fuse_box_with("spark", "blink", "burst")
-    world = session.campaign.world
-    world.bank = {"spark": 5, "blink": 5, "burst": 5}
-    menu = FuseBoxMenu()
-    for _ in RECIPE_ORDER:
-        menu.press(session, "fuse")
-    assert all(rarity_of(p) for p in world.unlocked[3:]) and len(world.unlocked) == 6
-    assert menu.press(session, "fuse") is None and menu.notice == FUSE_NOTICES["pick"]
-    assert world.bank == {"spark": 5, "blink": 5, "burst": 5} and world.fusions == 3
-
-
-@pytest.mark.parametrize("rarity", ["epic", "legendary"])
-def test_rerolling_an_epic_or_legendary_takes_a_second_press(rarity) -> None:
-    session = fuse_box_with("spark", "blink")
-    world = session.campaign.world
-    menu = FuseBoxMenu()
-    menu.press(session, "fuse")
-    world.unlocked[-1] = RESULTS[frozenset(("spark", "blink"))][RARITIES.index(rarity)]
-    world.bank = {"spark": 2, "blink": 2}
-    menu.press(session, "up")  # the fused power
-    assert menu.press(session, "fuse") is None and world.fusions == 1, "nothing spent yet"
-    assert menu.notice == f"F AGAIN TO REROLL {rarity.upper()}"
-    menu.press(session, "down")  # any other key cancels
-    menu.press(session, "up")
-    assert menu.press(session, "fuse") is None and world.fusions == 1
-    assert menu.press(session, "fuse") == ["fuse", "spark", "blink"]
-    assert world.fusions == 2 and world.bank == {"spark": 1, "blink": 1}
 
 
 def test_the_session_trace_starts_with_the_run_seed(tmp_path) -> None:

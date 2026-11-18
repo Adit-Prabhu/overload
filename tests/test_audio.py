@@ -39,7 +39,8 @@ def emitted_event_kinds() -> set[str]:
 
 
 def test_every_sound_has_a_visual_twin() -> None:
-    interface = {"protocol_boot", "fusion", "confirm", "deny", "low_health"}
+    interface = {"protocol_boot", "fusion", "confirm", "deny", "low_health", "menu_move"}
+    interface |= {"roll_tick", "fuse_rare", "fuse_epic", "fuse_legendary"}
     assert set(EVENT_SOUNDS) | interface == set(VISUAL_TWINS)
     assert all(text.strip() for text in VISUAL_TWINS.values())
 

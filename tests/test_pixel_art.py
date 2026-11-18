@@ -226,23 +226,6 @@ def test_tell_states_look_different_from_rest_states(headless_pygame) -> None:
     assert pygame.image.tobytes(idle, "RGBA") != pygame.image.tobytes(arming, "RGBA")
 
 
-def test_the_fusion_flash_lasts_a_fixed_number_of_ticks(headless_pygame) -> None:
-    from overload.game.view import FUSION_TICKS, PixelView
-    from overload.sim.campaign import Campaign
-    from overload.sim.powers import Kit
-
-    campaign = Campaign(1)
-    view = PixelView(campaign)
-    view.flash_fusion()
-    screen = pygame.Surface((256, 144))
-    for _ in range(50):  # drawing many frames does not shorten it
-        view.draw_fuse_box(screen, 2, True, None, Kit(), 0, None)
-    assert view.fusion_flash == FUSION_TICKS
-    for _ in range(FUSION_TICKS):
-        view.update(campaign, (128, 72))
-    assert view.fusion_flash == 0
-
-
 def test_every_robot_and_shot_renders(headless_pygame) -> None:
     from overload.art.pixel import robots
 
@@ -305,36 +288,3 @@ def test_sector_variants_recolor_the_shell_but_not_the_danger_red(headless_pygam
         assert rgb("px.hostile.2") not in colors
         assert rgb("hostile.danger") in colors
     assert tier_colors(stock, 1) is stock
-
-
-@pytest.mark.parametrize(
-    "power, rarity",
-    [("arc_trail", "rare"), ("bolt_lance", "epic"), ("chain_jump", "legendary")],
-)
-def test_the_menu_marks_each_fused_power_with_its_rarity(headless_pygame, power, rarity) -> None:
-    from overload.art.palette import rgb
-    from overload.game.view import PixelView
-    from overload.sim.campaign import Campaign
-    from overload.sim.powers import Kit
-
-    kit = Kit(["spark", "blink", power], {"spark": 2}, [power, ""], bank={"spark": 1})
-    screen = pygame.Surface((256, 144))
-    PixelView(Campaign(1)).draw_fuse_box(screen, 1, True, None, kit, 2, None, title="LOADOUT")
-    mark = rgb(f"px.rarity.{rarity}")
-    # The marks sit at the right end of the power's row (row 3, the third 11 px row): count
-    # the crosses there, 5 lit pixels each.
-    left, row_y = 16, 8 + 4 + 15 + 11 + 2 * 11
-    lit = [
-        (x, y)
-        for x in range(left + 86, left + 102)
-        for y in range(row_y, row_y + 8)
-        if screen.get_at((x, y))[:3] == mark
-    ]
-    assert len(lit) == 5 * ("rare", "epic", "legendary").index(rarity) + 5
-    spare_row = row_y - 2 * 11  # Spark's row shows its one spare charge as +1
-    dim = rgb("ui.dim")
-    assert any(
-        screen.get_at((x, y))[:3] == dim
-        for x in range(left + 74, left + 87)
-        for y in range(spare_row, spare_row + 8)
-    )

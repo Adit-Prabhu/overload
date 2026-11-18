@@ -129,9 +129,14 @@ VISUAL_TWINS = {
     "quake": "a screen jolt and a wide dashed ring runs out across the floor",
     "summon": "warp markers close in on both sides of the chamber",
     "overload": "a flash, cracks in the Grid Core's shell and GRID CORE OVERLOAD",
-    "fusion": "FUSED status and the fused power's icon in the menu",
+    "fusion": "the EVOLVED notice and a burst in the power's color",
     "confirm": "the slot icon changes, or the Fuse Box closes",
-    "deny": "a notice naming the supported recipe, or ROUTING POWER while the link is busy",
+    "deny": "a notice saying why, or ROUTING POWER while the link is busy",
+    "menu_move": "the menu highlight moves",
+    "roll_tick": "the roll highlight steps to the next card",
+    "fuse_rare": "the rare card lifts into the reveal with one cross mark",
+    "fuse_epic": "the epic card lifts into the reveal with notched corners and two marks",
+    "fuse_legendary": "the legendary card lifts into the reveal with rays and an outline pulse",
     "low_health": "two or fewer battery cells left in the HUD",
 }
 STINGS = {"pressure": "sting_clamp", "spacing": "sting_insulate", "lateral": "sting_oscillate"}
