@@ -389,6 +389,97 @@ def _overload() -> np.ndarray:
     return (svf(tone, 1800) * 0.35 + crackle * 0.4) * envelope(n, 0.02, 0.1, 0.8, 0.4)
 
 
+# The boss kits (docs/BOSS_DESIGN.md): each attack its own sound, so two never share a read.
+
+
+def _live_wire() -> np.ndarray:
+    """Live Wire's lines going live: a buzzing arc at the mains hum's harmonic, crackling."""
+    n = samples(0.45)
+    rng = np.random.default_rng(31)
+    buzz = square(MAINS_HZ * 4 * (1 + 0.02 * sine(37, n)), n, duty=0.2)
+    crackle = noise(n, "wire") * (rng.random(n) > 0.8)
+    return crush(svf(buzz, 2600) * 0.45 + crackle * 0.45, bits=6) * envelope(n, 0.005, 0.05, 0.85, 0.15)
+
+
+def _volley() -> np.ndarray:
+    """Insulators bursting where they landed: three ceramic pops, falling a fourth."""
+    n = samples(0.42)
+    out = np.zeros(n)
+    for i, note in enumerate(("F#5", "D5", "B4")):
+        m = samples(0.12)
+        pop = sine(sweep(hz(note), hz(note) * 0.75, m), m) * decay(m, 0.05)
+        place(out, pop * 0.5 + noise(m, f"pop{i}") * decay(m, 0.01) * 0.3, samples(0.11 * i))
+    return out
+
+
+def _charge() -> np.ndarray:
+    """The Bull Charge: hooves hammering faster under a rising growl."""
+    n = samples(0.9)
+    out = svf(saw(sweep(hz("B1"), hz("D2"), n), n), 400, q=1.5) * 0.4
+    t = 0.0
+    gap = 0.16
+    while t < 0.85:
+        m = samples(0.08)
+        place(out, sine(sweep(90, 40, m), m) * decay(m, 0.05) * 0.8, samples(t))
+        t += gap
+        gap = max(0.07, gap * 0.85)
+    return drive(out, 1.6) * envelope(n, 0.02, 0.05, 0.9, 0.1)
+
+
+def _charge_impact() -> np.ndarray:
+    """A chassis hits the wall: a metal crash on a deep thud, ringing off."""
+    n = samples(1.0)
+    thud = sine(sweep(70, 30, n), n) * decay(n, 0.35)
+    clang = sum(sine(f, n) * w for f, w in ((310, 0.4), (870, 0.3), (1990, 0.2))) * decay(n, 0.5)
+    return drive(thud + clang * 0.6 + noise(n, "crash") * decay(n, 0.08) * 0.6, 2.2) * 0.75
+
+
+def _spray() -> np.ndarray:
+    """Coolant Spray: a pressurized hiss that opens up, with a gurgle under it."""
+    n = samples(0.55)
+    hiss = svf(noise(n, "spray"), sweep(1200, 5000, n), q=0.9, mode="high")
+    gurgle = sine(hz("B2") * (1 + 0.1 * sine(22, n)), n)
+    return (hiss * 0.6 + gurgle * 0.25) * envelope(n, 0.01, 0.1, 0.7, 0.2)
+
+
+def _lattice() -> np.ndarray:
+    """The Lattice catching: the grid's hum swelling into a hard chord of fifths."""
+    n = samples(0.7)
+    chord = sum(saw(hz(note), n) for note in ("B2", "F#3", "B3"))
+    return svf(chord, sweep(300, 3000, n), q=2.0) * envelope(n, 0.02, 0.1, 0.8, 0.3) * 0.25
+
+
+def _vent() -> np.ndarray:
+    """Venting: a long steam release that falls away. The cue that says hit it now."""
+    n = samples(1.1)
+    steam = svf(noise(n, "vent"), sweep(4000, 900, n), q=0.8, mode="high")
+    sigh = sine(sweep(hz("F#4"), hz("B3"), n), n) * 0.15
+    return (steam * 0.7 + sigh) * envelope(n, 0.01, 0.1, 0.7, 0.6)
+
+
+def _phase_change() -> np.ndarray:
+    """A new phase: a mechanical roar (detuned saws diving) under a rising alarm."""
+    n = samples(1.3)
+    roar = saw(sweep(hz("B2"), hz("B1"), n), n) + saw(sweep(hz("B2") * 1.03, hz("B1") * 1.03, n), n)
+    alarm = square(sweep(hz("B4"), hz("F#5"), n), n, duty=0.3)
+    mix = svf(roar, 900, q=1.4) * 0.5 + svf(alarm, 2200) * 0.2
+    return drive(mix, 1.8) * envelope(n, 0.03, 0.1, 0.8, 0.4)
+
+
+def _boss_down() -> np.ndarray:
+    """A chassis falls: rolling explosions, then the motif rising in major. The win."""
+    n = samples(2.6)
+    out = np.zeros(n)
+    rng = np.random.default_rng(41)
+    for i in range(6):
+        m = samples(0.4)
+        boom = sine(sweep(110 - i * 8, 30, m), m) * decay(m, 0.25)
+        place(out, drive(boom + noise(m, f"boom{i}") * decay(m, 0.05) * 0.5, 1.8) * 0.6,
+              samples(i * 0.17 + rng.random() * 0.03))
+    place(out, _motif(("B3", "D4", "F#4", "A#4", "B4"), 0.11, 0.5) * 1.2, samples(1.2))
+    return out
+
+
 def _motif(notes: tuple[str, ...], step: float, length: float, octave_up: bool = True):
     out = np.zeros(samples(step * len(notes) + length))
     for i, note in enumerate(notes):
@@ -491,6 +582,15 @@ SFX: dict[str, Callable[[], np.ndarray]] = {
     "sfx_quake": _quake,
     "sfx_summon": _summon,
     "sfx_overload": _overload,
+    "sfx_live_wire": _live_wire,
+    "sfx_volley": _volley,
+    "sfx_charge": _charge,
+    "sfx_charge_impact": _charge_impact,
+    "sfx_spray": _spray,
+    "sfx_lattice": _lattice,
+    "sfx_vent": _vent,
+    "sfx_phase_change": _phase_change,
+    "sfx_boss_down": _boss_down,
     "sfx_pickup": _pickup,
     "sfx_unlock": _unlock,
     "sfx_fusion": _fusion,

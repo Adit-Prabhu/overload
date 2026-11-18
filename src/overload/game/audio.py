@@ -52,7 +52,7 @@ EVENT_SOUNDS = {
     "rival_orb": "orb_fire",
     "rival_volley": "mite_zap",
     "rival_hit": "regulator_hit",
-    "rival_destroyed": "regulator_defeated",
+    "rival_destroyed": "boss_down",  # rolling explosions, then the motif in major
     "absorb": "pickup",
     "unlock": "unlock",
     "shards": "mite_zap",
@@ -76,15 +76,15 @@ EVENT_SOUNDS = {
     "quake": "quake",
     "summon": "summon",
     "overload": "overload",
-    # The boss kits (docs/BOSS_DESIGN.md) reuse cues until their own are composed.
-    "phase_change": "overload",
-    "live_wire": "mite_zap",
-    "volley": "ring_burst",
-    "charge": "lunge",
-    "charge_impact": "quake",
-    "spray": "orb_fire",
-    "lattice": "hazard_fill",
-    "vent": "relay_blink",
+    # The boss kits (docs/BOSS_DESIGN.md): each attack its own sound.
+    "phase_change": "phase_change",
+    "live_wire": "live_wire",
+    "volley": "volley",
+    "charge": "charge",
+    "charge_impact": "charge_impact",
+    "spray": "spray",
+    "lattice": "lattice",
+    "vent": "vent",
     "boss_reward": "unlock",
 }
 # Each sound's visual twin: the game is fully playable muted.
@@ -114,7 +114,7 @@ VISUAL_TWINS = {
     "rival_orb": "large orb",
     "rival_volley": "three-bolt fan",
     "rival_hit": "white flash on the Regulator, its bar drops",
-    "rival_destroyed": "large burst, the Regulator disappears",
+    "rival_destroyed": "the wreck sinks under chained explosions, then NAME DOWN",
     "absorb": "burst in the power color",
     "unlock": "screen flash and a SPARK STOLEN or BLINK STOLEN notice",
     "protocol_boot": "protocol pose, shield ring and protocol icon",
