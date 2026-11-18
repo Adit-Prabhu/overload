@@ -451,11 +451,18 @@ def test_every_attack_in_every_phase_runs_to_the_end(sector) -> None:
             campaign.world.hazards.clear()
 
 
-@pytest.mark.parametrize("seed, order", [(2, ("spacing", "lateral")), (3, ("lateral", "pressure"))])
-def test_the_protocol_runs_at_least_half_of_every_boss_fight(seed, order) -> None:
+@pytest.mark.parametrize(
+    "seed, order, limit",
+    [
+        (2, ("spacing", "lateral"), 40_000),
+        (3, ("lateral", "pressure"), 80_000),
+        (4, ("spacing", "pressure"), 40_000),
+    ],
+)
+def test_the_protocol_runs_at_least_half_of_every_boss_fight(seed, order, limit) -> None:
     """The protocol is the study's treatment, so the kit (its tells, attacks, vents and
-    phase changes) may take at most half of a boss fight, measured with the floor bot over
-    every protocol. The 1.5 s boot is not fight time (nothing acts during it)."""
+    phase changes) may take at most half of the fight time per sector across the bot's
+    attempts. The sampled orders include every protocol. The 1.5 s boot does not count."""
     from collections import Counter
 
     from floorbot import FloorBot
@@ -466,7 +473,9 @@ def test_the_protocol_runs_at_least_half_of_every_boss_fight(seed, order) -> Non
     bot = FloorBot(campaign)
     order = iter(order)
     share = Counter()
-    for tick in range(40_000):
+    # Seed 3's floor bot repeatedly loses in the bus room. Give it time to reach the
+    # final boss so this test measures its protocol, rather than the bot's route time.
+    for tick in range(limit):
         if campaign.stage == "fuse_box":
             campaign.begin_next(next(order))
         if campaign.stage == "ending":
