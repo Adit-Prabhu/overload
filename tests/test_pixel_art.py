@@ -444,7 +444,7 @@ def test_the_regulator_walks_and_its_poses_read(headless_pygame) -> None:
         charged = raw(regulators.regulator("clamp", False, kind=kind, charged=True))
         assert charged != still, kind
     calm = regulators.regulator("clamp", False, kind="grid_core")
-    hot = regulators.regulator("clamp", False, kind="grid_core", overload=True)
+    hot = regulators.regulator("clamp", False, kind="grid_core", phase=3)
     assert raw(calm) != raw(hot)
 
 
@@ -568,41 +568,53 @@ def test_ambience_animates_near_the_camera_only(headless_pygame) -> None:
     assert not all(flickering(t, 3) for t in range(30)), "a failing lamp is mostly on"
 
 
-def test_each_chassis_body_sits_on_its_hit_circle(headless_pygame) -> None:
-    """Drawn at its feet anchor, each chassis' body center lands on the sim position, so
-    shots that visibly hit the body hit the circle. Measured on the body's own colors."""
+def test_the_aimable_armor_sits_on_the_hit_circle(headless_pygame) -> None:
     from overload.art.pixel import regulators
-    from overload.game.view import RIVAL_FEET
+    from overload.sim.bosses import BY_KIND
 
-    for kind in regulators.KINDS:
-        image = regulators.body(kind)
+    for kind, phase in itertools.product(regulators.KINDS, (1, 2, 3)):
+        image = regulators.body(kind, phase=phase)
         shell = {rgb(token) for token in regulators.SHELLS[kind]}
-        rows = [
-            y
-            for y in range(image.get_height())
-            for x in range(image.get_width())
-            if tuple(image.get_at((x, y)))[:3] in shell
+        width, height = image.get_size()
+        armor = [
+            (x, y)
+            for x, y in itertools.product(range(width), range(height))
+            if image.get_at((x, y))[:3] in shell
         ]
-        center = sum(rows) / len(rows)  # the shell's mass (long arms stretch its extent)
-        offset = RIVAL_FEET[kind] - (image.get_height() - center)  # body center below sim y
-        assert abs(offset) <= 6, (kind, offset)
+        cx, cy = width // 2, height - regulators.FEET[kind]
+        radius = BY_KIND[kind].radius
+        inside = sum((x - cx) ** 2 + (y - cy) ** 2 <= radius**2 for x, y in armor)
+        minimum = 0.8 if phase == 1 else 0.65
+        assert inside / len(armor) >= minimum, (kind, phase, inside / len(armor))
 
 
-def test_no_chassis_is_cut_off_at_the_top(headless_pygame) -> None:
+def test_each_phase_changes_the_silhouette(headless_pygame) -> None:
     from overload.art.pixel import regulators
 
     for kind in regulators.KINDS:
-        for step in (None, *range(8)):
-            for charged in (False, True):
-                image = regulators.body(kind, step, charged)
-                # Row 1 is the canvas' first row (row 0 is the outline pad). Only the
-                # outline of something below may reach it, never the art itself.
-                top = {
-                    tuple(image.get_at((x, 1)))
-                    for x in range(image.get_width())
-                    if image.get_at((x, 1)).a
-                }
-                assert top <= {(*rgb("px.outline"), 255)}, (kind, step)
+        masks = [
+            pygame.mask.from_surface(regulators.body(kind, phase=phase)) for phase in (1, 2, 3)
+        ]
+        for before, after in zip(masks, masks[1:], strict=False):
+            overlap = before.overlap_area(after, (0, 0))
+            union = before.count() + after.count() - overlap
+            assert overlap / union <= 0.93, kind
+
+
+def test_no_chassis_pose_is_cut_off(headless_pygame) -> None:
+    from overload.art.pixel import regulators
+
+    states = tuple(itertools.product((None, *range(8)), (False, True), (1, 2, 3), (False, True)))
+    for kind in regulators.KINDS:
+        for step, charged, phase, vent in states:
+            for protocol in ("clamp", "insulate", "oscillate"):
+                image = regulators.regulator(
+                    protocol, False, kind=kind, step=step, charged=charged, phase=phase, vent=vent
+                )
+                bounds = image.get_bounding_rect()
+                assert bounds.left > 0 and bounds.top > 0, (kind, step, phase, protocol)
+                assert bounds.right < image.get_width(), (kind, step, phase, protocol)
+                assert bounds.bottom < image.get_height(), (kind, step, phase, protocol)
 
 
 def test_the_legacy_regulator_draws_as_the_linesman(headless_pygame) -> None:
@@ -715,11 +727,11 @@ def test_a_chassis_falls_in_a_death_sequence_then_a_banner(headless_pygame) -> N
     screen = pygame.Surface((256, 144))
     rival = campaign.world.rival
     rival.boot = 0
-    view.draw(screen, campaign, (128, 72))  # remembers the chassis' last image
+    view.after_tick(campaign)  # remembers the chassis before the killing tick
     rival.health = 1
     damage_rival(campaign.world, 1, rival.x, rival.y)
     view.consume(campaign, campaign.world.events)
-    assert view.wreck is not None and view.downed[0] == "LINESMAN DOWN"
+    assert view.wreck is not None and view.boss_banner[0] == "LINESMAN DOWN"
     booms = 0
     for _ in range(WRECK_TICKS):
         campaign.step(IDLE)
@@ -729,7 +741,120 @@ def test_a_chassis_falls_in_a_death_sequence_then_a_banner(headless_pygame) -> N
     assert view.wreck is None and booms > 0
     for _ in range(DOWNED_TICKS):
         view.after_tick(campaign)
-    assert view.downed is None
+    assert view.boss_banner is None
+
+
+@pytest.mark.parametrize("surge_survives", (True, False))
+def test_final_boss_defeat_is_presented_only_after_a_win(
+    headless_pygame, monkeypatch, surge_survives
+) -> None:
+    from floorbot import enter, skip_sector
+
+    from overload.game.view import DOWNED_TICKS, WRECK_TICKS, PixelView
+    from overload.sim.campaign import Campaign
+    from overload.sim.inputs import IDLE, InputFrame
+    from overload.sim.state import Projectile
+
+    run = Campaign(1)
+    for protocol in ("spacing", "lateral"):
+        skip_sector(run)
+        run.begin_next(protocol)
+    enter(run, "s3_chamber")
+    view = PixelView(run)
+    rival = run.world.rival
+    rival.boot, rival.health, rival.phase = 0, 1, 3
+    view.after_tick(run)
+    player = run.world.player
+    player.x, player.y = rival.x - 65, rival.y + 26
+    run.world.projectiles.append(Projectile(101, rival.x, rival.y, 0, 0, 1, 1, False, 5))
+    if not surge_survives:
+        player.charge, player.invulnerable = 1, 0
+        run.world.projectiles.append(Projectile(102, player.x, player.y, 0, 0, 1, 1, True, 5))
+
+    run.step(IDLE)
+    assert any(event.kind == "rival_destroyed" for event in run.world.events)
+    view.after_tick(run)
+    if not surge_survives:
+        assert run.world.outcome == "down"
+        assert view.wreck is None and view.boss_banner is None
+        run.step(InputFrame(restart=True))
+        view.after_tick(run)
+        assert view.boss_banner is None and not view.booms
+        return
+
+    assert run.stage == "ending" and view.wreck is not None
+    assert view.boss_banner[0] == "GRID CORE DOWN"
+    stable_hash = run.state_hash()
+    view.camera[0] = rival.x - 275
+    for _ in range(35):
+        view.follow(run, (128, 72))
+    assert abs(rival.x - view.camera_offset()[0] - 128) <= 2
+    rendered_ending = []
+    monkeypatch.setattr(view, "draw_ending", lambda *_: rendered_ending.append(True))
+    screen = pygame.Surface((256, 144))
+    for _ in range(WRECK_TICKS):
+        view.advance_defeat()
+        view.draw_campaign_ending(screen, run)
+    assert view.wreck is None and view.boss_banner is not None and not rendered_ending
+    for _ in range(DOWNED_TICKS - WRECK_TICKS):
+        view.advance_defeat()
+    view.draw_campaign_ending(screen, run)
+    assert rendered_ending == [True]
+    assert run.state_hash() == stable_hash
+
+
+def test_windowed_replay_applies_terminal_fusion_once(headless_pygame, monkeypatch, tmp_path):
+    from floorbot import enter
+
+    from overload.game import app
+    from overload.session.replay import Recording, apply_menu
+    from overload.sim.arena import arena_id
+    from overload.sim.campaign import Campaign
+    from overload.sim.inputs import IDLE
+    from overload.sim.state import Projectile
+
+    class ReplayCampaign(Campaign):
+        def __init__(self, seed):
+            super().__init__(seed)
+            enter(self, "s1_chamber")
+            rival = self.world.rival
+            rival.boot, rival.health, rival.phase = 0, 1, 3
+            self.world.unlocked = ["spark", "blink"]
+            self.world.projectiles.append(
+                Projectile(101, rival.x - 35, rival.y, 14, 0, 1, 1, False, 5)
+            )
+            rival.cooldown = 180
+
+    run = ReplayCampaign(1)
+    run.step(IDLE)
+    run.step(IDLE)
+    assert run.world.rival is None
+    recording = Recording(
+        1,
+        run.tuning.tuning_id(),
+        arena_id(run.arena),
+        [IDLE, IDLE],
+        mode="campaign",
+        protocols=["lateral"],
+    )
+    recording.fuse_box("fuse", "spark", "blink")
+    apply_menu(run, recording.menu[0])
+    recording.final_hash = run.state_hash()
+    path = tmp_path / "terminal-fuse.json"
+    recording.save(path)
+
+    applied = []
+
+    def track(campaign, action):
+        applied.append(action)
+        apply_menu(campaign, action)
+
+    monkeypatch.setattr(app, "Campaign", ReplayCampaign)
+    monkeypatch.setattr(app, "apply_menu", track)
+    monkeypatch.setattr(app, "_open_window", lambda _: pygame.display.set_mode((256, 144)))
+    monkeypatch.setattr(app, "ticks_due", lambda *_: (5, 0.0))
+    assert app.play(app.Options(replay=path, mute=True)) == 0
+    assert applied == recording.menu
 
 
 def test_the_boss_bar_shows_its_phases_and_flashes_while_it_vents(headless_pygame) -> None:
@@ -745,7 +870,7 @@ def test_the_boss_bar_shows_its_phases_and_flashes_while_it_vents(headless_pygam
     assert pygame.image.tobytes(calm, "RGB") != pygame.image.tobytes(venting, "RGB")
 
 
-def test_the_entrance_card_and_the_ending_times_draw(headless_pygame) -> None:
+def test_the_entrance_card_and_ending_rows(headless_pygame, monkeypatch) -> None:
     from floorbot import enter
 
     from overload.game.view import PixelView
@@ -761,7 +886,18 @@ def test_the_entrance_card_and_the_ending_times_draw(headless_pygame) -> None:
     view.draw(without, campaign, (128, 72))
     assert pygame.image.tobytes(with_card, "RGB") != pygame.image.tobytes(without, "RGB")
     ending = pygame.Surface((256, 144))
+    original = hud.text
+    boxes = {}
+
+    def track(*args):
+        rect = original(*args)
+        boxes[args[1]] = rect
+        return rect
+
+    monkeypatch.setattr(hud, "text", track)
     view.draw_ending(ending, 120.0, 1, 50, {}, {"1": 1500, "2": 2400})
+    assert boxes["SHOTS"].bottom < boxes["BOSSES 0:25  0:40"].top
+    assert boxes["BOSSES 0:25  0:40"].bottom < boxes["POWERS TRIED"].top
 
 
 def test_every_chassis_pose_renders(headless_pygame) -> None:
@@ -769,8 +905,7 @@ def test_every_chassis_pose_renders(headless_pygame) -> None:
 
     sizes = set()
     for kind in regulators.KINDS:
-        for flags in itertools.product((False, True), repeat=4):
-            charged, overload, vent, opened = flags
-            image = regulators.body(kind, None, charged, overload, vent, opened)
+        for phase, charged, vent in itertools.product((1, 2, 3), (False, True), (False, True)):
+            image = regulators.body(kind, charged=charged, phase=phase, vent=vent)
             sizes.add(image.get_size())
     assert len(sizes) == 1, "every pose on one canvas, so the anchor never jumps"

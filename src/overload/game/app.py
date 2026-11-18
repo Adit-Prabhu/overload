@@ -386,6 +386,8 @@ def play(options: Options) -> int:
         accumulated = 0.0
         frames = 0
         finished = False
+        replay_complete = False
+        replay_coda = 0
         cursor = (VIEW[0] // 2, VIEW[1] // 2)
         while not reader.quit and not finished:
             for event in pygame.event.get():
@@ -409,6 +411,14 @@ def play(options: Options) -> int:
             paused = menu.open and getattr(run, "stage", None) != "fuse_box"
             due, accumulated = ticks_due(paused, options.headless, accumulated, elapsed)
             for _ in range(due):
+                if replay_complete:
+                    if replay_coda == 0:
+                        finished = True
+                        break
+                    view.advance_defeat()
+                    view.follow(run, cursor)
+                    replay_coda -= 1
+                    continue
                 if scripted is not None:
                     for action in replay_menu.get(len(recording.frames), []):
                         try:
@@ -428,7 +438,14 @@ def play(options: Options) -> int:
                         recording.begin_next(run.protocols[run.encounter])
                     frame = next(scripted, None)
                     if frame is None:
-                        finished = True
+                        replay_complete = True
+                        if options.headless:
+                            finished = True
+                        else:
+                            if view.boss_banner is not None:
+                                replay_coda = view.boss_banner[1]
+                            if isinstance(run, Campaign) and run.stage == "ending":
+                                replay_coda += 2 * TICK_RATE
                         break
                 else:
                     # Move the camera first, so the cursor is read against the same camera
@@ -475,14 +492,7 @@ def play(options: Options) -> int:
                     run.encounter + (1 if in_box else 0),
                 )
             elif stage == "ending":
-                view.draw_ending(
-                    screen,
-                    run.stats["ticks"] / TICK_RATE,
-                    sum(run.retries.values()),
-                    run.stats["shots"],
-                    run.stats["powers"],
-                    run.stats.get("bosses"),
-                )
+                view.draw_campaign_ending(screen, run)
             if dev_tools is not None:
                 draw_dev_tag(screen)
             pygame.display.flip()
@@ -504,7 +514,7 @@ def play(options: Options) -> int:
         recording.save(options.record)
         print(f"Recorded {len(recording.frames)} ticks to {options.record}")
     if replay is not None:
-        if not finished:
+        if not replay_complete:
             print(
                 f"Replay stopped early after {len(recording.frames)} of {len(replay.frames)} "
                 "ticks. Not verified."

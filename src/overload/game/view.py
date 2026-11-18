@@ -34,7 +34,7 @@ from overload.sim.powers import (
 )
 from overload.sim.run import Run
 from overload.sim.state import Event
-from overload.sim.tuning import DEFAULT
+from overload.sim.tuning import DEFAULT, TICK_RATE
 
 VIEW = (256, 144)
 BLAST_TICKS = 12
@@ -107,7 +107,7 @@ WALKING = 0.05  # moved at least this far on the last tick: walking, not standin
 SCAN = (0, 1, 2, 3, 3, 2, 1, 0)  # the Sentry's eye sweeping its visor
 RECOIL_TICKS = 12
 BOOM_TICKS = 14
-WRECK_TICKS = 90  # the death sequence: 1.5 s of explosions over the sinking wreck
+WRECK_TICKS = 90  # 1.5 s of explosions over the sinking wreck
 DOWNED_TICKS = 180
 INTRO_SLIDE = 18  # ticks the name card takes to slide in during the boot
 BEAM_TICKS = 10
@@ -337,13 +337,11 @@ class PixelView:
         self.motes: list[Mote] = []  # steam and dust, drifting
         self.ripples: list[tuple[int, int, int]] = []  # drips on puddles: x, y, age
         self.flicker = {(e.x, e.y): e.phase for e in self.room.emitters if e.kind == "flicker"}
-        self.beams: list[tuple[float, float, int]] = []
-        self.rival_last: tuple | None = None  # the Regulator's last image, for its wreck
+        self.beams: list[tuple[float, float, int]] = []  # Relay Bot teleports
+        self.rival_last = None  # the last living chassis, for its wreck
         self.wreck: tuple | None = None  # image, feet, x, y, ticks left
         self.booms: list[tuple[float, float, int]] = []  # explosions on the wreck
-        self.downed: tuple[str, int] | None = (
-            None  # the "LINESMAN DOWN" banner  # Relay Bot teleports: x, y, life
-        )
+        self.boss_banner: tuple[str, int] | None = None
         self.steps: dict[int, int | None] = {}  # each walker's last walk step, for footfalls
         self.recoils: dict[int, int] = {}  # per robot id: ticks since it fired, counting down
         self.lance_from: tuple[float, float] | None = None  # where a Bolt Lance started
@@ -485,6 +483,11 @@ class PixelView:
         self.consume(run, run.world.events)
         self._tick_cosmetics()
         self._walk(run.world)
+        rival = run.world.rival
+        self.rival_last = rival if rival and rival.health > 0 else None
+        if run.world.outcome == "down":
+            self.wreck = self.boss_banner = None
+            self.booms.clear()
         for wave in run.world.shockwaves:  # dust kicked up along the running ring
             for _ in range(3):
                 a = self.cosmetic.uniform(0, math.tau)
@@ -522,6 +525,11 @@ class PixelView:
             lead_x = (rival.x - player.x) * 0.5
             lead_y = (rival.y - player.y) * 0.5
         target = (player.x + lead_x - VIEW[0] / 2, player.y + lead_y - VIEW[1] / 2)
+        if getattr(run, "stage", None) == "ending" and self.boss_banner is not None:
+            if self.wreck is None:
+                return  # hold the framing through the victory banner
+            _, _, wreck_x, wreck_y, _ = self.wreck
+            target = (wreck_x - VIEW[0] / 2, wreck_y - VIEW[1] / 2)
         self.camera[0] += (target[0] - self.camera[0]) * 0.18
         self.camera[1] += (target[1] - self.camera[1]) * 0.18
         self._clamp_camera()
@@ -547,15 +555,16 @@ class PixelView:
             elif event.kind == "rival_hit":
                 self.flashes[RIVAL_FLASH] = 4
                 self._burst(event.x, event.y, 3, "px.hostile.3", 1.2)
-            elif event.kind == "rival_destroyed":
+            elif event.kind == "rival_destroyed" and run.world.outcome != "down":
                 self._burst(event.x, event.y, 30, "px.hostile.3", 2.4)
                 self._burst(event.x, event.y, 18, "px.lamp.light", 2.0)
-                # The death sequence (view only, the room has already cleared): the wreck
-                # flickers and sinks while explosions chain over it, then the banner.
-                if self.rival_last is not None:
-                    image, feet, kind = self.rival_last
+                # The last tick's chassis survives the sim removing it from the room.
+                rival = self.rival_last
+                if rival is not None:
+                    image = self._rival_sprite(rival, run.world.player, run.world.tick)
+                    feet = (event.x, event.y + RIVAL_FEET.get(rival.kind, 20))
                     self.wreck = (image, feet, event.x, event.y, WRECK_TICKS)
-                    self.downed = (f"{BY_KIND[kind].name} DOWN", DOWNED_TICKS)
+                    self.boss_banner = (f"{BY_KIND[rival.kind].name} DOWN", DOWNED_TICKS)
                 self.shake = 16
                 self.unlock_flash = 14
             elif event.kind == "rival_shielded":
@@ -804,9 +813,9 @@ class PixelView:
                 self.booms.append((ex, ey, BOOM_TICKS))
                 self.shake = max(self.shake, 4)
             self.wreck = (image, feet, x, y, ticks - 1) if ticks > 1 else None
-        if self.downed is not None:
-            name, ticks = self.downed
-            self.downed = (name, ticks - 1) if ticks > 1 else None
+        if self.boss_banner is not None:
+            name, ticks = self.boss_banner
+            self.boss_banner = (name, ticks - 1) if ticks > 1 else None
         for mote in self.motes:
             mote.x += mote.vx
             mote.y += mote.vy
@@ -959,44 +968,19 @@ class PixelView:
         rival = world.rival
         if rival is not None and rival.health > 0:
             rival_feet = (rival.x, rival.y + RIVAL_FEET.get(rival.kind, 20))
-            needle = math.atan2(player.y - rival.y, player.x - rival.x)
-            busy = rival.action in ("tell", "dash")
-            rival_left = rival.aim_x < 0 if busy else player.x < rival.x
 
             def draw_rival() -> None:
-                shadow(*v(*rival_feet), 18)
-                fins_lit = (
-                    rival.protocol == "lateral" and rival.action == "tell" and (tick // 4) % 2 == 0
-                )
-                image = regulators_art.regulator(
-                    POSES[rival.protocol],
-                    rival_left,
-                    needle,
-                    fins_lit,
-                    kind=rival.kind,
-                    # The Grid Core overloads from phase 2, the others burn hot in phase 3.
-                    overload=rival.phase >= (2 if rival.kind == "grid_core" else 3),
-                    step=rival_step(self.gaits.get(RIVAL_GAIT), rival_left),
-                    charged=rival.sig_action == "tell" or rival.change > 0,
-                    vent=rival.vent > 0,
-                    opened=rival.kind == "grid_core" and rival.phase == 3,
-                )
+                shadow(*v(*rival_feet), round(rival.radius))
+                image = self._rival_sprite(rival, player, tick)
                 if RIVAL_FLASH in self.flashes:
                     image = effects.tinted(image, "fx.flash")
                 draw_at_feet(image, rival_feet)
-                self.rival_last = (image, rival_feet, rival.kind)
                 if rival.boot > 0 and (tick // 4) % 3:
                     cx, cy = v(rival.x, rival.y)
                     ring = pygame.Rect(0, 0, 40, 46)
                     ring.center = (round(cx), round(cy) + 2)
                     for surface in (screen, self.glow.layer):
                         pygame.draw.ellipse(surface, rgb("px.hostile.2"), ring, 1)
-                if rival.boot > 0:
-                    icon = pygame.transform.scale_by(
-                        effects.protocol_icon(POSES[rival.protocol]), 2
-                    )
-                    top = v(rival.x, rival_feet[1] - image.get_height() - 4)
-                    screen.blit(icon, icon.get_rect(center=(round(top[0]), round(top[1]))))
 
             drawables.append((rival_feet[1], draw_rival))
 
@@ -1182,7 +1166,10 @@ class PixelView:
             mid = v((trail.x1 + trail.x2) / 2, (trail.y1 + trail.y2) / 2)
             self.lighting.add(mid, 40, "px.lamp.light", 70)
         if rival is not None and rival.health > 0:
-            self.lighting.add(v(rival.x, rival.y), 40, "px.hostile.2", 25)
+            # A tight pool of reflected light keeps the moving armor legible in blackout.
+            self.lighting.add(v(rival.x, rival.y - 9), 60, "px.lamp.light", 95)
+            if rival.phase > 1:
+                self.lighting.add(v(rival.x, rival.y), 28, "px.hostile.2", 30 * rival.phase)
         self.lighting.apply(screen)
         tint = tuple(round(c) for c in self.tint)
         if tint != (255, 255, 255):
@@ -1217,8 +1204,8 @@ class PixelView:
         self._minimap(screen, run)
         if rival is not None and rival.health > 0 and rival.boot > 0:
             self._intro_card(screen, rival, tuning)
-        if self.downed is not None:
-            self._downed_banner(screen)
+        if self.boss_banner is not None:
+            self._boss_banner(screen)
         if self.unlock_flash:
             screen.blit(_flash(VIEW, self.unlock_flash * 8), (0, 0))
         if self.notice:
@@ -1231,29 +1218,53 @@ class PixelView:
         reticle = effects.reticle()
         screen.blit(reticle, reticle.get_rect(center=cursor))
 
+    def _rival_sprite(self, rival, player, tick: int) -> pygame.Surface:
+        needle = math.atan2(player.y - rival.y, player.x - rival.x)
+        facing_left = rival.aim_x < 0 if rival.action in ("tell", "dash") else player.x < rival.x
+        charging = bosskit.charging(rival)
+        if charging or (rival.sig_action == "tell" and rival.sig_name.startswith("charge")):
+            facing_left = rival.aim_x < 0
+        return regulators_art.regulator(
+            POSES[rival.protocol],
+            facing_left,
+            needle,
+            rival.protocol == "lateral" and rival.action == "tell" and (tick // 4) % 2 == 0,
+            kind=rival.kind,
+            phase=rival.phase,
+            step=rival_step(self.gaits.get(RIVAL_GAIT), facing_left),
+            charged=rival.sig_action == "tell" or charging or rival.change > 0,
+            vent=rival.vent > 0,
+        )
+
+    def advance_defeat(self) -> None:
+        """Finish a replay's visual coda after its last recorded input."""
+        self._tick_cosmetics()
+
     def _intro_card(self, screen: pygame.Surface, rival, tuning) -> None:
-        """The entrance, over the 1.5 s protocol boot: letterbox bars close in and the
-        chassis' name card slides across the lower bar."""
+        """Bring in the chassis name during boot, in the space above the power slots."""
         w, h = screen.get_size()
         elapsed = tuning.rival_boot - rival.boot
-        bar = min(14, elapsed)
-        screen.blit(_dim((w, bar), 230), (0, 0))
-        screen.blit(_dim((w, bar), 230), (0, h - bar))
         slide = min(1.0, elapsed / INTRO_SLIDE)
         x = round(-120 + (w // 2 + 120) * (1 - (1 - slide) ** 3))
+        panel = pygame.Rect(0, h - 61, 150, 27)
+        panel.centerx = x
+        screen.blit(_dim(panel.size, 215), panel)
         name = big_text(BY_KIND[rival.kind].name, "hostile.danger")
-        screen.blit(name, name.get_rect(midbottom=(x, h - 22)))
-        hud.text(screen, f"SECTOR {self.sector} REGULATOR", (x, h - 12), "ui.dim", "midtop")
+        screen.blit(name, name.get_rect(midtop=(x, panel.y + 2)))
+        hud.text(screen, f"SECTOR {self.sector} REGULATOR", (x, panel.y + 17), "ui.dim", "midtop")
 
-    def _downed_banner(self, screen: pygame.Surface) -> None:
-        name, ticks = self.downed
+    def _boss_banner(self, screen: pygame.Surface) -> None:
+        name, ticks = self.boss_banner
         if ticks > DOWNED_TICKS - WRECK_TICKS:
             return  # the banner waits for the explosions
         w, h = screen.get_size()
         screen.blit(_banner_panel(w), (0, h // 2 - 17))
         title = big_text(name, "px.lamp.light")
         screen.blit(title, title.get_rect(center=(w // 2, h // 2 - 4)))
-        hud.text(screen, "THE GRID HOLDS. FOR NOW", (w // 2, h // 2 + 7), "ui.dim", "midtop")
+        message = (
+            "THE GRID IS BACK ONLINE" if name == "GRID CORE DOWN" else "THE GRID HOLDS. FOR NOW"
+        )
+        hud.text(screen, message, (w // 2, h // 2 + 7), "ui.dim", "midtop")
 
     def _draw_kit(self, screen: pygame.Surface, run, rival, v) -> None:
         """The chassis kit on screen (sim/bosskit.py): each attack's own tell, Live Wire's
@@ -1298,6 +1309,17 @@ class PixelView:
         if rival.vent > 0 and self.frames % 5 == 0:  # it vents: steam off its core
             self._burst(rival.x, rival.y - 6, 3, "px.wall.4", 1.0)
 
+    def draw_campaign_ending(self, screen: pygame.Surface, run: Campaign) -> None:
+        if run.stage == "ending" and self.boss_banner is None:
+            self.draw_ending(
+                screen,
+                run.stats["ticks"] / TICK_RATE,
+                sum(run.retries.values()),
+                run.stats["shots"],
+                run.stats["powers"],
+                run.stats["bosses"],
+            )
+
     def draw_ending(
         self,
         screen: pygame.Surface,
@@ -1320,22 +1342,22 @@ class PixelView:
             ("SHOTS", str(shots)),
         )
         for i, (label, value) in enumerate(rows):
-            y = 44 + i * 11
+            y = 39 + i * 11
             hud.text(screen, label, (w // 2 - 6, y), "ui.dim", "topright")
             hud.text(screen, value, (w // 2 + 6, y), "ui.text")
         fights = [ticks for _, ticks in sorted((bosses or {}).items())]
         if fights:  # each chassis' fight time, in the order they fell
-            times = "  ".join(f"{t // 60 // 60}:{t // 60 % 60:02d}" for t in fights)
-            hud.text(screen, f"BOSSES {times}", (w // 2, 71), "px.hazard.1", "midtop")
-        hud.text(screen, "POWERS TRIED", (w // 2, 82), "ui.dim", "midtop")
+            times = "  ".join(f"{t // TICK_RATE // 60}:{t // TICK_RATE % 60:02d}" for t in fights)
+            hud.text(screen, f"BOSSES {times}", (w // 2, 74), "px.hazard.1", "midtop")
+        hud.text(screen, "POWERS TRIED", (w // 2, 89), "ui.dim", "midtop")
         tried = [(name, n) for name, n in (powers or {}).items() if n and name in NAMES]
         if not tried:
-            hud.text(screen, "GUN AND DODGE ONLY", (w // 2, 94), "px.floor.3", "midtop")
+            hud.text(screen, "GUN AND DODGE ONLY", (w // 2, 103), "px.floor.3", "midtop")
         for i, (name, count) in enumerate(tried):
             x = w // 2 - (len(tried) * 40) // 2 + i * 40 + 20
             icon = effects.charge_icon(name)
-            screen.blit(icon, icon.get_rect(center=(x, 97)))
-            hud.text(screen, str(count), (x, 103), "ui.text", "midtop")
+            screen.blit(icon, icon.get_rect(center=(x, 103)))
+            hud.text(screen, str(count), (x, 110), "ui.text", "midtop")
         hud.text(screen, "ESC TO QUIT", (w // 2, h - 22), "px.hazard.1", "midtop")
         hud.text(screen, self.stamp, (4, h - 3), "px.floor.3", "bottomleft")
 
