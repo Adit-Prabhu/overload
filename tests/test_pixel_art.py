@@ -853,7 +853,10 @@ def test_windowed_replay_applies_terminal_fusion_once(headless_pygame, monkeypat
     monkeypatch.setattr(app, "apply_menu", track)
     monkeypatch.setattr(app, "_open_window", lambda _: pygame.display.set_mode((256, 144)))
     monkeypatch.setattr(app, "ticks_due", lambda *_: (5, 0.0))
-    assert app.play(app.Options(replay=path, mute=True)) == 0
+    try:
+        assert app.play(app.Options(replay=path, mute=True)) == 0
+    finally:
+        pygame.init()  # restore the module-scoped SDL fixture after the app shuts down
     assert applied == recording.menu
 
 
