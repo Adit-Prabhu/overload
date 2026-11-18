@@ -25,7 +25,17 @@ from overload.sim import world as rules
 from overload.sim.arena import arena_id
 from overload.sim.bosses import BY_KIND
 from overload.sim.campaign import Campaign
-from overload.sim.powers import COOLDOWN_KEYS, EVOLUTIONS, RECIPE_ORDER, RECIPES, Kit, evolved
+from overload.sim.powers import (
+    COOLDOWN_KEYS,
+    EVOLUTIONS,
+    FUSION_NAMES,
+    INGREDIENTS,
+    RECIPE_ORDER,
+    RECIPES,
+    Kit,
+    evolved,
+    fused_name,
+)
 from overload.sim.run import Run
 from overload.sim.state import Event
 from overload.sim.tuning import DEFAULT, Tuning
@@ -58,6 +68,21 @@ NAMES = {
     "arc_trail": "ARC TRAIL",
     "shock_cone": "SHOCK CONE",
 }
+RARITY_INFO = {
+    ("arc_trail", "epic"): "A LONGER, WIDER SHOCK LINE",
+    ("arc_trail", "legendary"): "STORM STEP PLUS 8 SPARKS",
+    ("shock_cone", "epic"): "A BURST PLUS FIVE SPARKS",
+    ("shock_cone", "legendary"): "FIVE SPARKS THAT CHAIN TWICE",
+}
+
+
+def power_name(kit: Kit, ability: str) -> str:
+    """The name the player sees: a fused power's name depends on its rarity."""
+    if ability in FUSION_NAMES:
+        return fused_name(ability, kit.rarity.get(ability, "rare"))
+    return NAMES[ability]
+
+
 COOLDOWNS = {
     "spark": "spark_cooldown",
     "blink": "blink_cooldown",
@@ -580,12 +605,14 @@ class PixelView:
         ]
 
         for trail in world.trails:
+            storm = trail.width > tuning.trail_width  # Storm Step and Thunderhead
             effects.arc_trail(
                 screen,
                 self.glow.layer,
                 v(trail.x1, trail.y1),
                 v(trail.x2, trail.y2),
-                trail.ttl / tuning.trail_ttl,
+                trail.ttl / (tuning.storm_trail_ttl if storm else tuning.trail_ttl),
+                storm,
             )
         for hostile in world.hostiles:
             if hostile.kind == "relay" and hostile.phase == "blink":
@@ -891,12 +918,18 @@ class PixelView:
                 screen.fill(rgb("px.wall.1"), (left - 2, y - 1, 104, 10))
             icon = effects.charge_icon(ability)
             screen.blit(icon, icon.get_rect(midleft=(left + 1, y + 4)))
-            hud.text(screen, NAMES[ability], (left + 12, y), "ui.text" if chosen else "ui.dim")
+            name = power_name(kit, ability)
+            hud.text(screen, name, (left + 12, y), "ui.text" if chosen else "ui.dim")
             if ability in EVOLUTIONS:
                 count = min(kit.fragments.get(ability, 0), tuning.evolve_at)
                 for p in range(tuning.evolve_at):
                     token = f"power.{ability}" if p < count else "px.floor.2"
                     screen.fill(rgb(token), (left + 88 + p * 4, y + 3, 3, 3))
+                spare = kit.bank.get(ability, 0)
+                if spare:  # spare charges, spent on rerolls
+                    hud.text(screen, f"+{spare}", (left + 86, y), "ui.dim", "topright")
+            elif ability in FUSION_NAMES:
+                hud.rarity_marks(screen, kit.rarity.get(ability, "rare"), left + 88, y + 2)
         divider_x = left + 108
         screen.fill(rgb("px.wall.1"), (divider_x, col_y, 1, 64))
 
@@ -911,7 +944,8 @@ class PixelView:
             if ability:
                 icon = effects.charge_icon(ability)
                 screen.blit(icon, icon.get_rect(midleft=(card.x + 8, card.centery)))
-                hud.text(screen, hud.SHORT[ability], (card.x + 18, card.y + 4), "ui.text")
+                short = hud.short_name(ability, kit.rarity.get(ability, ""))
+                hud.text(screen, short, (card.x + 18, card.y + 4), "ui.text")
             else:
                 hud.text(screen, "EMPTY", (card.x + 18, card.y + 4), "px.floor.3")
         hud.text(screen, "FUSIONS", (rx, col_y + 31), "ui.dim")
@@ -928,7 +962,8 @@ class PixelView:
             hud.text(screen, "=", (rx + 30, y), "ui.dim", "midtop")
             missing = [p for p in (a, b) if p not in kit.unlocked]
             if result in kit.unlocked:
-                status, token = "DONE", "power.blink"
+                rarity = kit.rarity.get(result, "rare")
+                status, token = rarity.upper(), f"px.rarity.{rarity}"
             elif missing:
                 status, token = f"NEED {missing[0].upper()}", "px.floor.3"
             else:
@@ -949,10 +984,16 @@ class PixelView:
             lines, token = _wrap(message.upper(), 38), "px.lamp"
         elif pick >= 0:
             ability = rows[pick]
-            name = NAMES[ability]
+            name = power_name(kit, ability)
             info = DESCRIPTIONS[ability]
             if evolved(kit.fragments, ability, tuning) and ability in EVOLVED_INFO:
                 info = EVOLVED_INFO[ability]
+            if ability in FUSION_NAMES:
+                rarity = kit.rarity.get(ability, "rare")
+                info = RARITY_INFO.get((ability, rarity), info)
+                a, b = INGREDIENTS[ability]
+                cost = tuning.reroll_cost
+                info = f"{info}. REROLL {cost} {a.upper()} + {cost} {b.upper()}"
             lines, token = _wrap(f"{name}: {info}", 38), "ui.dim"
         else:
             lines, token = ["DESTROY ROBOTS TO STEAL THEIR POWERS"], "ui.dim"

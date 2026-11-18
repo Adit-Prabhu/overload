@@ -160,9 +160,10 @@ class Campaign:
         return ok
 
     def fuse(self, a: str, b: str) -> str:
-        """Loadout menu: fuse two base powers, any time the Surge is up. See powers.fuse."""
+        """Loadout menu: fuse two base powers, or reroll a pair, any time the Surge is up.
+        The roll stream is fed by the run seed. See powers.fuse."""
         kit = self._editable_kit()
-        result = fuse(kit, a, b)
+        result = fuse(kit, a, b, self.seed, self.tuning)
         kit.apply(self.world)
         return result
 

@@ -305,3 +305,41 @@ def test_sector_variants_recolor_the_shell_but_not_the_danger_red(headless_pygam
         assert rgb("px.hostile.2") not in colors
         assert rgb("hostile.danger") in colors
     assert tier_colors(stock, 1) is stock
+
+
+@pytest.mark.parametrize("rarity", ["rare", "epic", "legendary"])
+def test_the_menu_names_fused_powers_by_rarity_and_marks_it(headless_pygame, rarity) -> None:
+    from overload.art.palette import rgb
+    from overload.game.view import PixelView, power_name
+    from overload.sim.campaign import Campaign
+    from overload.sim.powers import Kit, fused_name
+
+    kit = Kit(
+        ["spark", "blink", "arc_trail"],
+        {"spark": 2},
+        ["arc_trail", ""],
+        bank={"spark": 1},
+        rarity={"arc_trail": rarity},
+    )
+    assert power_name(kit, "arc_trail") == fused_name("arc_trail", rarity)
+    assert power_name(kit, "spark") == "SPARK"
+    screen = pygame.Surface((256, 144))
+    PixelView(Campaign(1)).draw_fuse_box(screen, 1, True, None, kit, 2, None, title="LOADOUT")
+    mark = rgb(f"px.rarity.{rarity}")
+    # The marks sit at the right end of the power's row (row 3, the third 11 px row): count
+    # the crosses there, 5 lit pixels each.
+    left, row_y = 16, 8 + 4 + 15 + 11 + 2 * 11
+    lit = [
+        (x, y)
+        for x in range(left + 86, left + 102)
+        for y in range(row_y, row_y + 8)
+        if screen.get_at((x, y))[:3] == mark
+    ]
+    assert len(lit) == 5 * ("rare", "epic", "legendary").index(rarity) + 5
+    spare_row = row_y - 2 * 11  # Spark's row shows its one spare charge as +1
+    dim = rgb("ui.dim")
+    assert any(
+        screen.get_at((x, y))[:3] == dim
+        for x in range(left + 74, left + 87)
+        for y in range(spare_row, spare_row + 8)
+    )

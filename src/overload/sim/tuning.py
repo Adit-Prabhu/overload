@@ -93,6 +93,11 @@ class Tuning:
     trail_width: float = 4.0
     trail_damage: int = 1
     trail_interval: int = 12  # ticks between trail damage pulses
+    storm_trail_ttl: int = 138  # Storm Step and Thunderhead (epic and legendary Arc Trail)
+    storm_trail_width: float = 5.0
+    thunder_spark_damage: int = 1  # each spark of Thunderhead's ring
+    fan_spark_damage: int = 1  # the outer pair of Shock Fan's and Overcurrent's fans
+    overcurrent_chain_damage: int = 1  # each arc of an Overcurrent spark (Spark not evolved)
     arc_trail_cooldown: int = 150
 
     # The Relay: blinks to a marked spot, then aims and fires. It carries Blink.
@@ -170,6 +175,13 @@ class Tuning:
     overcharged_speed: float = 1.05
     overcharged_rest: float = 0.9
 
+    # Chance fusion (docs/POWERS_AND_FUSION.md): rare, epic and legendary weights, the rares
+    # in a row that guarantee epic or better, and the banked charges of each ingredient a
+    # reroll costs.
+    fuse_odds: tuple[int, int, int] = (60, 30, 10)
+    fuse_guarantee_after: int = 2
+    reroll_cost: int = 1
+
     signature_quiet: int = 66  # the protocol rests this long after a signature (a quake's run)
 
     # Rooms (overhaul): robots warp in after a visible marker, secret walls crack open.
@@ -234,6 +246,16 @@ class Tuning:
             raise ValueError("The caster tip is too far out to check for props between")
         if self.shot_speed + 2 * self.shot_radius >= THINNEST_OBSTACLE:
             raise ValueError("Shots could tunnel through the thinnest obstacle")
+        odds = self.fuse_odds
+        if len(odds) != 3 or any(type(w) is not int or w < 0 for w in odds) or sum(odds[1:]) <= 0:
+            raise ValueError("Fusion odds need three whole weights and a chance of epic or better")
+        light = (self.fan_spark_damage, self.thunder_spark_damage, self.overcurrent_chain_damage)
+        if min(light) < 1:
+            raise ValueError("Every fused spark and arc must deal at least 1 damage")
+        if self.reroll_cost < 1 or self.fuse_guarantee_after < 1:
+            raise ValueError("A reroll must cost a charge and the guarantee needs a streak")
+        if self.storm_trail_ttl < self.trail_ttl or self.storm_trail_width < self.trail_width:
+            raise ValueError("A Storm Step trail cannot be weaker than an Arc Trail")
         if self.dodge_speed >= self.player_radius:
             raise ValueError("Dodge speed must stay below the player radius to avoid tunneling")
 

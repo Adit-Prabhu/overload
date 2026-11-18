@@ -246,3 +246,20 @@ def enter(campaign: Campaign, room_id: str, tick=None) -> None:
         floor.get(room_id).center
     )
     (tick or campaign.step)(IDLE)
+
+
+def clear_encounter(session) -> None:
+    """Finish the current sector and stand in its Fuse Box (or reach the ending)."""
+    skip_sector(session.campaign, session.tick)
+
+
+def fuse_box_with(*abilities: str):
+    """A session standing in the first Fuse Box with these powers stolen and no spares."""
+    from overload.agent.selector import NeutralSelector
+    from overload.game.flow import Session
+
+    session = Session(Campaign(1), NeutralSelector())
+    clear_encounter(session)
+    session.campaign.world.unlocked = list(abilities)
+    session.campaign.world.bank = {}
+    return session

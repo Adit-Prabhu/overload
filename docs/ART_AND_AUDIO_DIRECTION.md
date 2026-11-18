@@ -78,6 +78,7 @@ The palette is organized as ramps, darkest first:
 | Machines | `px.bot.*`, `px.hostile.*`, `px.dial.*` | Gunmetal bodies with hostile orange-red shells and accents |
 | Powers | `power.spark`, `power.blink`, `power.burst` and their `px.*.light` variants | Yellow, cyan and magenta, used only for powers and power cores |
 | Shared | `hostile.danger`, `ui.text`, `ui.dim`, `fx.flash`, `fx.none` | Telegraphs, text, hit flashes, light math |
+| Rarity | `px.rarity.rare`, `px.rarity.epic`, `px.rarity.legendary` | Steel, mint and champagne for fusion rarities (docs/POWERS_AND_FUSION.md). Menus and HUD slots only, never in the world, and always with 1, 2 or 3 cross marks. Rare is deliberately plain, close to `ui.dim`. Champagne sits near Spark's yellow light, which is acceptable only because it never appears in play |
 
 ### Rules that keep it readable
 1. **Shape before color.** Every power, enemy and hostile projectile can be told apart in grayscale by its shape or bright pattern. Color only reinforces it. The CVD contact sheet checks this.

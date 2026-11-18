@@ -121,11 +121,14 @@ def test_evolved_burst_reaches_wider() -> None:
 def test_the_fuse_key_picks_the_next_open_recipe() -> None:
     kit = Kit(["spark", "blink", "burst"], {}, ["", ""])
     assert next_recipe(kit) == ("spark", "blink")
-    assert fuse(kit, *next_recipe(kit)) == "fused"
+    assert fuse(kit, *next_recipe(kit), seed=1) == "fused"
     assert next_recipe(kit) == ("spark", "burst")
-    assert fuse(kit, *next_recipe(kit)) == "fused"
-    assert fuse(kit, *next_recipe(kit)) == "already_fused"
-    assert fuse(Kit(["spark"], {}, ["", ""]), "blink", "burst") == "unsupported"
+    assert fuse(kit, *next_recipe(kit), seed=1) == "fused"
+    assert next_recipe(kit) is None, "all fused and no fusion picked: F spends nothing"
+    assert next_recipe(kit, "spark") is None
+    assert next_recipe(kit, "shock_cone") == ("spark", "burst"), "the picked fusion rerolls"
+    assert fuse(kit, "spark", "burst", seed=1) == "no_charges"
+    assert fuse(Kit(["spark"], {}, ["", ""]), "blink", "burst", seed=1) == "unsupported"
 
 
 def test_power_guards() -> None:

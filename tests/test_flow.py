@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import threading
 
-from floorbot import FloorBot, enter, skip_sector
+from floorbot import FloorBot, clear_encounter, enter, fuse_box_with
 
 from overload.agent.client import TacticClient
 from overload.agent.selector import FixedSchedule, LiveSelector, NeutralSelector
@@ -13,12 +13,8 @@ from overload.game.flow import FALLBACK_LINE, FUSE_NOTICES, MIN_FUSE_TICKS, Fuse
 from overload.session.trace import TraceWriter
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import IDLE, InputFrame
+from overload.sim.powers import fused_name
 from overload.sim.tuning import DEFAULT
-
-
-def clear_encounter(session: Session) -> None:
-    """Finish the current sector and stand in its Fuse Box (or reach the ending)."""
-    skip_sector(session.campaign, session.tick)
 
 
 def wait_in_fuse_box(session: Session, ticks: int) -> None:
@@ -187,13 +183,6 @@ def test_baseline_traces_never_claim_a_summary_was_sent(tmp_path) -> None:
     assert rows[-1]["event"] == "session_end"
 
 
-def fuse_box_with(*abilities: str) -> Session:
-    session = Session(Campaign(1), NeutralSelector())
-    clear_encounter(session)
-    session.campaign.world.unlocked = list(abilities)
-    return session
-
-
 def test_menu_equips_the_picked_power_and_reports_the_action() -> None:
     session = fuse_box_with("spark", "blink")
     menu = FuseBoxMenu()
@@ -213,8 +202,10 @@ def test_menu_fusion_shows_the_supported_recipe_when_it_fails() -> None:
     assert session.campaign.kit.unlocked == ["spark"]
     session.campaign.world.unlocked.append("blink")
     menu.press(session, "fuse")
-    assert session.campaign.world.unlocked == ["spark", "blink", "arc_trail"]
-    assert menu.notice == "ARC TRAIL FUSED"
+    world = session.campaign.world
+    assert world.unlocked == ["spark", "blink", "arc_trail"]
+    rarity = world.rarity["arc_trail"]
+    assert menu.notice == f"{fused_name('arc_trail', rarity)} {rarity.upper()}"
 
 
 def test_menu_with_nothing_stolen_ignores_equip_keys() -> None:

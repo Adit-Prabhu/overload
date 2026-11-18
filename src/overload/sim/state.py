@@ -50,6 +50,9 @@ class Projectile:
     hostile: bool
     ttl: int
     kind: str = "shot"  # shot, spark, bolt or orb
+    # How a spark arcs on from a robot it hits: "" when Spark is evolved, "overcurrent"
+    # always and twice, "none" never (Thunderhead's ring).
+    arc: str = ""
 
 
 @dataclass(slots=True)
@@ -129,6 +132,7 @@ class Trail:
     x2: float
     y2: float
     ttl: int
+    width: float = 0.0  # how far it reaches past a body's edge (0: the Arc Trail's width)
 
 
 @dataclass(slots=True)
@@ -182,6 +186,10 @@ class World:
     trails: list[Trail] = field(default_factory=list)
     unlocked: list[str] = field(default_factory=list)  # abilities, in unlock order
     fragments: dict[str, int] = field(default_factory=dict)  # charges absorbed per power
+    bank: dict[str, int] = field(default_factory=dict)  # spare charges per power (rerolls)
+    rarity: dict[str, str] = field(default_factory=dict)  # each fused power's rarity
+    fusions: int = 0  # fusions so far this run, the roll stream's index
+    streak: int = 0  # rare fusions in a row, for the guarantee
     locked: list[str] = field(default_factory=list)  # ids of doors that are shut right now
     # The floor (overhaul): rooms lock while robots are active and clear for good.
     mode: str = "room"  # "room": one arena, cleared when empty. "floor": rooms and sectors
@@ -218,6 +226,10 @@ def state_hash(world: World) -> str:
         "trails": [asdict(t) for t in world.trails],
         "unlocked": world.unlocked,
         "fragments": world.fragments,
+        "bank": world.bank,
+        "rarity": world.rarity,
+        "fusions": world.fusions,
+        "streak": world.streak,
         "locked": world.locked,
         "mode": world.mode,
         "protocol": world.protocol,
