@@ -243,6 +243,8 @@ def prewarm_lights() -> None:
     for strength in range(80, 101, 5):
         pool(84, "px.lamp", strength)
         pool(84, "px.lamp", strength * Lighting.TINT // 100)
+    pool(84, "px.lamp", FLICKER_DIM)
+    pool(84, "px.lamp", FLICKER_DIM * Lighting.TINT // 100)
     for radius, token, strength in (
         (64, "px.lamp.light", 75),
         (40, "px.lamp.light", 70),
@@ -264,9 +266,32 @@ class Spark:
     token: str
 
 
+@dataclass
+class Mote:
+    """A slow ambient particle: steam from a vent or dust in lamp light."""
+
+    x: float
+    y: float
+    vx: float
+    vy: float
+    life: int
+    token: str
+    size: int
+
+
+MAX_MOTES = 120
+RIPPLE_TICKS = 18
+FLICKER_DIM = 45  # a failing lamp's strength while it stutters
+
+
+def flickering(tick: int, phase: int) -> bool:
+    """A failing lamp stutters off for a few ticks at a time, in bursts now and then."""
+    return (tick // 3 + phase * 13) % 97 in (0, 1, 3, 7, 8, 30)
+
+
 class PixelView:
     def __init__(self, run: Run | Campaign) -> None:
-        self.room = tiles.render_room(run.arena.room)
+        self.room = tiles.render_room(run.arena.room, tiles.floor_sectors(run.arena.floor))
         self.room_data = run.arena.room
         self.room_size = run.arena.size
         self.glow = Glow(VIEW)
@@ -284,6 +309,10 @@ class PixelView:
         self.chains: list[tuple] = []
         self.blasts: list[tuple] = []  # ring blasts of fused powers: x, y, radius, life
         self.gaits: dict[int, Gait] = {}  # per robot id (-1 the Regulator): walk cycles
+        self.frames = 0
+        self.motes: list[Mote] = []  # steam and dust, drifting
+        self.ripples: list[tuple[int, int, int]] = []  # drips on puddles: x, y, age
+        self.flicker = {(e.x, e.y): e.phase for e in self.room.emitters if e.kind == "flicker"}
         self.beams: list[tuple[float, float, int]] = []  # Relay Bot teleports: x, y, life
         self.steps: dict[int, int | None] = {}  # each walker's last walk step, for footfalls
         self.recoils: dict[int, int] = {}  # per robot id: ticks since it fired, counting down
@@ -363,6 +392,57 @@ class PixelView:
                 del self.gaits[key]
                 self.steps.pop(key, None)
 
+    def _ambience(self, tick: int) -> None:
+        """Animate the room's dressing near the camera (art/pixel/dressing.py): vents
+        breathe steam, damaged panels spit sparks, puddles catch drips, and dust drifts
+        through the lamp light. Cosmetic RNG only."""
+        cx, cy = self.camera
+        near = pygame.Rect(cx - 32, cy - 32, VIEW[0] + 64, VIEW[1] + 64)
+        rng = self.cosmetic
+        for emitter in self.room.emitters:
+            if not near.collidepoint(emitter.x, emitter.y):
+                continue
+            beat = (tick + emitter.phase * 37) % 240
+            if emitter.kind == "steam" and beat % 6 == 0 and beat < 60:
+                self.motes.append(
+                    Mote(
+                        emitter.x + rng.uniform(-2, 2),
+                        emitter.y,
+                        rng.uniform(-0.15, 0.15),
+                        rng.uniform(-0.5, -0.3),
+                        rng.randint(28, 44),
+                        "px.wall.3",
+                        2,
+                    )
+                )
+            elif emitter.kind == "sparks" and rng.random() < 1 / 150:
+                for _ in range(rng.randint(3, 6)):
+                    self.sparks.append(
+                        Spark(
+                            emitter.x,
+                            emitter.y,
+                            rng.uniform(-1.2, 1.2),
+                            rng.uniform(-0.6, 1.4),
+                            rng.randint(6, 12),
+                            "px.lamp.light",
+                        )
+                    )
+            elif emitter.kind == "drip" and beat == 0:
+                self.ripples.append((emitter.x, emitter.y, 0))
+        for x, y in self.room.lamps:  # dust motes drifting down through the lamp light
+            if near.collidepoint(x, y) and rng.random() < 1 / 40:
+                self.motes.append(
+                    Mote(
+                        x + rng.uniform(-14, 14),
+                        y + rng.uniform(4, 16),
+                        rng.uniform(-0.08, 0.08),
+                        rng.uniform(0.04, 0.12),
+                        rng.randint(90, 160),
+                        "px.lamp.light",
+                        1,
+                    )
+                )
+
     def update(self, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         """Advance cosmetic state by one simulation tick. Called once per tick, never per
         rendered frame, so effects and camera behave the same at any display rate."""
@@ -388,6 +468,8 @@ class PixelView:
                         "px.wall.3",
                     )
                 )
+        self.frames += 1  # the view's own clock: ambience keeps time while the world waits
+        self._ambience(self.frames)
         floor = run.arena.floor
         if floor is not None:
             room = floorplay.room_of(floor, run.world.player.x, run.world.player.y)
@@ -657,6 +739,12 @@ class PixelView:
         self.ghosts = [(x, y, life - 1) for x, y, life in self.ghosts if life > 1]
         self.blinks = [(x, y, life - 1) for x, y, life in self.blinks if life > 1]
         self.beams = [(x, y, life - 1) for x, y, life in self.beams if life > 1]
+        for mote in self.motes:
+            mote.x += mote.vx
+            mote.y += mote.vy
+            mote.life -= 1
+        self.motes = [m for m in self.motes if m.life > 0][-MAX_MOTES:]
+        self.ripples = [(x, y, age + 1) for x, y, age in self.ripples if age < RIPPLE_TICKS]
         self.bursts = [(*b[:5], b[5] - 1) for b in self.bursts if b[5] > 1]
         self.chains = [(a, b, life - 1) for a, b, life in self.chains if life > 1]
         self.blasts = [(x, y, r, life - 1) for x, y, r, life in self.blasts if life > 1]
@@ -741,6 +829,8 @@ class PixelView:
                     )
         for gx, gy, _life in self.blinks:
             effects.blink_ghost(screen, self.glow.layer, v(gx, gy))
+        for rx, ry, age in self.ripples:
+            effects.ripple(screen, v(rx, ry), age / RIPPLE_TICKS)
         for bx, by, life in self.beams:
             effects.relay_beam(screen, self.glow.layer, v(bx, by), life / BEAM_TICKS)
 
@@ -965,6 +1055,9 @@ class PixelView:
             effects.chain_bolt(screen, self.glow.layer, v(*a), v(*b))
         for x, y, radius, life in self.blasts:
             effects.blast_ring(screen, self.glow.layer, v(x, y), radius, life / BLAST_TICKS)
+        for mote in self.motes:
+            mx, my = v(mote.x, mote.y)
+            screen.fill(rgb(mote.token), (round(mx), round(my), mote.size, mote.size))
         for spark in self.sparks:
             sx, sy = v(spark.x, spark.y)
             for surface in (screen, self.glow.layer):
@@ -975,6 +1068,13 @@ class PixelView:
         self.lighting.begin()
         for i, (x, y) in enumerate(self.room.lamps):
             pulse = quantize(90 + 10 * math.sin(t * 2 + i))
+            phase = self.flicker.get((x, y))
+            if phase is not None and flickering(self.frames, phase):
+                pulse = FLICKER_DIM
+                lx, ly = v(x, y)  # the lens goes dark with its light
+                lens = (round(lx) - 3, round(ly) - 2, 6, 3)
+                self.glow.layer.fill(rgb("fx.none"), lens)
+                screen.fill(rgb("px.bot.1"), lens)
             self.lighting.add(v(x, y + 24), 84, "px.lamp", pulse)
         for x, y in self.room.ceiling:
             self.lighting.add(v(x, y), 64, "px.lamp.light", 75)

@@ -515,6 +515,59 @@ def test_footfalls_kick_dust_and_short_moves_are_walks(headless_pygame) -> None:
     assert view.gaits[9].dx > 0, "faces the way it walked"
 
 
+def test_the_floor_dressing_is_fixed_and_leaves_the_room_data_alone(headless_pygame) -> None:
+    """Dressing is seeded by tile: the same floor every run. It never touches the terrain or
+    decor the simulation reads, and each sector gets its own ambience."""
+    from overload.floor import FLOOR
+    from overload.sim.arena import FLOOR_ARENA, arena_id
+
+    before = arena_id(FLOOR_ARENA)
+    sectors = tiles.floor_sectors(FLOOR)
+    a = tiles.render_room(FLOOR.room, sectors)
+    b = tiles.render_room(FLOOR.room, sectors)
+    assert pygame.image.tobytes(a.background, "RGB") == pygame.image.tobytes(b.background, "RGB")
+    assert a.emitters == b.emitters
+    assert arena_id(FLOOR_ARENA) == before
+    kinds = {e.kind for e in a.emitters}
+    assert {"steam", "sparks", "drip", "flicker"} <= kinds
+    for emitter in a.emitters:
+        tx, ty = emitter.x // 16, emitter.y // 16
+        if emitter.kind == "drip":
+            assert sectors(tx, ty) == 2, "puddles belong to the cooling plant"
+        if emitter.kind == "sparks":
+            assert sectors(tx, ty) == 3, "damaged panels belong to the grid core"
+    plain = tiles.render_room(FLOOR.room)  # no sector lookup: everything as sector 1
+    assert not any(e.kind in ("drip", "sparks") for e in plain.emitters)
+
+
+def test_floor_sectors_follow_the_grid() -> None:
+    from overload.floor import FLOOR
+
+    sectors = tiles.floor_sectors(FLOOR)
+    for room in FLOOR.rooms:
+        x, y = room.center
+        assert sectors(x, y) == room.sector, room.id
+    assert tiles.floor_sectors(None)(3, 3) == 1
+
+
+def test_ambience_animates_near_the_camera_only(headless_pygame) -> None:
+    from overload.art.pixel.dressing import Emitter
+    from overload.game.view import PixelView, flickering
+    from overload.sim.campaign import Campaign
+
+    view = PixelView(Campaign(1))
+    view.room.emitters = [Emitter("drip", 10, 10, 0), Emitter("drip", 5000, 5000, 0)]
+    view.camera = [0.0, 0.0]
+    view.motes, view.ripples = [], []
+    view._ambience(0)
+    assert view.ripples == [(10, 10, 0)], "the far puddle stays still"
+    for _ in range(40):
+        view._tick_cosmetics()
+    assert view.ripples == []
+    assert any(flickering(t, 3) for t in range(600))
+    assert not all(flickering(t, 3) for t in range(30)), "a failing lamp is mostly on"
+
+
 def test_each_chassis_body_sits_on_its_hit_circle(headless_pygame) -> None:
     """Drawn at its feet anchor, each chassis' body center lands on the sim position, so
     shots that visibly hit the body hit the circle. Measured on the body's own colors."""
@@ -569,3 +622,78 @@ def test_the_regulator_steps_forward_when_it_walks_forward() -> None:
     )
     vertical = Gait(0.0, 0.0, stride=5.0, moved=1.0, dx=0.01)  # inside the dead zone
     assert rival_step(vertical, False) == rival_step(vertical, True)
+
+
+def test_ambience_does_not_pile_up_while_the_world_waits(headless_pygame) -> None:
+    """On the down screen and the ending the world tick stops, but the view keeps its own
+    clock, so a vent breathes and a puddle ripples at their usual pace."""
+    from overload.art.pixel.dressing import Emitter
+    from overload.game.view import PixelView
+    from overload.sim.campaign import Campaign
+
+    campaign = Campaign(1)
+    view = PixelView(campaign)
+    view.room.emitters = [Emitter("steam", 10, 10, 0), Emitter("drip", 20, 20, 0)]
+    view.room.lamps = []
+    view.camera = [0.0, 0.0]
+    campaign.world.outcome = "down"  # the world tick no longer moves
+    for _ in range(240):
+        view.after_tick(campaign)
+    assert len(view.ripples) <= 1
+    assert len(view.motes) <= 12
+
+
+def test_wall_words_and_fixtures_stay_readable(headless_pygame) -> None:
+    """The upper-wall runs (cable trays, pipes, conduit) never cover a wall stencil or a
+    fixture on an upper face, like the practice hall's 33 KV sign."""
+    from overload.art.pixel import dressing
+    from overload.rooms import SUBSTATION_HALL
+
+    plain = tiles.render_room(SUBSTATION_HALL)
+    original = dressing._upper_run
+    calls = []
+    dressing._upper_run = lambda s, light, x0, y0, tx, sector: calls.append((x0 // 16, y0 // 16))
+    try:
+        tiles.render_room(SUBSTATION_HALL)
+    finally:
+        dressing._upper_run = original
+    for tx, ty, words, place in SUBSTATION_HALL.labels:
+        if place == "wall":
+            assert (tx, ty) not in calls, words
+    for ty, row in enumerate(SUBSTATION_HALL.decor):
+        for tx, char in enumerate(row):
+            if char in "PSLVMp":
+                assert (tx, ty) not in calls, (char, tx, ty)
+    assert plain.background.get_size() == SUBSTATION_HALL.size
+
+
+def test_wide_stains_keep_off_the_walls(headless_pygame) -> None:
+    from overload.floor import FLOOR
+
+    art = tiles.render_room(FLOOR.room, tiles.floor_sectors(FLOOR))
+    rows = FLOOR.room.terrain
+    for emitter in art.emitters:
+        if emitter.kind != "drip":
+            continue
+        tx, ty = emitter.x // 16, emitter.y // 16
+        around = [rows[ty + dy][tx + dx] for dx in (-1, 0, 1) for dy in (-1, 0, 1)]
+        assert "#" not in around, (tx, ty)
+
+
+def test_floor_sectors_cover_walls_corridors_and_the_hidden_room() -> None:
+    from overload.floor import CELL, FLOOR
+
+    sectors = tiles.floor_sectors(FLOOR)
+    for room in FLOOR.rooms:
+        x, y, w, h = room.rect
+        for tx, ty in ((x, y), (x + w - 1, y + h - 1)):  # wall corners
+            assert sectors(tx, ty) == room.sector, room.id
+    assert sectors(*FLOOR.get("hidden").center) == 2
+    for door in FLOOR.doors:  # a door gap takes the sector of the cell it sits in
+        dx, dy, _, _ = door.rect
+        cell_room = next(
+            r
+            for r in FLOOR.rooms
+            if (r.rect[0] // CELL[0], r.rect[1] // CELL[1]) == (dx // CELL[0], dy // CELL[1])
+        )
+        assert sectors(dx, dy) == cell_room.sector, door.id

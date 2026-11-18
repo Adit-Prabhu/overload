@@ -178,6 +178,7 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | EN-08 | Fuse Box room | P0 | Fuse Box menu screen done over the dimmed room. A separate room is not drawn |
 | EN-09 | Lighting states per encounter (standby, rising, overload) | P1 | Partly done: one light per sector (below) |
 | EN-10 | Sector identity (Nov 17) | P0 | Done, see below |
+| EN-11 | Set dressing (Nov 18, `art/pixel/dressing.py`) | P1 | Done. Seeded by tile, cosmetic only. Contact shadows at wall bases, low-frequency grime, bolts and scuffs on every floor. Switchyard: painted walk lines, oil stains, cable trays on the upper walls. Cooling plant: wet patches (kept off the Cooled robots' teal) that catch drips, drains, rust streaks, pipes with valve wheels, steam from the vents. Grid core: scorch marks, cracks leaking conduit light, a lit conduit strip on the upper walls, damaged panels that spit sparks. Bare wall faces get junction boxes, numbered plates and fans. Some emergency lamps flicker, lens and light together. Dust drifts through lamp light |
 
 #### Sector identity (Nov 17)
 Each sector should read as a different part of the station within a second of walking in, without changing the rules.
