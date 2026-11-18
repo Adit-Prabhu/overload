@@ -22,6 +22,7 @@ import pygame
 
 from overload.agent.client import TacticClient
 from overload.agent.selector import FixedSchedule, LiveSelector, NeutralSelector, Selector
+from overload.art.palette import rgb
 from overload.art.pixel import hud, tiles
 from overload.game import dev as devmode
 from overload.game import menu_view
@@ -207,13 +208,20 @@ def menu_frame(
     return cues
 
 
-def draw_dev_marks(screen: pygame.Surface, tools, run, fps: float) -> None:
-    """DEV on screen whenever dev mode runs, so no dev capture can pass for real play, and
-    the debug overlay when it is on."""
-    hud.text(screen, "DEV", (VIEW[0] // 2, 2), "px.hazard.1", "midtop")
+def draw_dev_overlay(screen: pygame.Surface, tools, run, fps: float) -> None:
+    """The debug overlay, over play (menus cover it)."""
     if tools.overlay:
         for i, line in enumerate(devmode.overlay_lines(run, fps)):
-            hud.text(screen, line, (4, VIEW[1] - 60 + i * 9), "ui.dim")
+            hud.text(screen, line, (4, VIEW[1] - 58 + i * 9), "ui.dim")
+
+
+def draw_dev_tag(screen: pygame.Surface) -> None:
+    """DEV in the top right corner on a backing box, drawn last in every frame (over menus,
+    the Fuse Box and the ending), so no dev capture can pass for real play (AGENTS.md)."""
+    rect = pygame.Rect(VIEW[0] - 23, 0, 21, 10)
+    screen.fill(rgb("px.outline"), rect)
+    pygame.draw.rect(screen, rgb("px.hazard.1"), rect, 1)
+    hud.text(screen, "DEV", rect.center, "px.hazard.1", "center")
 
 
 def _open_window(headless: bool) -> pygame.Surface:
@@ -367,6 +375,8 @@ def play(options: Options) -> int:
         screen = _open_window(options.headless)
         pygame.display.set_caption("Overload")
         view = PixelView(run)
+        if options.dev:
+            view.stamp = f"DEV {view.stamp}"  # the build stamp on banners and the ending
         reader = InputReader()
         menu = Menu()
         dev_tools = devmode.DevTools() if options.dev else None
@@ -452,7 +462,7 @@ def play(options: Options) -> int:
             view.draw(screen, run, cursor)
             stage = getattr(run, "stage", None)
             if dev_tools is not None:
-                draw_dev_marks(screen, dev_tools, run, clock.get_fps())
+                draw_dev_overlay(screen, dev_tools, run, clock.get_fps())
             if menu.open and session is not None:
                 in_box = stage == "fuse_box"
                 menu_view.draw_menu(
@@ -472,6 +482,8 @@ def play(options: Options) -> int:
                     run.stats["shots"],
                     run.stats["powers"],
                 )
+            if dev_tools is not None:
+                draw_dev_tag(screen)
             pygame.display.flip()
             frames += 1
             if options.frames and frames >= options.frames:

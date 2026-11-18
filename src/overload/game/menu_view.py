@@ -396,10 +396,10 @@ def draw_dev(screen, menu: Menu) -> None:
     left, right, top = _frame(screen)
     _header(screen, "DEV", "NOT FOR PLAYTESTS", left, right, top)
     for i, (label, value) in enumerate(menu.dev.rows()):
-        y = top + 15 + i * 10
+        y = top + 14 + i * 9
         chosen = i == menu.dev_row
         if chosen:
-            screen.fill(rgb("px.wall.1"), (left - 2, y - 1, right - left + 4, 10))
+            screen.fill(rgb("px.wall.1"), (left - 2, y, right - left + 4, 9))
         hud.text(screen, label, (left, y), "ui.text" if chosen else "ui.dim")
         if value:
             cycle = label in ("NEXT ROLL", "GRANT POWER")

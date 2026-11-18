@@ -12,7 +12,7 @@ from overload.game.menu import HUB_PAUSED, Menu
 from overload.paths import ROOT
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import IDLE
-from overload.sim.powers import BASE_POWERS, FUSED, RARITIES, RESULTS, owned_result, rarity_of
+from overload.sim.powers import BASE_POWERS, FUSED, RARITIES, owned_result, rarity_of
 
 
 @pytest.fixture
@@ -23,9 +23,14 @@ def gate(tmp_path, monkeypatch):
     return path
 
 
-def test_the_gate_file_is_git_ignored_and_absent_from_the_repo() -> None:
-    ignored = (ROOT / ".gitignore").read_text().splitlines()
-    assert ".overload-dev" in ignored
+def test_the_gate_file_is_git_ignored_and_never_tracked() -> None:
+    import subprocess
+
+    ignored = subprocess.run(["git", "check-ignore", "-q", ".overload-dev"], cwd=ROOT, check=False)
+    tracked = subprocess.run(
+        ["git", "ls-files", ".overload-dev"], cwd=ROOT, capture_output=True, text=True
+    )
+    assert ignored.returncode == 0 and tracked.stdout == ""
 
 
 def test_dev_mode_refuses_to_start_without_the_gate(gate) -> None:
@@ -40,6 +45,11 @@ def test_a_dev_run_never_calls_the_rival_or_writes_a_trace_or_recording(
 ) -> None:
     gate.write_text("")
     monkeypatch.setenv("OVERLOAD_RIVAL_URL", "http://127.0.0.1:9")  # would be live otherwise
+
+    def no_client(*args, **kwargs):
+        raise AssertionError("a dev run must never build a rival client")
+
+    monkeypatch.setattr("overload.game.app.TacticClient", no_client)
     trace, record = tmp_path / "t.jsonl", tmp_path / "r.json"
     options = Options(
         dev=True, headless=True, frames=3, condition="live", trace=trace, record=record
@@ -51,6 +61,7 @@ def test_a_dev_run_never_calls_the_rival_or_writes_a_trace_or_recording(
 def test_dev_mode_never_runs_replays_or_practice(gate, tmp_path) -> None:
     gate.write_text("")
     assert play(Options(dev=True, headless=True, practice=True)) == 2
+    assert play(Options(dev=True, headless=True, replay=tmp_path / "any.json")) == 2
 
 
 # The tools -----------------------------------------------------------------------------------
@@ -119,10 +130,91 @@ def test_the_dev_page_is_in_the_hub_only_in_dev_mode() -> None:
     assert devmode.GRANTABLE[1] in session.campaign.world.unlocked
 
 
-def test_every_dev_row_runs_without_error() -> None:
+def test_every_dev_row_runs_in_the_fuse_box_without_error() -> None:
     session = fuse_box_with("spark")
     tools = devmode.DevTools()
     for row in range(len(tools.rows())):
         for key in ("left", "right", "select"):
             tools.press(session, row, key)
-    assert RESULTS  # the grant table covers every pair
+    assert session.campaign.stage == "fuse_box", "the sector tools do nothing here"
+
+
+def test_clear_this_room_finishes_every_wave() -> None:
+    """Review of PR #34: clearing only the live robots let the next wave warp in."""
+    from floorbot import enter
+
+    campaign = Campaign(1)
+    enter(campaign, "s1_hall")
+    assert campaign.world.active_room == "s1_hall" and campaign.world.wave == 0
+    assert devmode.clear_room(campaign.world) == "ROOM CLEARED"
+    for _ in range(3):
+        campaign.step(IDLE)
+    assert "s1_hall" in campaign.world.cleared and not campaign.world.active_room
+    assert devmode.clear_room(campaign.world) == "NOT IN A FIGHT"
+
+
+def test_defeat_the_regulator_clears_its_chamber() -> None:
+    from floorbot import enter
+
+    session = fuse_box_with("spark")
+    campaign = Campaign(1)
+    enter(campaign, "s1_chamber")
+    session.campaign = campaign
+    tools = devmode.DevTools()
+    tools.press(session, [r[0] for r in tools.rows()].index("DEFEAT THE REGULATOR"), "select")
+    campaign.step(IDLE)
+    assert "s1_chamber" in campaign.world.cleared
+
+
+def test_skipping_sector_three_goes_to_the_ending() -> None:
+    from floorbot import skip_sector
+
+    campaign = Campaign(1)
+    for protocol in ("lateral", "lateral"):
+        skip_sector(campaign)
+        campaign.begin_next(protocol)
+    assert campaign.encounter == 3
+    assert devmode.skip_sector(campaign) == "SKIPPED TO THE ENDING"
+    campaign.step(IDLE)
+    assert campaign.stage == "ending"
+
+
+def test_skipping_mid_meteor_does_not_carry_the_surge_back() -> None:
+    campaign = Campaign(1)
+    player = campaign.world.player
+    player.leap, player.leap_x1, player.leap_y1 = 20, player.x, player.y
+    devmode.skip_sector(campaign)
+    campaign.step(IDLE)
+    assert campaign.stage == "fuse_box" and player.leap == 0
+
+
+def test_a_forced_rarity_with_no_chance_leaves_the_roll_alone() -> None:
+    import dataclasses
+
+    from overload.sim.tuning import DEFAULT
+
+    session = fuse_box_with("spark", "blink")
+    session.campaign.tuning = dataclasses.replace(DEFAULT, fuse_odds=(60, 40, 0))
+    tools = devmode.DevTools(force=devmode.FORCE.index("LEGENDARY"))
+    tools.before_roll(session, "spark", "blink")  # returns at once, never loops
+    assert "NO CHANCE" in tools.notice and session.campaign.world.fusions == 0
+
+
+def test_dev_stays_visible_over_every_menu(monkeypatch) -> None:
+    import pygame
+
+    from overload.art.palette import rgb
+    from overload.art.pixel import hud
+    from overload.game.app import draw_dev_tag
+
+    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
+    pygame.init()  # the play() tests above shut pygame down
+    hud.forget()
+
+    screen = pygame.Surface((256, 144))
+    screen.fill(rgb("px.outline"))  # whatever a menu or the ending drew
+    draw_dev_tag(screen)
+    lit = sum(
+        screen.get_at((x, y))[:3] == rgb("px.hazard.1") for x in range(226, 256) for y in range(12)
+    )
+    assert lit > 20

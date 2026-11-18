@@ -14,13 +14,15 @@ How it stays out of the study:
   no trace and no recording, and shows DEV on screen, so no dev footage or log can pass
   for real evidence (AGENTS.md: label fixture, replay and live evidence distinctly).
 - The tools edit the world between simulation ticks. The simulation itself has no dev
-  code, so normal play and replays are unchanged.
+  code, so normal play and replays are unchanged. A retry restores the sector's checkpoint
+  as usual, so grants and evolutions made mid-sector are undone by going down.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from overload.floor import WAVES
 from overload.paths import ROOT
 from overload.sim import floorplay
 from overload.sim.powers import (
@@ -87,7 +89,7 @@ class DevTools:
             ("EVOLVE ALL POWERS", ""),
             ("CLEAR THIS ROOM", ""),
             ("DEFEAT THE REGULATOR", ""),
-            ("SKIP TO THE FUSE BOX", ""),
+            ("SKIP THIS SECTOR", ""),
         ]
 
     def press(self, session, row: int, key: str) -> list:
@@ -119,20 +121,18 @@ class DevTools:
             for power in BASE_POWERS:
                 if power not in world.unlocked:
                     world.unlocked.append(power)
-                world.fragments[power] = max(world.fragments.get(power, 0), 3)
+                evolve_at = campaign.tuning.evolve_at
+                world.fragments[power] = max(world.fragments.get(power, 0), evolve_at)
             self.notice = "EVERY BASE POWER EVOLVED"
         elif label == "CLEAR THIS ROOM":
-            for robot in world.hostiles:
-                robot.health = 0
-            world.warps.clear()
-            self.notice = "ROOM CLEARED"
+            self.notice = clear_room(world)
         elif label == "DEFEAT THE REGULATOR":
             if world.rival is not None and world.rival.health > 0:
                 world.rival.health = 0
                 self.notice = "REGULATOR DOWN"
             else:
                 self.notice = "NO REGULATOR HERE"
-        elif label == "SKIP TO THE FUSE BOX":
+        elif label == "SKIP THIS SECTOR":
             self.notice = skip_sector(campaign)
         return []
 
@@ -146,6 +146,10 @@ class DevTools:
         if want == "rare":
             world.streak = 0  # a guaranteed roll is never rare, so clear the guarantee
         guaranteed = world.streak >= tuning.fuse_guarantee_after
+        weight = 0 if guaranteed and want == "rare" else tuning.fuse_odds[self.force - 1]
+        if weight == 0:  # this tuning can never roll it: leave the roll alone
+            self.notice = f"{want.upper()} HAS NO CHANCE IN THIS TUNING"
+            return
         n = world.fusions
         while roll_rarity(session.campaign.seed, n, guaranteed, tuning) != want:
             n += 1
@@ -166,12 +170,27 @@ def grant(world, power: str) -> str:
     return f"GRANTED {power.replace('_', ' ').upper()}"
 
 
+def clear_room(world) -> str:
+    """Finish the room the Surge is fighting in: every wave, not only the current one."""
+    if not world.active_room:
+        return "NOT IN A FIGHT"
+    if world.active_room in WAVES:
+        world.wave = len(WAVES[world.active_room]) - 1  # no wave left to queue
+    for robot in world.hostiles:
+        robot.health = 0
+    world.warps.clear()
+    return "ROOM CLEARED"
+
+
 def skip_sector(campaign) -> str:
-    """Clear the sector's rooms and stand in its Fuse Box (the sector 3 chamber has none, so
-    there it stands in the chamber with the Regulator beaten)."""
+    """Clear the sector's rooms and stand in its Fuse Box. Sector 3 has no Fuse Box: its
+    chamber is cleared too, so the run goes to the ending."""
     if campaign.stage != "encounter":
         return "ONLY DURING A SECTOR"
     world = campaign.world
+    player = world.player
+    # Stop anything that would carry the Surge back: a Meteor in the air, a lance, an aura.
+    player.leap, player.dodge_ticks, player.lance, player.aura = 0, 0, False, 0
     floor = campaign.arena.floor
     sector = campaign.encounter
     for room in floor.rooms:
@@ -185,16 +204,17 @@ def skip_sector(campaign) -> str:
     world.rival = None
     target = f"fuse_{sector}" if sector < 3 else f"s{sector}_chamber"
     world.player.x, world.player.y = floorplay.tile_center(floor.get(target).center)
-    return "SKIPPED TO THE FUSE BOX" if sector < 3 else "SKIPPED TO THE LAST CHAMBER"
+    return "SKIPPED TO THE FUSE BOX" if sector < 3 else "SKIPPED TO THE ENDING"
 
 
 def overlay_lines(run, fps: float) -> list[str]:
     world = run.world
     player = world.player
+    cooldowns = " ".join(f"{k[0].upper()}{v}" for k, v in sorted(player.cooldowns.items()))
     return [
         f"TICK {world.tick}  FPS {fps:.0f}",
         f"ROOM {world.active_room or '-'}  WAVE {world.wave}",
         f"PROTOCOL {world.protocol}  STAGE {getattr(run, 'stage', '-')}",
-        f"POS {player.x:.0f},{player.y:.0f}  CD {sorted(player.cooldowns.items())}",
+        f"POS {player.x:.0f},{player.y:.0f}  CD {cooldowns}",
         f"FUSIONS {world.fusions}  STREAK {world.streak}",
     ]

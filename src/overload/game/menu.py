@@ -78,7 +78,7 @@ class Roll:
 class Menu:
     open: bool = False
     in_fuse_box: bool = False
-    screen: str = "hub"  # hub, loadout, fuse, controls
+    screen: str = "hub"  # hub, loadout, fuse, controls, dev
     hub: int = 0
     row: int = 0  # loadout selection
     cursor: int = 0  # fuse: a base power's index, or len(BASE_POWERS) for the ROLL button
