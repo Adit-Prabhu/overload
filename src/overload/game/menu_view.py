@@ -12,6 +12,7 @@ from overload.game.menu import (
     LOADOUT_ROWS,
     Menu,
     loadout_rows,
+    percentages,
     roll_terms,
 )
 from overload.game.title import CONTROLS
@@ -110,16 +111,15 @@ def draw_hub(screen, menu: Menu, session, ready: bool, message: str | None, sect
         for a, b in RECIPE_ORDER
     )
     for i, item in enumerate(menu.hub_items):
-        y = top + 20 + i * 15
+        y = top + 20 + i * 13  # room for six items (dev mode adds DEV) above the message
         chosen = i == menu.hub
         waiting = item == "CONTINUE" and not ready
         if chosen:
             screen.fill(rgb("px.wall.1"), (left - 2, y - 2, 104, 12))
             hud.text(screen, ">", (left, y), "px.hazard.1")
         token = "px.floor.3" if waiting else ("ui.text" if chosen else "ui.dim")
-        hud.text(screen, item, (left + 8, y), token)
-        if waiting:
-            hud.text(screen, "ROUTING POWER", (left + 104, y), "px.floor.3", "topright")
+        label = "QUIT? SPACE AGAIN" if item == "QUIT" and menu.quitting else item
+        hud.text(screen, label, (left + 8, y), "px.lamp" if label != item else token)
         if item == "FUSE" and free:  # a free first roll is waiting
             screen.fill(rgb("px.rarity.legendary"), (left + 40, y + 2, 3, 3))
     # Right: what is equipped, always in view.
@@ -137,6 +137,8 @@ def draw_hub(screen, menu: Menu, session, ready: bool, message: str | None, sect
                 hud.rarity_marks(screen, rarity_of(ability), card.right - 14, card.y + 7)
         else:
             hud.text(screen, "EMPTY", (card.x + 19, card.y + 4), "px.floor.3")
+    if menu.in_fuse_box and not ready:  # its own line, under the equipped slots
+        hud.text(screen, "ROUTING POWER...", (rx, top + 70), "px.floor.3")
     if menu.in_fuse_box and message:
         for i, line in enumerate(_wrap(message.upper(), 38)[:2]):
             hud.text(screen, line, (left, PANEL.bottom - 31 + i * 9), "px.lamp")
@@ -294,15 +296,16 @@ def _cards(screen, menu: Menu, terms: dict, left: int, y: int) -> None:
         for j, line in enumerate(_wrap(name, 11)[:2]):
             hud.text(screen, line, (rect.centerx, rect.y + 29 + j * 9), "ui.text", "midtop")
         if power == terms["owned"] and roll is None:
-            hud.text(screen, "OWNED", (rect.centerx, rect.bottom - 9), "px.hazard.1", "midtop")
+            hud.text(screen, "OWNED", (rect.centerx, rect.bottom - 11), "px.hazard.1", "midtop")
 
 
 def _terms(screen, menu: Menu, terms: dict, left: int, right: int, y: int) -> None:
     if menu.roll is not None:
         return  # the cards and the reveal say everything while a roll is shown
-    if menu.notice:
+    if menu.notice:  # a notice takes the whole line, the meter comes back after
         hud.text(screen, menu.notice, (left, y), "px.lamp")
-    elif terms["blocked"]:
+        return
+    if terms["blocked"]:
         hud.text(screen, terms["blocked"], (left, y), "px.floor.3")
     elif terms["cost"]:
         a, b = menu.sockets
@@ -317,8 +320,11 @@ def _terms(screen, menu: Menu, terms: dict, left: int, right: int, y: int) -> No
         return
     hud.text(screen, "LUCK", (right - 4 * terms["streak_max"] - 2, y), "ui.dim", "topright")
     for p in range(terms["streak_max"]):
-        token = "px.rarity.epic" if p < terms["streak"] else "px.floor.2"
-        screen.fill(rgb(token), (right - 4 * (terms["streak_max"] - p) + 1, y + 2, 3, 3))
+        pip = pygame.Rect(right - 4 * (terms["streak_max"] - p) + 1, y + 2, 3, 3)
+        if p < terms["streak"]:
+            screen.fill(rgb("px.rarity.epic"), pip)
+        else:  # an empty pip is hollow, not only darker
+            pygame.draw.rect(screen, rgb("ui.dim"), pip, 1)
 
 
 def _reveal(screen, menu: Menu) -> None:
@@ -345,27 +351,32 @@ def _reveal(screen, menu: Menu) -> None:
     hud.text(screen, line, (box.centerx, box.y + 55), "ui.dim", "midtop")
 
 
-HELP = (
-    "HOW ROLLS WORK",
-    "PICK TWO POWERS. EVERY PAIR CAN",
-    "BECOME A RARE, AN EPIC OR A LEGENDARY.",
-    "ODDS: 60% RARE, 30% EPIC, 10% LEGEND.",
-    "TWO RARES IN A ROW: THE NEXT ROLL IS",
-    "EPIC OR BETTER (THE LUCK PIPS).",
-    "A PAIR'S FIRST ROLL IS FREE. A REROLL",
-    "COSTS A SPARE CHARGE OF EACH POWER.",
-    "IT REPLACES WHAT YOU HAVE, FOR BETTER",
-    "OR WORSE. SPARES: EXTRA PICKUPS (+N).",
-)
+def help_lines(tuning) -> list[str]:
+    rare, epic, legendary = percentages(tuning.fuse_odds)
+    streak = tuning.fuse_guarantee_after
+    cost = tuning.reroll_cost
+    return [
+        "HOW ROLLS WORK",
+        "PICK TWO POWERS. EVERY PAIR CAN",
+        "BECOME A RARE, AN EPIC OR A LEGENDARY.",
+        f"ODDS: {rare}% RARE, {epic}% EPIC, {legendary}% LEGEND.",
+        f"{streak} RARES IN A ROW: THE NEXT ROLL IS",
+        "EPIC OR BETTER (THE LUCK PIPS).",
+        "A PAIR'S FIRST ROLL IS FREE. A REROLL COSTS",
+        f"{cost} SPARE CHARGE OF EACH (+N = SPARES).",
+        "IT REPLACES WHAT YOU HAVE, FOR BETTER",
+        "OR WORSE. A RUN'S LUCK IS SET BY ITS SEED.",
+    ]
 
 
 def _help(screen, session) -> None:
     box = PANEL.inflate(-8, -4)
     screen.fill(rgb("px.outline"), box)
     pygame.draw.rect(screen, rgb("px.rarity.epic"), box, 1)
-    for i, line in enumerate(HELP):
+    for i, line in enumerate(help_lines(session.campaign.tuning)):
         token = "ui.text" if i == 0 else "ui.dim"
-        hud.text(screen, line, (box.x + 6, box.y + 4 + i * 11), token)
+        hud.text(screen, line, (box.x + 6, box.y + 3 + i * 11), token)
+    hud.text(screen, "H OR ESC CLOSES", (box.right - 6, box.y + 3), "ui.dim", "topright")
 
 
 # Controls --------------------------------------------------------------------------------------

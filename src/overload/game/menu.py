@@ -39,7 +39,6 @@ LOADOUT_ROWS = 7  # rows visible at once in the loadout list
 SPIN_MIN_STEPS = 10
 SPIN_FIRST_MS = 45
 SPIN_GROWTH_MS = 22
-REVEAL_MS = 400  # the card lifting into place before its buttons show
 
 
 def spin_steps(result: int, cards: int = 3) -> list[int]:
@@ -84,7 +83,8 @@ class Menu:
     cursor: int = 0  # fuse: a base power's index, or len(BASE_POWERS) for the ROLL button
     sockets: list[str] = field(default_factory=list)
     help: bool = False
-    armed: bool = False  # a reroll over an epic or legendary waiting for its second select
+    armed: bool = False  # a reroll over an epic or legendary waiting for its second roll
+    quitting: bool = False  # QUIT waiting for its second select
     roll: Roll | None = None
     notice: str = ""
     discovered: set[str] = field(default_factory=set)  # powers seen this session
@@ -93,7 +93,7 @@ class Menu:
 
     def show(self, in_fuse_box: bool) -> None:
         self.open, self.in_fuse_box = True, in_fuse_box
-        self.screen, self.hub, self.notice = "hub", 0, ""
+        self.screen, self.hub, self.notice, self.quitting = "hub", 0, "", False
         self._reset_fuse()
 
     def close(self) -> None:
@@ -115,7 +115,8 @@ class Menu:
         "continue", "resume" and "quit" for the caller to act on."""
         if not self.open:
             return None, []
-        self.discovered.update(p for p in session.campaign.world.unlocked if p in FUSED)
+        if self.roll is None:  # mid-spin, the result stays a silhouette until the reveal
+            self.discovered.update(p for p in session.campaign.world.unlocked if p in FUSED)
         handler = {
             "hub": self._hub,
             "loadout": self._loadout,
@@ -127,7 +128,9 @@ class Menu:
     def _hub(self, session: Session, key: str):
         items = self.hub_items
         if key in ("up", "down"):
-            self.hub = (self.hub + (1 if key == "down" else -1)) % len(items)
+            # No wrapping: one press from the top item can never land on QUIT.
+            self.hub = max(0, min(len(items) - 1, self.hub + (1 if key == "down" else -1)))
+            self.quitting = False
             return None, ["move"]
         if key == "back":
             if self.in_fuse_box:
@@ -138,8 +141,13 @@ class Menu:
         item = items[self.hub]
         if item == "CONTINUE":
             return None, ["continue"]
-        if item in ("RESUME", "QUIT"):
-            return None, [item.lower()]
+        if item == "QUIT":
+            if not self.quitting:  # quitting ends the run: ask once more
+                self.quitting = True
+                return None, ["deny"]
+            return None, ["quit"]
+        if item == "RESUME":
+            return None, ["resume"]
         self.screen = item.lower()
         self.row, self.cursor, self.notice = 0, 0, ""
         self._reset_fuse()
@@ -225,13 +233,14 @@ class Menu:
             return None, ["deny"]
         if owned and rarity_of(owned) != "rare" and not self.armed:
             self.armed = True
-            self.notice = f"ROLLING REPLACES {owned_name(owned)}. SPACE AGAIN"
+            self.cursor = len(BASE_POWERS)  # on ROLL, so Space and F both confirm
+            self.notice = f"REPLACES {owned_name(owned)}. ROLL AGAIN"
             return None, ["deny"]
         self.armed, self.notice = False, ""
         result = session.fuse(a, b)
         if result != "fused":  # cannot happen after roll_terms said yes, but never animate
             self.notice = "CANNOT ROLL"
-            return None, ["deny"]
+            return ["fuse", a, b], ["deny"]  # recorded anyway: every fuse call is
         power = owned_result(world.unlocked, a, b)
         steps = spin_steps(RARITIES.index(rarity_of(power)))
         self.roll = Roll((a, b), power, owned, steps, spin_delays(len(steps)))
@@ -300,6 +309,17 @@ def owned_name(power: str) -> str:
     return NAMES[power]
 
 
+def percentages(weights) -> list[int]:
+    """Whole percentages that always add up to 100 (largest remainder)."""
+    total = sum(weights)
+    exact = [100 * w / total for w in weights]
+    whole = [int(x) for x in exact]
+    order = sorted(range(len(exact)), key=lambda i: (whole[i] - exact[i], i))
+    for i in order[: 100 - sum(whole)]:
+        whole[i] += 1
+    return whole
+
+
 def roll_terms(session: Session, a: str, b: str) -> dict:
     """Everything the bench says about rolling this pair: the three results, the odds (the
     guarantee shown), the cost, the guarantee meter, and whether a roll can happen now."""
@@ -311,8 +331,7 @@ def roll_terms(session: Session, a: str, b: str) -> dict:
     weights = list(tuning.fuse_odds)
     if guaranteed:
         weights[0] = 0
-    total = sum(weights)
-    odds = [round(100 * w / total) for w in weights]
+    odds = percentages(weights)
     cost = tuning.reroll_cost if owned else 0
     short = [p for p in (a, b) if world.bank.get(p, 0) < cost]
     blocked = ""

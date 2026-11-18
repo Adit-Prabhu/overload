@@ -129,7 +129,7 @@ VISUAL_TWINS = {
     "quake": "a screen jolt and a wide dashed ring runs out across the floor",
     "summon": "warp markers close in on both sides of the chamber",
     "overload": "a flash, cracks in the Grid Core's shell and GRID CORE OVERLOAD",
-    "fusion": "FUSED status and the fused power's icon in the menu",
+    "fusion": "the EVOLVED notice and a burst in the power's color",
     "confirm": "the slot icon changes, or the Fuse Box closes",
     "deny": "a notice saying why, or ROUTING POWER while the link is busy",
     "menu_move": "the menu highlight moves",
