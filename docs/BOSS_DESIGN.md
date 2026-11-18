@@ -35,7 +35,7 @@ How a boss should look. These are my reading of the genre, not sourced claims:
 The study needs these, and the rework stays inside them:
 - **The protocol** (Clamp, Insulate, Oscillate) is still the only thing the rival model chooses. It moves the Regulator and fires its protocol attack. It stays frozen for the whole fight, through every phase, and a phase change makes no rival request (AGENTS.md).
 - **Kit attacks may move the body.** The Bull Charge carries the Transformer across the room. While a kit attack, a vent or a phase change runs, the protocol waits, as it waited for the old signatures. After a charge, the protocol walks it back into its own range.
-- **The protocol runs at least half of every boss fight**, in every sector and protocol, measured with the floor bot (a test holds it on two seeds, Clamp included). The kit is not allowed to crowd out the treatment. The 1.5 s boot does not count as fight time, since nothing acts during it. Counted with it, Insulate's share in sector 2 drops to about 0.46.
+- **The protocol runs at least half of every boss fight**, in every sector and protocol, measured with the floor bot (the test totals time across retries per sector for three seeds, Clamp included). The kit is not allowed to crowd out the treatment. The 1.5 s boot does not count as fight time, since nothing acts during it. Counted with it, Insulate's share in sector 2 drops to about 0.46.
 - **The chassis kit** is fixed per sector and identical in both comparison conditions. It never reads the model's observations.
 - **Deterministic** and fully playable with the model off. No kit attack draws from the world RNG: volley marks, debris and lattice cells sit at fixed offsets from the Surge or the impact.
 - **Telegraphs** fill up, use `hostile.danger` plus a pattern, and last at least 0.75 s for a kit attack (Tuning enforces it).
@@ -112,10 +112,11 @@ It stays at range and fills the air.
 - **Lattice:** a checkerboard of 32 px cells over 5 x 3 cells around the Surge (1 s tell), burning for 0.8 s. A cell is two tiles wide, so the Surge fits inside a dark one with room to spare, and one dodge (29 px) crosses a cell. Insulate's own tiles are swept away when a Lattice starts, so they never cover a dark cell. Only cells inside the chamber burn.
 - **Lattice twice:** the other color arms as the first burns, and lights 0.6 s after the first goes out, so the player has to move once.
 
-### 4.5 Balance (bot, 4 seeds, every protocol order)
+### 4.5 Balance (four floor bot seeds and sampled protocol orders)
 - **Health:** 48, 64 and 80.
-- **Hit circle:** 18 px, on the chassis data. The legacy single-arena Regulator keeps 14.
-- **Protocol share of fight time:** 50 to 66 percent in every sector.
+- **Hit circle:** 18 px for the Linesman and Grid Core, 22 for the wider Transformer. The legacy single-arena Regulator keeps 14. The Transformer's radius also sizes body contact and its Bull Charge lane, and moves its projectile and quake origins outward by 4 px. Attack rotations, tells and timing values are the same.
+- **Transformer radius follow-up:** With seed 3 and lateral/pressure, the bot enters sector 3 on tick 5,702 at either radius. The larger chassis changes its position by about half a pixel at the Fuse Box, enough to change its route and fight. The 22 px run finishes on tick 72,473, with 27 bus-room deaths and 3 chamber deaths. The protocol still runs for 64, 56 and 70 percent of the three fights. The test retains this case with an 80,000-tick limit, and seeds 2 and 4 retain 40,000. These are scripted bot runs for protocol coverage. Human difficulty is assessed at the playtest.
+- **Protocol share of fight time before widening the Transformer:** 50 to 66 percent across the sectors and orders measured.
 - **Bot boss fights:** about 8 to 13 s. A human is slower and the vents reward patience.
 - **Chamber deaths:** none in sectors 1 and 2. Up to 3 in sector 3, where most deaths stay in the combat rooms, as before.
 
