@@ -5,7 +5,10 @@ rendered once through grid.render (so the shared outline wraps the whole robot).
 The cycle has eight steps. A leg swings its foot forward while lifted and pushes it back
 while planted, the two legs of a pair half a cycle apart. The body rides a pixel higher on
 the passing steps, when one foot is in the air. The view advances the step by the distance
-the robot actually walked (game/view.py), so feet never slide or moonwalk.
+the robot actually walked (game/view.py): a robot that stops stands still, a faster one
+steps faster, and a jump never spins its legs. At this pixel scale a planted foot still
+slips a little (its 2 px push back against about 8 px walked per half cycle), the usual
+trade in small sprites, where a true contact stride would flicker.
 """
 
 from __future__ import annotations

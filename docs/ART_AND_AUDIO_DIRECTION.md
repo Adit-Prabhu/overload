@@ -106,7 +106,7 @@ A glow pass then blooms the emissive layer.
 | Faction | Motion personality | Implementation |
 | --- | --- | --- |
 | Surge | Responsive | 2-frame idle breathing, 4-frame walk with body bob, dodge ghosts |
-| Machines | Mechanical and twitchy | Walkers step on jointed legs with an eight-step cycle driven by the distance walked, so feet never slide (`art/pixel/rig.py`). The Relay Bot and the Breaker walk, the Breaker swings its fists and kicks up dust at each footfall, the Sweeper scuttles on four spider legs and digs in to rev, the Arc Drone hovers with a spinning rotor and leans into its flight, the Sentry sweeps its eye and its barrel kicks back when it fires. The Relay Bot crouches before a blink and beams out and in on a column of Blink light |
+| Machines | Mechanical and twitchy | Walkers step on jointed legs with an eight-step cycle driven by the distance walked, so a robot that stops stands still and a faster one steps faster (`art/pixel/rig.py`). The Breaker walks, swings its fists and kicks up dust at each footfall, the Sweeper scuttles on four spider legs and digs in to rev, the Arc Drone hovers with a spinning rotor and leans into its flight, the Sentry sweeps its eye and its barrel kicks back when it fires. The Relay Bot crouches before a blink and beams out and in on a column of Blink light |
 | Regulator | Heavy and deliberate | Treads, a gauge needle that always points at the Surge, pose changes per protocol |
 
 Timing standards apply to both comparison conditions identically:

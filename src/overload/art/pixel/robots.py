@@ -140,7 +140,7 @@ def drone_frame(rotor: int, jets: int, lean: bool, aiming: bool, blink: bool) ->
     paint(canvas, _DRONE_CORE, 7, 15)
     paint(canvas, _DRONE_JETS[jets], 7, 20)
     if lean:  # lean into the flight: the top of the drone tips forward a pixel
-        for y in range(0, 8):
+        for y in range(0, 15):  # rotor and shell together, the core hangs back
             canvas[y] = ["."] + canvas[y][:-1]
     return render(rows_of(canvas), LEGEND)
 
@@ -272,7 +272,7 @@ def breaker_frame(pose: str, step: int | None) -> pygame.Surface:
             fist = (x - 1 + (2 if half == 0 else 0), top - 3)
             paint(canvas, ["XMm", "XMm", "XMm"], x, top + 1)
         elif pose == "slam":
-            fist = (x - 2 + (0 if half == 0 else 2), h - 5)
+            fist = (x - 2 + (0 if half == 0 else 1), h - 5)
             rig.leg(canvas, x, shoulder, h - 5 - shoulder, side, 0, _BREAKER_ARM)
         else:
             arm = 6
@@ -297,8 +297,8 @@ def breaker(
 
 
 # Sweeper ------------------------------------------------------------------------------------
-# A white dome with a red sensor stripe and a striped bumper, scuttling on six thin legs (a
-# tripod gait: three feet down while three swing). Rushes. Carries nothing. While it revs,
+# A white dome with a red sensor stripe and a striped bumper, scuttling on four spider legs
+# that step in diagonal pairs. Rushes. Carries nothing. While it revs,
 # its legs dig in and the dome shudders.
 
 SWEEPER_SIZE = (25, 14)
@@ -407,7 +407,9 @@ def sentry_frame(scan: int = 1, kick: int = 0) -> pygame.Surface:
     paint(canvas, _SENTRY_DRUM, 1, 4)
     paint(canvas, _SENTRY_BARREL, 14 - kick, 3)
     paint(canvas, _SENTRY_HEAD, 3, 0)
-    paint(canvas, ["E"], 6 + scan * 2, 3)  # the sensor eye sweeps across the visor
+    paint(
+        canvas, ["E"], 6 + scan * 2, 3
+    )  # scan 0 to 3, all inside the visor  # the sensor eye sweeps across the visor
     paint(canvas, _SENTRY_BASE, 2, h - len(_SENTRY_BASE))
     return render(rows_of(canvas), LEGEND)
 

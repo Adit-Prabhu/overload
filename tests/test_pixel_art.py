@@ -406,3 +406,59 @@ def test_relay_teleports_beam_and_shots_recoil(headless_pygame) -> None:
     for _ in range(20):
         view._tick_cosmetics()
     assert not view.beams and 4 not in view.recoils
+
+
+def test_the_drone_core_glow_sits_on_its_core(headless_pygame) -> None:
+    """The glow is drawn at the sim position minus the hover, so it must land on the yellow
+    Spark core of the sprite drawn at the drone's feet minus the same hover."""
+    from types import SimpleNamespace
+
+    from overload.art.pixel import robots
+    from overload.game.view import ROBOT_FEET, hover
+
+    image = robots.drone(0, False)
+    spark = rgb("power.spark")
+    rows = [
+        y
+        for y in range(image.get_height())
+        for x in range(image.get_width())
+        if tuple(image.get_at((x, y)))[:3] == spark
+    ]
+    core_from_bottom = image.get_height() - (min(rows) + max(rows)) / 2
+    for tick in (0, 17, 40):
+        bot = SimpleNamespace(kind="drone", id=3)
+        lift = hover(bot, tick)
+        core_y = ROBOT_FEET["drone"] - lift - core_from_bottom  # relative to the sim y
+        assert abs(core_y - (0 - lift)) <= 1.5, tick
+
+
+def test_the_sentry_kicks_back_when_it_fires(headless_pygame) -> None:
+    from types import SimpleNamespace
+
+    from overload.game.view import RECOIL_TICKS, robot_image
+
+    sentry = SimpleNamespace(kind="sentry", phase="", id=2, tier=1, fire_timer=50)
+    rest = robot_image(sentry, 0, False, False)
+    kick = robot_image(sentry, 0, False, False, recoil=RECOIL_TICKS)
+    assert pygame.image.tobytes(rest, "RGBA") != pygame.image.tobytes(kick, "RGBA")
+
+
+def test_footfalls_kick_dust_and_short_moves_are_walks(headless_pygame) -> None:
+    from types import SimpleNamespace
+
+    from overload.game.view import STRIDE, PixelView
+    from overload.sim.campaign import Campaign
+
+    view = PixelView(Campaign(1))
+    bot = SimpleNamespace(id=9, kind="breaker", x=0.0, y=0.0, health=5)
+    world = SimpleNamespace(hostiles=[bot], rival=None)
+    view._walk(world)
+    sparks = len(view.sparks)
+    for _ in range(int(STRIDE["breaker"] * 8 / 0.5)):  # one whole cycle
+        bot.x += 0.5
+        view._walk(world)
+    assert len(view.sparks) > sparks, "a foot came down"
+    bot.x += 6.0  # the fastest real move (a Clamp dash is 3.6) is still a walk
+    view._walk(world)
+    assert view.gaits[9].stride > 0
+    assert view.gaits[9].dx > 0, "faces the way it walked"
