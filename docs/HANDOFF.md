@@ -17,9 +17,11 @@ Snapshot of November 18, 2026. For any agent or chat picking up the work. The st
 
 ## Boss rework integration
 
-GitHub merged #36 to `main`. It closed #37 through #42 by merging each into its feature base, so `main` still ran the older boss presentation. The follow-up branch `fix/boss-walk-and-phases` incorporates the exact merged tree from #42 and targets `main` directly.
+GitHub merged #36 to `main`. It closed #37 through #42 by merging each into its feature base, so `main` still ran the older boss presentation. The direct [integration PR #43](https://github.com/Adit-Prabhu/overload/pull/43) incorporates the exact merged tree from #42 and targets `main` directly.
 
 This build shows the current phase throughout each fight and highlights the shielded transition. The feet reach in the actual direction of travel, with longer planted steps and visibly higher lifts. Verify these in the campaign or the headless captures rather than the single-arena practice mode, which has no three-phase chassis. See [boss design and captures](BOSS_DESIGN.md).
+
+After review and CI, Adit can merge with `gh pr merge 43 --merge`, then update a local main checkout with `git pull --ff-only`.
 
 ## Next steps (spec section 9)
 1. Bulwark (from the Sentry) and Magnet (from the Sweeper) base powers: drops, charge cores, evolutions (REFLECT, CRUSH), effects, sounds, and the slotting banner. Then a bot protocol check that shields do not trivialize projectile protocols.

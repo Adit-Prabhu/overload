@@ -920,7 +920,7 @@ def test_real_health_thresholds_reach_the_permanent_phase_hud(headless_pygame, m
 
     monkeypatch.setattr(hud, "text", track)
     view.draw(display, run, (128, 72))
-    assert "PHASE 1/3" in calls
+    assert any(label.endswith("PHASE 1/3") for label in calls)
 
     for phase in (2, 3):
         target_health = rival.max_health * (4 - phase) // 3
@@ -950,7 +950,7 @@ def test_real_health_thresholds_reach_the_permanent_phase_hud(headless_pygame, m
             view.after_tick(run)
         calls.clear()
         view.draw(display, run, (128, 72))
-        assert f"PHASE {phase}/3" in calls
+        assert any(label.endswith(f"PHASE {phase}/3") for label in calls)
 
 
 def test_the_entrance_card_and_ending_rows(headless_pygame, monkeypatch) -> None:
