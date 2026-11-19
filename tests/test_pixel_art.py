@@ -841,8 +841,8 @@ def test_windowed_replay_applies_terminal_fusion_once(headless_pygame, monkeypat
     from overload.sim.state import Projectile
 
     class ReplayCampaign(Campaign):
-        def __init__(self, seed):
-            super().__init__(seed)
+        def __init__(self, seed, tuning):
+            super().__init__(seed, tuning)
             enter(self, "s1_chamber")
             rival = self.world.rival
             rival.boot, rival.health, rival.phase = 0, 1, 3
@@ -852,7 +852,9 @@ def test_windowed_replay_applies_terminal_fusion_once(headless_pygame, monkeypat
             )
             rival.cooldown = 180
 
-    run = ReplayCampaign(1)
+    from overload.sim.tuning import DEFAULT
+
+    run = ReplayCampaign(1, DEFAULT)
     run.step(IDLE)
     run.step(IDLE)
     assert run.world.rival is None

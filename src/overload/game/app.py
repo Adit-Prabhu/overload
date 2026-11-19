@@ -33,10 +33,17 @@ from overload.game.menu import Menu
 from overload.game.title import run_title
 from overload.game.view import VIEW, PixelView
 from overload.paths import ROOT
-from overload.session.replay import Recording, apply_menu, check_campaign, menu_by_frame
+from overload.session.replay import (
+    Recording,
+    apply_menu,
+    check_campaign,
+    menu_by_frame,
+    recorded_tuning,
+)
 from overload.session.trace import TraceWriter
 from overload.sim.arena import arena_id
 from overload.sim.campaign import Campaign
+from overload.sim.difficulty import PRESETS
 from overload.sim.inputs import IDLE, InputFrame
 from overload.sim.run import Run
 from overload.sim.tuning import TICK_RATE
@@ -48,6 +55,7 @@ MAX_TICKS_PER_FRAME = 5
 @dataclass
 class Options:
     seed: int = 1
+    difficulty: str = "medium"
     headless: bool = False
     frames: int = 0
     record: Path | None = None
@@ -305,43 +313,51 @@ def play(options: Options) -> int:
         os.environ["SDL_AUDIODRIVER"] = "dummy"
 
     screen = None
+    difficulty = options.difficulty
     if not (options.headless or options.replay or options.skip_title):
         # The title comes first: no rival session or trace exists until the player starts.
         pygame.init()
-        started = False
+        selected = None
         try:
             screen = _open_window(False)
             pygame.display.set_caption("Overload")
-            started = run_title(screen, pygame.time.Clock())
+            selected = run_title(screen, pygame.time.Clock(), difficulty)
         finally:
-            if not started:
+            if selected is None:
                 pygame.quit()
                 hud.forget()
                 tiles.forget_fonts()
                 title_screen.forget()
-        if not started:
+        if selected is None:
             return 0
 
+        difficulty = selected
+
     replay: Recording | None = Recording.load(options.replay) if options.replay else None
+    try:
+        tuning = recorded_tuning(replay.tuning_id) if replay else PRESETS[difficulty]
+    except ValueError as error:
+        print(f"Replay rejected: {error}")
+        return 2
     practice = replay.mode == "practice" if replay else options.practice
     seed = replay.seed if replay else options.seed
     session: Session | None = None
     starts: dict[int, str] = {}
     replay_menu: dict[int, list[list]] = {}
     if practice:
-        run: Run | Campaign = Run(seed)
+        run: Run | Campaign = Run(seed, tuning)
     elif replay:
         try:
             check_campaign(replay)
         except ValueError as error:
             print(f"Replay rejected: {error}")
             return 2
-        run = Campaign(seed)
+        run = Campaign(seed, tuning)
         starts = dict(zip(replay.starts, replay.protocols[1:], strict=True))
         replay_menu = menu_by_frame(replay)
     else:
         selector, session_id, condition = build_selector(options)
-        run = Campaign(seed)
+        run = Campaign(seed, tuning)
         trace = None
         if not options.dev and (options.trace or not options.headless):
             stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
@@ -358,9 +374,6 @@ def play(options: Options) -> int:
                 selector.client.close()
             raise
     room = arena_id(run.arena)
-    if replay and replay.tuning_id != run.tuning.tuning_id():
-        print(f"Replay uses tuning {replay.tuning_id}, this build is {run.tuning.tuning_id()}")
-        return 2
     if replay and replay.arena_id != room:
         print(f"Replay uses arena {replay.arena_id}, this build is {room}")
         return 2
