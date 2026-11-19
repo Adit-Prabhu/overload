@@ -483,8 +483,15 @@ def burst_cone(
         pygame.draw.lines(surface, rgb("px.burst.light"), False, points, 1)
 
 
-def chain_bolt(target: pygame.Surface, light: pygame.Surface, a: Point, b: Point) -> None:
-    """An evolved Spark arcing from one robot to the next: a jagged yellow line."""
+def chain_bolt(
+    target: pygame.Surface, light: pygame.Surface, a: Point, b: Point, cable: bool = False
+) -> None:
+    """A jagged Spark arc or a taut Grapple cable."""
+    if cable:
+        for surface in (target, light):
+            pygame.draw.line(surface, rgb("power.magnet"), a, b, 3)
+            pygame.draw.line(surface, rgb("px.blink.light"), a, b, 1)
+        return
     dx, dy = b[0] - a[0], b[1] - a[1]
     distance = math.hypot(dx, dy) or 1.0
     nx, ny = -dy / distance, dx / distance
@@ -692,15 +699,20 @@ def ghost(target: pygame.Surface, image: pygame.Surface, top_left: Point, alpha:
 
 
 def blast_ring(
-    target: pygame.Surface, light: pygame.Surface, pos: Point, radius: float, life: float
+    target: pygame.Surface,
+    light: pygame.Surface,
+    pos: Point,
+    radius: float,
+    life: float,
+    power: str = "burst",
 ) -> None:
-    """A ring blast (Impact Blink, Displacer, Shock Mine, Meteor): a magenta ring that runs
+    """A ring blast (Impact Blink, Displacer, Shock Mine, Meteor): a ring that runs
     out to the blast's edge as `life` falls from 1 to 0."""
     r = max(2, round(radius * (1.0 - 0.7 * life)))
     center = (round(pos[0]), round(pos[1]))
     for surface in (target, light):
-        pygame.draw.circle(surface, rgb("power.burst"), center, r, 2)
-        pygame.draw.circle(surface, rgb("px.burst.light"), center, max(1, r - 3), 1)
+        pygame.draw.circle(surface, rgb(f"power.{power}"), center, r, 2)
+        pygame.draw.circle(surface, rgb(f"px.{power}.light"), center, max(1, r - 3), 1)
 
 
 def mine(target: pygame.Surface, light: pygame.Surface, pos: Point, fuse: float) -> None:

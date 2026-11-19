@@ -397,7 +397,7 @@ class PixelView:
         self.sector = 1
         self.tint = [255.0, 255.0, 255.0]
         self.chains: list[tuple] = []
-        self.blasts: list[tuple] = []  # ring blasts of fused powers: x, y, radius, life
+        self.blasts: list[tuple] = []  # ring effects: x, y, radius, life, power
         self.gaits: dict[int, Gait] = {}  # per robot id (-1 the Regulator): walk cycles
         self.frames = 0
         self.motes: list[Mote] = []  # steam and dust, drifting
@@ -649,7 +649,7 @@ class PixelView:
                 self._burst(event.x, event.y, 8, "px.blink.light", 1.4)
             elif event.kind == "rail":  # Magrail: a bolt from the Surge to where it stopped
                 player = run.world.player
-                self.chains.append(((player.x, player.y), (event.x, event.y), 8))
+                self.chains.append(((player.x, player.y), (event.x, event.y), 8, False))
                 self.shake = max(self.shake, 3)
             elif event.kind in ("hooked", "slammed"):
                 self._burst(event.x, event.y, 8, "power.magnet", 1.4)
@@ -674,13 +674,15 @@ class PixelView:
                 token = "power.blink" if event.kind in ("undertow", "riptide") else "power.bulwark"
                 self._burst(event.x, event.y, 10, token, 1.2)
                 if event.kind == "riptide":
-                    self.blasts.append((event.x, event.y, run.tuning.riptide_radius, BLAST_TICKS))
+                    self.blasts.append(
+                        (event.x, event.y, run.tuning.riptide_radius, BLAST_TICKS, "magnet")
+                    )
             elif event.kind == "grapple" and blink_start is not None:
-                self.chains.append((blink_start, (event.x, event.y), 8))
+                self.chains.append((blink_start, (event.x, event.y), 8, True))
                 self._burst(event.x, event.y, 8, "power.magnet", 1.2)
             elif event.kind == "rewound":
                 self._burst(event.x, event.y, 14, "px.bulwark.light", 1.2)
-                self.blasts.append((event.x, event.y, 19, BLAST_TICKS))
+                self.blasts.append((event.x, event.y, 19, BLAST_TICKS, "blink"))
             elif event.kind == "mirror_release" and event.ref:
                 self._burst(event.x, event.y, 12, "power.magnet", 1.6)
             elif event.kind == "magnet_rejected":
@@ -701,7 +703,7 @@ class PixelView:
                 angle = math.atan2(player.aim_y, player.aim_x)
                 self.bursts.append((event.x, event.y, angle, bool(event.ref), event.power, 10))
             elif event.kind == "blast":
-                self.blasts.append((event.x, event.y, event.ref, BLAST_TICKS))
+                self.blasts.append((event.x, event.y, event.ref, BLAST_TICKS, "burst"))
                 self._burst(event.x, event.y, 14, "power.burst", 1.8)
                 if event.power == "meteor":
                     self.shake = 10
@@ -713,7 +715,7 @@ class PixelView:
             elif event.kind == "chain_from":
                 chain_start = (event.x, event.y)
             elif event.kind == "chain" and chain_start is not None:
-                self.chains.append((chain_start, (event.x, event.y), 8))
+                self.chains.append((chain_start, (event.x, event.y), 8, False))
             elif event.kind == "evolve":
                 self.unlock_flash = 12
                 self._burst(event.x, event.y, 24, f"power.{event.power}", 2.2)
@@ -929,8 +931,10 @@ class PixelView:
         self.motes = [m for m in self.motes if m.life > 0][-MAX_MOTES:]
         self.ripples = [(x, y, age + 1) for x, y, age in self.ripples if age < RIPPLE_TICKS]
         self.bursts = [(*b[:5], b[5] - 1) for b in self.bursts if b[5] > 1]
-        self.chains = [(a, b, life - 1) for a, b, life in self.chains if life > 1]
-        self.blasts = [(x, y, r, life - 1) for x, y, r, life in self.blasts if life > 1]
+        self.chains = [(a, b, life - 1, cable) for a, b, life, cable in self.chains if life > 1]
+        self.blasts = [
+            (x, y, r, life - 1, power) for x, y, r, life, power in self.blasts if life > 1
+        ]
         if self.lance_bolt:
             start, end, life = self.lance_bolt
             self.lance_bolt = (start, end, life - 1) if life > 1 else None
@@ -1300,10 +1304,10 @@ class PixelView:
                 power == "shock_cone",
                 vortex,
             )
-        for a, b, _life in self.chains:
-            effects.chain_bolt(screen, self.glow.layer, v(*a), v(*b))
-        for x, y, radius, life in self.blasts:
-            effects.blast_ring(screen, self.glow.layer, v(x, y), radius, life / BLAST_TICKS)
+        for a, b, _life, cable in self.chains:
+            effects.chain_bolt(screen, self.glow.layer, v(*a), v(*b), cable)
+        for x, y, radius, life, power in self.blasts:
+            effects.blast_ring(screen, self.glow.layer, v(x, y), radius, life / BLAST_TICKS, power)
         for mote in self.motes:
             mx, my = v(mote.x, mote.y)
             screen.fill(rgb(mote.token), (round(mx), round(my), mote.size, mote.size))

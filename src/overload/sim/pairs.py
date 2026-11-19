@@ -422,7 +422,7 @@ def tick_object(world: World, field: Device, tuning: Tuning, arena: Arena) -> bo
                 "fortress",
             )
     elif field.kind in ("undertow", "rod", "toss"):
-        tick_second_half_object(world, field, tuning, arena)
+        _tick_blink_and_guard_field(world, field, tuning, arena)
     elif field.kind in ("implosion", "well"):
         well = field.kind == "well"
         reach = tuning.well_radius if well else tuning.implosion_radius
@@ -772,7 +772,7 @@ def catch_mirror_shots(world: World, tuning: Tuning) -> None:
         player.caught = 0
 
 
-def tick_second_half_object(world: World, field: Device, tuning: Tuning, arena: Arena) -> None:
+def _tick_blink_and_guard_field(world: World, field: Device, tuning: Tuning, arena: Arena) -> None:
     """Undertow drags, the rod eats shots, the tossed shield flies out and back."""
     from overload.sim.fusions import _id, _strike, _targets
     from overload.sim.powers import knock

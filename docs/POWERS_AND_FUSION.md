@@ -200,7 +200,7 @@ The work is split so the playtest on Nov 25 plays a complete system on the three
 | 4 | The menu hub, LOADOUT, FUSE with the spin and reveal, CONTROLS, HUD marks | Nov 19–21 | 5 |
 | 5 | Bulwark and Magnet: drops, charge cores, evolutions, effects, sounds, slotting banner (built Nov 19) | Nov 21–22 | 4 |
 | 6 | Evidence version 4 and `config_hash` covering it (built Nov 19). Adit redeploys and runs the smoke test | Nov 22 | 1.5 |
-| 7 | The Bulwark and Magnet pairs, 21 powers in two PRs (first twelve built Nov 19) | Nov 22–24 | 8 |
+| 7 | The Bulwark and Magnet pairs, 21 powers in two PRs (implemented Nov 19) | Nov 22–24 | 8 |
 | 8 | Balance with the bot and the protocol check, numbers in the PR | Nov 26–27 | 2 |
 
 About 30 hours in all. That is on top of the 40 hours of D3, which the floor, robots and bosses have already used, so the G3 proposal states the overrun. The small live suite (task 13, Nov 26–27) runs only after the version 4 redeploy. Recording is Nov 28 and the combined G2/G3 review is Nov 30.
