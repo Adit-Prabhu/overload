@@ -548,7 +548,9 @@ def phase_guard(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> 
     if _hop(world, inp, tuning, arena, "phase_guard") is None:
         return False
     player = world.player
-    player.shield, player.shield_kind = tuning.bulwark_ticks, "phase_guard"
+    # A teleport must not cancel or extend a shield already raised by another power.
+    if player.shield <= 0:
+        player.shield, player.shield_kind = tuning.bulwark_ticks, "phase_guard"
     world.events.append(Event("bulwark_up", player.x, player.y, 0, "phase_guard"))
     return True
 
@@ -733,7 +735,7 @@ def record_position(world: World, tuning: Tuning) -> None:
         del player.history[0]
 
 
-def catch_mirror_shots(world: World, tuning: Tuning) -> None:
+def catch_mirror_shots(world: World, tuning: Tuning, arena: Arena) -> None:
     """Catch bolts after they move and fire the orbiting shots back when the field expires."""
     from overload.sim.fusions import _id, _targets
 
@@ -741,14 +743,15 @@ def catch_mirror_shots(world: World, tuning: Tuning) -> None:
     if player.mirror <= 0:
         return
     player.mirror -= 1
+    center = (player.x, player.y)
     kept = []
     for shot in world.projectiles:
+        spot = (shot.x, shot.y)
         if (
             shot.hostile
             and player.caught < tuning.mirror_cap
-            and circles_overlap(
-                (shot.x, shot.y), shot.radius, (player.x, player.y), tuning.mirror_radius
-            )
+            and circles_overlap(spot, shot.radius, center, tuning.mirror_radius)
+            and line_clear(world, arena, center, spot)
         ):
             player.caught += 1
             world.events.append(Event("shield_absorb", shot.x, shot.y, shot.id))

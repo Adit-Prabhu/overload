@@ -26,6 +26,20 @@ def test_phase_guard_teleports_and_raises_a_shield() -> None:
     assert player.cooldowns["teleport"] == DEFAULT.phase_guard_cooldown - 1
 
 
+@pytest.mark.parametrize(
+    "slots", [("phase_guard", "bastion"), ("bastion", "phase_guard")], ids=["phase-q", "phase-e"]
+)
+def test_phase_guard_leaves_bastions_blast_intact_in_either_slot(slots) -> None:
+    world = armed("phase_guard")
+    world.unlocked.append("bastion")
+    world.player.slots = list(slots)
+    dummy(world, 290, 220)
+    step(world, InputFrame(power_q=True, power_e=True, **AIM), arena=OPEN)
+    assert world.player.x == AIM["aim_x"]
+    assert world.player.shield_kind == "bastion"
+    assert "blast" in idle(world, DEFAULT.bulwark_ticks - 1)
+
+
 def test_afterimage_redirects_robot_and_regulator_tells_then_expires() -> None:
     world = armed("afterimage")
     bot = spawn_robot(world, "sentry", 130, 120)
@@ -153,6 +167,14 @@ def test_mirror_field_catches_up_to_its_cap_and_returns_the_shots() -> None:
     assert len([p for p in world.projectiles if p.kind == "reflect"]) == DEFAULT.mirror_cap
     idle(world, 20)
     assert robot.health < 999
+
+
+def test_mirror_field_cannot_catch_a_shot_behind_a_wall() -> None:
+    world = walled("mirror_field")
+    world.player.x, world.player.y = 145, 120
+    shot = bolt_at(world, 169, 120, 0, 1)
+    fire_walled(world)
+    assert shot in world.projectiles and world.player.caught == 0
 
 
 def stopped_shots(power: str, offset: int) -> int:

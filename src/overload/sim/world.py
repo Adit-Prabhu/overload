@@ -88,7 +88,7 @@ def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena =
     _hazards(world, tuning)
     _separate(world, tuning, arena)
     _move_projectiles(world, tuning, arena)
-    pairs.catch_mirror_shots(world, tuning)
+    pairs.catch_mirror_shots(world, tuning, arena)
     defenses.shield_shots(world, tuning, arena)
     defenses.tick_fields(world, tuning, arena)
     tick_trails(world, tuning)
