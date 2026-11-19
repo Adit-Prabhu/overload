@@ -497,3 +497,13 @@ def test_the_config_hash_covers_the_evidence_kinds() -> None:
     for path in (CATALOGUE_PATH, SCHEDULES_PATH, EVIDENCE_PATH):
         digest.update(path.read_bytes())
     assert config_hash() == digest.hexdigest()[:16]
+
+
+def test_unknown_power_events_count_nothing() -> None:
+    """Only a known power's use counts, toward its own family: a kind that is not a power,
+    or a power with no family, leaves every count at zero."""
+    log = ObservationLog(1)
+    log.observe((0.0, 0.0), (100.0, 0.0), ["power_unknown", "power_", "powerless", "fizzle"])
+    values = {item["id"]: item["value"] for item in log.summary("lateral")["items"]}
+    families = ("shot_power", "teleport", "pulse", "shield", "pull")
+    assert [values[f"e1.{kind}_uses"] for kind in families] == [0] * 5

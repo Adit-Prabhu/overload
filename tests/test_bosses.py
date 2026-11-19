@@ -460,11 +460,9 @@ def test_every_attack_in_every_phase_runs_to_the_end(sector) -> None:
     ],
 )
 def test_the_protocol_runs_at_least_half_of_every_boss_fight(seed, order, limit) -> None:
-    """The protocol is the study's treatment, so the kit (its tells, attacks and vents) may
-    take at most half of the fight time per sector across the bot's attempts. The sampled
-    orders include every protocol. Pauses where nothing acts (the 1.5 s boot and the 1.2 s
-    phase changes) do not count: the bot clears a boss in about 9 s, so they would otherwise
-    measure the bot's speed rather than the kit."""
+    """The protocol is the study's treatment, so the kit (its tells, attacks, vents and
+    phase changes) may take at most half of the fight time per sector across the bot's
+    attempts. The sampled orders include every protocol. The 1.5 s boot does not count."""
     from collections import Counter
 
     from floorbot import FloorBot
@@ -487,10 +485,45 @@ def test_the_protocol_runs_at_least_half_of_every_boss_fight(seed, order, limit)
             frame = InputFrame(restart=True)
         campaign.step(frame)
         rival = campaign.world.rival
-        if rival is not None and rival.health > 0 and rival.boot == 0 and not rival.change:
-            busy = rival.vent or rival.sig_action != "idle"
+        if rival is not None and rival.health > 0 and rival.boot == 0:
+            busy = rival.change or rival.vent or rival.sig_action != "idle"
             share[(campaign.encounter, not busy)] += 1
     assert campaign.stage == "ending"
     for sector in (1, 2, 3):
         total = share[(sector, True)] + share[(sector, False)]
         assert total and share[(sector, True)] / total >= 0.5, sector
+
+
+@pytest.mark.parametrize("sector", [1, 2, 3])
+def test_the_protocol_keeps_its_share_in_a_long_fight(sector) -> None:
+    """A human takes far longer than the bot, and a long fight lets the kit run its whole
+    rotation through every phase. Over a fight of about 35 to 50 s (one hit every 40 ticks)
+    the protocol still runs at least 0.55 of the time, phase changes counted, under every
+    protocol (Nov 19: measured 0.57 to 0.66, and 0.55 to 0.64 at twice the length)."""
+    from overload.sim.damage import damage_rival
+    from overload.sim.inputs import InputFrame
+
+    for protocol in ("pressure", "spacing", "lateral"):
+        campaign = Campaign(1)
+        campaign.encounter = campaign.world.encounter = sector
+        campaign.protocols[sector] = campaign.world.protocol = protocol
+        enter(campaign, f"s{sector}_chamber")
+        world = campaign.world
+        acting = busy = 0
+        for tick in range(1, 6000):
+            rival = world.rival
+            if rival is None or rival.health <= 0:
+                break
+            world.player.charge = DEFAULT.player_max_charge
+            world.player.invulnerable = 10**6
+            campaign.step(InputFrame(aim_x=int(rival.x), aim_y=int(rival.y)))
+            if tick % 40 == 0 and world.rival is not None:
+                damage_rival(world, 1, world.rival.x, world.rival.y)
+            rival = world.rival
+            if rival is not None and rival.health > 0 and rival.boot == 0:
+                if rival.change or rival.vent or rival.sig_action != "idle":
+                    busy += 1
+                else:
+                    acting += 1
+        assert world.rival is None or world.rival.health <= 0, (sector, protocol)
+        assert acting / (acting + busy) >= 0.55, (sector, protocol, acting / (acting + busy))

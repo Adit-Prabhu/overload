@@ -26,7 +26,7 @@ These come from AGENTS.md and the GDD and every part of this spec keeps them.
 | **Bulwark** (new) | Sentry | A shield bubble around the Surge for 45 ticks (0.75 s). Hostile shots that touch it fizzle. It does not stop shockwaves, hazard tiles or bodies | REFLECT: absorbed shots fly back as sparks, reversed along the path they came in on | shield |
 | **Magnet** (new) | Sweeper | A field at the aim point, up to 72 px away. It is placed like a Blink lands: as far along the aim as it can, never inside a prop or behind a wall. With nowhere valid, the use is rejected, keeps its cooldown free and is not counted, as a Blink is. For 30 ticks (0.5 s) it drags robots and loose charges within 44 px toward its center. No damage of its own | CRUSH: robots still in the field when it ends take 2 damage | pull |
 
-Starting tuning, all in `Tuning` with guards: `bulwark_ticks 45`, `bulwark_radius 14.0` (the Surge's radius plus 8, written out because a dataclass default cannot refer to another field), `bulwark_cooldown 150`, `magnet_range 72`, `magnet_radius 44`, `magnet_ticks 30`, `magnet_pull 1.5` px per tick (each step under the thinnest obstacle, walls win), `magnet_cooldown 120`, `magnet_crush_damage 2`.
+Starting tuning, all in `Tuning` with guards: `bulwark_ticks 45`, `bulwark_radius 14.0` (the Surge's radius plus 9, written out because a dataclass default cannot refer to another field), `bulwark_cooldown 150` (180 as built, see DECISIONS Nov 19), `magnet_range 72`, `magnet_radius 44`, `magnet_ticks 30`, `magnet_pull 1.5` px per tick (each step under the thinnest obstacle, walls win), `magnet_cooldown 120`, `magnet_crush_damage 2`.
 
 **Fusions inherit evolutions.** Every power of a pair inherits the evolutions its rare inherits, as Shock Cone's sparks chain and Arc Trail gets Overdrive today:
 - Spark + Blink and Blink + Burst take Overdrive.
@@ -119,7 +119,7 @@ An epic must beat its rare and stay at or under 1.35 times it. A legendary must 
 
 Distance shares, shots per minute and dodges stay. Uses count only when the power actually fires on screen (version 3 rule). Rarity is never sent. The tactic catalogue (pressure, spacing, lateral) does not change.
 
-This needs a Worker redeploy from main and one live smoke run, both by Adit (docs/DEPLOY.md). Until the redeploy, live requests carrying version 4 kinds fall back to the neutral tactic, labelled as fallback, as with version 3. The trace's `config_hash` does not cover `config/evidence.json` today. Step 8 adds it, so traces from the two versions can be told apart.
+This needs a Worker redeploy from main and one live smoke run, both by Adit (docs/DEPLOY.md). Until the redeploy, live requests carrying version 4 kinds fall back to the neutral tactic, labelled as fallback, as with version 3. Since step 6 (Nov 19) the trace's `config_hash` covers `config/evidence.json`, so traces from the two versions can be told apart.
 
 ## 7. The menu and the Fuse screen
 Adit, Nov 17, on the interim menu: "its too convoluted... all i do is press f and dont really know which one is fusing", "make it so when i click tab, i see many options and one of those is fuse and then in fuse i can go and do the rolls". The loadout and fusion stop sharing one panel. The structure follows the pause menus of action games like Hades and Dead Cells: a short list of sections, each a full screen with one job.

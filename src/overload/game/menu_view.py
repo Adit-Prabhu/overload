@@ -243,6 +243,8 @@ def draw_fuse(screen, menu: Menu, session) -> None:
     button = pygame.Rect(sx + 64, top + 18, right - sx - 64, 16)
     on = menu.cursor == len(BASE_POWERS)
     ready = len(menu.sockets) == 2 and menu.roll is None
+    if ready:  # a pair that cannot roll (not built yet, not stolen, no spare) is not ready
+        ready = roll_terms(session, *menu.sockets)["can_roll"]
     fill = "px.hazard.1" if on and ready else "px.wall.1"
     screen.fill(rgb(fill), button)
     pygame.draw.rect(screen, rgb("px.hazard.1" if on else "px.wall.2"), button, 1)

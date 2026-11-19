@@ -556,6 +556,7 @@ class PixelView:
 
     def consume(self, run: Run | Campaign, events: list[Event]) -> None:
         stolen: list[str] = []
+        stolen_ids: list[str] = []
         chain_start = None
         for event in events:
             if event.kind == "shot":
@@ -614,6 +615,7 @@ class PixelView:
                 self._burst(event.x, event.y, 24, f"power.{event.power}", 2.2)
                 self.unlock_flash = 12
                 stolen.append(NAMES.get(event.power, event.power.upper()))
+                stolen_ids.append(event.power)
             elif event.kind == "absorb":
                 self._burst(event.x, event.y, 10, f"power.{event.power}", 1.4)
             elif event.kind == "burst":
@@ -690,10 +692,11 @@ class PixelView:
             elif event.kind == "fizzle":
                 self._burst(event.x, event.y, 2, "px.bot.3", 0.6)
         if stolen:
-            # Both slots full: the new power waits in the loadout (powers spec section 3).
-            full = "" not in run.world.player.slots
-            hint = ". TAB TO EQUIP" if full else ""
-            self.toast(" AND ".join(stolen) + " STOLEN" + hint, 150 if full else 120)
+            # A power that found no empty slot waits in the loadout (powers spec section 3).
+            slots = run.world.player.slots
+            waiting = "" not in slots and any(power not in slots for power in stolen_ids)
+            hint = ". TAB TO EQUIP" if waiting else ""
+            self.toast(" AND ".join(stolen) + " STOLEN" + hint, 150 if waiting else 120)
         player = run.world.player
         moved = math.dist(self.last_player, (player.x, player.y)) > 0.1
         self.walking = self.walking + 1 if moved else 0
@@ -1160,7 +1163,7 @@ class PixelView:
                     surface.blit(image, image.get_rect(center=center))
             elif shot.hostile:
                 effects.bolt(screen, self.glow.layer, v(shot.x, shot.y))
-            elif shot.kind == "spark":
+            elif shot.kind in ("spark", "reflect"):
                 effects.spark_shot(
                     screen, self.glow.layer, v(shot.x, shot.y), math.atan2(shot.vy, shot.vx)
                 )
