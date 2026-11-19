@@ -108,9 +108,9 @@ def test_pinned_hashes_match_across_python_versions() -> None:
     If a deliberate rule or tuning change moves these, update them in the same PR and say so
     in its description. An unexplained change means determinism broke.
     """
-    assert DEFAULT.tuning_id() == "5e60f923"
-    assert run_all(21, scripted_inputs(21, 5000)).state_hash() == "fcab035083de3d3d"
-    assert run_all(3, scripted_inputs(9, 1200)).state_hash() == "3341bbf70ab4abc9"
+    assert DEFAULT.tuning_id() == "92b6115f"
+    assert run_all(21, scripted_inputs(21, 5000)).state_hash() == "e43062af60c051c0"
+    assert run_all(3, scripted_inputs(9, 1200)).state_hash() == "5b806f8ab8c9983b"
 
 
 @pytest.mark.parametrize(
@@ -359,3 +359,16 @@ def test_destroying_every_hostile_clears_the_room() -> None:
         )
     run.step(IDLE)
     assert run.world.outcome == "clear"
+
+
+def test_no_tuning_value_is_defined_twice() -> None:
+    """A dataclass silently keeps the last of two fields with one name, so a new power's
+    value could quietly retune an old one (it happened to `wave_speed` on Nov 19)."""
+    import re
+
+    from overload.paths import ROOT
+
+    source = (ROOT / "src" / "overload" / "sim" / "tuning.py").read_text(encoding="utf-8")
+    names = re.findall(r"^    ([a-z_0-9]+): [A-Za-z\[\], ]+ =", source, flags=re.M)
+    repeated = {name for name in names if names.count(name) > 1}
+    assert not repeated, repeated

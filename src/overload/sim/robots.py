@@ -52,6 +52,9 @@ def tick(world: World, tuning: Tuning, arena) -> None:
     for robot in world.hostiles:
         if robot.health <= 0:
             continue
+        if robot.stun > 0:  # Ion Hook: it stands frozen, tells and timers paused
+            robot.stun -= 1
+            continue
         if robot.kind == "relay":
             _relay(world, robot, tuning, arena)
         elif robot.kind == "breaker":

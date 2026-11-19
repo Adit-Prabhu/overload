@@ -40,6 +40,9 @@ class Player:
     leap_y1: float = 0.0
     aura: int = 0
     shield: int = 0  # Bulwark: ticks the bubble has left
+    shield_kind: str = ""  # which power raised it: bulwark, static_guard or bastion
+    armor: int = 0  # Capacitor Armor: hits it can still absorb
+    armor_ticks: int = 0  # and ticks it has left
 
     @property
     def dodging(self) -> bool:
@@ -85,6 +88,7 @@ class Hostile:
     dest_x: float = 0.0
     dest_y: float = 0.0
     tier: int = 1  # the sector it was built for: 2 Cooled, 3 Overcharged (sim/robots.py)
+    stun: int = 0  # ticks it stands frozen (Ion Hook)
 
 
 @dataclass(slots=True)
@@ -182,6 +186,7 @@ class Device:
     tx: float
     ty: float
     timer: int
+    hit: list[int] = field(default_factory=list)  # bodies it struck already (a Reflector Wave)
 
 
 @dataclass(slots=True)
