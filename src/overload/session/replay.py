@@ -13,6 +13,7 @@ from pathlib import Path
 
 from overload.sim.arena import FLOOR_ARENA, SUBSTATION, Arena, arena_id
 from overload.sim.campaign import NEUTRAL, Campaign
+from overload.sim.difficulty import PRESETS
 from overload.sim.inputs import InputFrame
 from overload.sim.run import Run
 from overload.sim.tuning import DEFAULT, Tuning
@@ -140,13 +141,23 @@ def apply_menu(campaign: Campaign, entry: list) -> None:
         ) from error
 
 
+def recorded_tuning(tuning_id: str) -> Tuning:
+    """Resolve a shipped preset by hash for both old and new recordings."""
+    for preset in PRESETS.values():
+        if preset.tuning_id() == tuning_id:
+            return preset
+    raise ValueError(f"recording uses tuning {tuning_id}, this build is {DEFAULT.tuning_id()}")
+
+
 def play(
-    recording: Recording, tuning: Tuning = DEFAULT, arena: Arena | None = None
+    recording: Recording, tuning: Tuning | None = None, arena: Arena | None = None
 ) -> Run | Campaign:
     """Re-run a recording from scratch. Practice runs use the hall, campaigns the floor.
     Refuses a recording made with a different tuning or a different arena."""
     if arena is None:
         arena = SUBSTATION if recording.mode == "practice" else FLOOR_ARENA
+    if tuning is None:
+        tuning = recorded_tuning(recording.tuning_id)
     if recording.tuning_id != tuning.tuning_id():
         raise ValueError(
             f"recording uses tuning {recording.tuning_id}, this build is {tuning.tuning_id()}"

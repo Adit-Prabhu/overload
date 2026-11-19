@@ -14,6 +14,7 @@ from overload import __version__
 from overload.art.palette import rgb, rgba
 from overload.art.pixel import actors, hud, tiles
 from overload.floor import FLOOR
+from overload.sim.difficulty import DIFFICULTIES
 
 ITEMS = ("START", "CONTROLS", "QUIT")
 CONTROLS = (
@@ -58,8 +59,9 @@ def forget() -> None:
 class TitleScreen:
     """Feed it key presses with `press`. `choice` becomes "start" or "quit"."""
 
-    def __init__(self) -> None:
+    def __init__(self, difficulty: str = "medium") -> None:
         self.selected = 0
+        self.difficulty = difficulty
         self.page = "menu"
         self.choice: str | None = None
         self.tick = 0
@@ -75,6 +77,10 @@ class TitleScreen:
             self.selected = (self.selected - 1) % len(ITEMS)
         elif key in (pygame.K_s, pygame.K_DOWN):
             self.selected = (self.selected + 1) % len(ITEMS)
+        elif key in (pygame.K_a, pygame.K_d, pygame.K_LEFT, pygame.K_RIGHT):
+            direction = -1 if key in (pygame.K_a, pygame.K_LEFT) else 1
+            index = DIFFICULTIES.index(self.difficulty)
+            self.difficulty = DIFFICULTIES[(index + direction) % len(DIFFICULTIES)]
         elif key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
             item = ITEMS[self.selected]
             if item == "START":
@@ -129,8 +135,9 @@ class TitleScreen:
         if not flicker:
             screen.blit(mark, mark.get_rect(midtop=(w // 2, 22)))
         hud.text(screen, "SURGE VERSUS THE REGULATOR", (w // 2, 52), "ui.dim", "midtop")
+        hud.text(screen, f"< {self.difficulty.upper()} >", (w // 2, 86), "ui.text", "midtop")
         surge = actors.surge("idle", self.tick, False)
-        screen.blit(surge, surge.get_rect(midbottom=(w // 2, 92)))
+        screen.blit(surge, surge.get_rect(midbottom=(w // 2, 83)))
         for i, item in enumerate(ITEMS):
             y = 98 + i * 11
             chosen = i == self.selected
@@ -139,7 +146,7 @@ class TitleScreen:
             )
             if chosen:
                 hud.text(screen, ">", (rect.left - 4, y), "px.hazard.1", "topright")
-        hud.text(screen, "W S AND ENTER", (w - 4, h - 3), "px.floor.3", "bottomright")
+        hud.text(screen, "A/D DIFFICULTY  W/S ENTER", (w - 4, h - 3), "px.floor.3", "bottomright")
 
     def _controls(self, screen: pygame.Surface) -> None:
         w, h = screen.get_size()
@@ -156,17 +163,19 @@ class TitleScreen:
         hud.text(screen, "ENTER BACK", (right, panel.bottom - 11), "px.hazard.1", "topright")
 
 
-def run_title(screen: pygame.Surface, clock: pygame.time.Clock) -> bool:
-    """Show the title until the player starts (True) or quits (False)."""
-    title = TitleScreen()
+def run_title(
+    screen: pygame.Surface, clock: pygame.time.Clock, difficulty: str = "medium"
+) -> str | None:
+    """Return the selected difficulty on Start, or None on quit."""
+    title = TitleScreen(difficulty)
     while title.choice is None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                return False
-            if event.type == pygame.KEYDOWN:
+                return None
+            if event.type == pygame.KEYDOWN and title.choice is None:
                 title.press(event.key)
         title.update()
         title.draw(screen)
         pygame.display.flip()
         clock.tick(60)
-    return title.choice == "start"
+    return title.difficulty if title.choice == "start" else None

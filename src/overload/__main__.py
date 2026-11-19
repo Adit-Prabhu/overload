@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from overload.game.app import Options, play
+from overload.sim.difficulty import DIFFICULTIES
 
 
 def parse_args(argv: list[str] | None) -> Options:
@@ -45,12 +46,19 @@ def parse_args(argv: list[str] | None) -> Options:
     parser.add_argument(
         "--mute", action="store_true", help="No sound. The game is fully playable muted."
     )
+    parser.add_argument(
+        "--difficulty",
+        choices=DIFFICULTIES,
+        default="medium",
+        help="Starting difficulty (default Medium). Replays use the recorded difficulty.",
+    )
     parser.add_argument("--skip-title", action="store_true", help="Start playing at once.")
     # Test tools for the developer, deliberately left out of --help (game/dev.py).
     parser.add_argument("--dev", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     return Options(
         seed=args.seed,
+        difficulty=args.difficulty,
         headless=args.headless,
         frames=args.frames,
         record=args.record,

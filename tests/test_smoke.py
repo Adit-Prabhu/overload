@@ -59,3 +59,20 @@ def test_a_recorded_campaign_replays_through_the_game(tmp_path) -> None:
     recording.starts[0] -= 1  # a start before the sector was cleared is refused
     recording.save(path)
     assert main(["--headless", "--replay", str(path)]) == 2
+
+
+def test_each_difficulty_round_trips_in_a_recorded_campaign(tmp_path) -> None:
+    from overload.session.replay import Recording, play
+    from overload.sim.difficulty import PRESETS
+    from overload.sim.tuning import DEFAULT
+
+    assert PRESETS["medium"] is DEFAULT
+    assert len({tuning.tuning_id() for tuning in PRESETS.values()}) == 4
+    for difficulty, tuning in PRESETS.items():
+        path = tmp_path / f"{difficulty}.json"
+        args = ["--headless", "--frames", "3", "--condition", "off"]
+        assert main([*args, "--difficulty", difficulty, "--record", str(path)]) == 0
+        recording = Recording.load(path)
+        assert recording.tuning_id == tuning.tuning_id()
+        assert play(recording).state_hash() == recording.final_hash
+        assert main(["--headless", "--replay", str(path)]) == 0

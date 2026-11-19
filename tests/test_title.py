@@ -66,18 +66,19 @@ def test_closing_the_window_at_the_title_quits(display) -> None:
     from overload.game.title import run_title
 
     pygame.event.post(pygame.event.Event(pygame.QUIT))
-    assert run_title(display, pygame.time.Clock()) is False
+    assert run_title(display, pygame.time.Clock()) is None
 
 
 def test_enter_at_the_title_starts(display) -> None:
     from overload.game.title import run_title
 
     pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
-    assert run_title(display, pygame.time.Clock()) is True
+    assert run_title(display, pygame.time.Clock()) == "medium"
 
 
 def test_start_reuses_the_fullscreen_title_window(monkeypatch, tmp_path) -> None:
     from overload.game import app
+    from overload.sim.difficulty import PRESETS
 
     windows = []
     gameplay = []
@@ -87,11 +88,13 @@ def test_start_reuses_the_fullscreen_title_window(monkeypatch, tmp_path) -> None
         assert not headless
         screen = pygame.display.set_mode(app.VIEW, pygame.FULLSCREEN)
         windows.append(screen)
-        pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+        for key in (pygame.K_RIGHT, pygame.K_RETURN):
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=key))
         return screen
 
     def draw_gameplay(self, screen, run, cursor):
         assert screen.get_flags() & pygame.FULLSCREEN
+        assert run.tuning is PRESETS["hard"]
         gameplay.append(screen)
         draw(self, screen, run, cursor)
 
@@ -100,3 +103,19 @@ def test_start_reuses_the_fullscreen_title_window(monkeypatch, tmp_path) -> None
     options = app.Options(condition="off", mute=True, frames=1, trace=tmp_path / "trace.jsonl")
     assert app.play(options) == 0
     assert len(windows) == 1 and gameplay == windows
+
+
+def test_start_returns_the_difficulty_selected_with_arrow_keys(display) -> None:
+    from overload.game.title import run_title
+
+    for key in (pygame.K_RIGHT, pygame.K_RIGHT, pygame.K_RETURN):
+        pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=key))
+    assert run_title(display, pygame.time.Clock()) == "nightmare"
+
+
+def test_closing_the_window_in_the_same_batch_as_start_quits(display) -> None:
+    from overload.game.title import run_title
+
+    pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    pygame.event.post(pygame.event.Event(pygame.QUIT))
+    assert run_title(display, pygame.time.Clock()) is None

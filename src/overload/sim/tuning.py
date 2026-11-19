@@ -350,8 +350,13 @@ class Tuning:
     warp_tell: int = 36
     secret_wall_hits: int = 3
 
+    # Standalone difficulty multiplier for the campaign's Regulator chassis.
+    chassis_health_pct: int = 100
+
     def __post_init__(self) -> None:
         """Reject values that would break readability rules or the tell logic."""
+        if self.chassis_health_pct < 1:
+            raise ValueError("Chassis health percentage must be positive")
         if self.drone_tell < 0.40 * TICK_RATE:
             raise ValueError("Arc Drone tell must last at least 0.40 s")
         if self.drone_recovery < 0.25 * TICK_RATE:
@@ -512,7 +517,11 @@ class Tuning:
 
     def tuning_id(self) -> str:
         """Short stable hash of every value, for traces and the build stamp."""
-        blob = json.dumps(asdict(self), sort_keys=True, separators=(",", ":"))
+        values = asdict(self)
+        # Existing recordings predate chassis scaling and use the default percentage.
+        if self.chassis_health_pct == 100:
+            del values["chassis_health_pct"]
+        blob = json.dumps(values, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(blob.encode()).hexdigest()[:8]
 
 

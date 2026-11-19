@@ -109,7 +109,9 @@ def spawn_rival(
     if protocol not in PROTOCOLS:
         raise ValueError(f"unknown protocol {protocol!r}")
     boss = BOSSES[sector] if sector is not None else REGULATOR
-    health = boss.health or tuning.rival_health
+    health = tuning.rival_health
+    if boss.health:
+        health = max(1, (boss.health * tuning.chassis_health_pct + 50) // 100)
     world.rival = Rival(
         x=x,
         y=y,
