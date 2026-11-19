@@ -50,7 +50,6 @@ class Tuning:
     # The Regulator. Every attack has a tell of at least 0.5 s (30 ticks).
     rival_radius: float = 14.0
     rival_health: int = 40
-    chassis_health_pct: int = 100
     rival_boot: int = 90
     rival_speed: float = 0.8
     rival_contact_damage: int = 1
@@ -350,6 +349,9 @@ class Tuning:
     # Rooms (overhaul): robots warp in after a visible marker, secret walls crack open.
     warp_tell: int = 36
     secret_wall_hits: int = 3
+
+    # Standalone difficulty multiplier for the campaign's Regulator chassis.
+    chassis_health_pct: int = 100
 
     def __post_init__(self) -> None:
         """Reject values that would break readability rules or the tell logic."""
