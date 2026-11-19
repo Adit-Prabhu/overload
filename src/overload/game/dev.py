@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from overload.floor import WAVES
 from overload.paths import ROOT
 from overload.sim import floorplay
+from overload.sim.damage import damage_rival
 from overload.sim.powers import (
     BASE_POWERS,
     FUSED,
@@ -128,7 +129,10 @@ class DevTools:
             self.notice = clear_room(world)
         elif label == "DEFEAT THE REGULATOR":
             if world.rival is not None and world.rival.health > 0:
-                world.rival.health = 0
+                # A real killing hit, so the death sequence and its banner play as in a fight.
+                rival = world.rival
+                rival.boot, rival.change, rival.vent, rival.health = 0, 0, 0, 1
+                damage_rival(world, 1, rival.x, rival.y)
                 self.notice = "REGULATOR DOWN"
             else:
                 self.notice = "NO REGULATOR HERE"

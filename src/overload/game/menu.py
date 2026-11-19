@@ -38,8 +38,8 @@ HUB_PAUSED = ("RESUME", "LOADOUT", "FUSE", "CONTROLS", "QUIT")
 LOADOUT_ROWS = 7  # rows visible at once in the loadout list
 # The spin: at least this many steps, each a little longer than the last.
 SPIN_MIN_STEPS = 10
-SPIN_FIRST_MS = 45
-SPIN_GROWTH_MS = 22
+SPIN_FIRST_MS = 35  # quickened Nov 19 (Adit: "can be a bit faster")
+SPIN_GROWTH_MS = 16
 
 
 def spin_steps(result: int, cards: int = 3) -> list[int]:
@@ -52,7 +52,7 @@ def spin_steps(result: int, cards: int = 3) -> list[int]:
 
 
 def spin_delays(steps: int) -> list[int]:
-    """How long each step of the spin lasts, in ms: fast, then slowing (about 1.6 s)."""
+    """How long each step of the spin lasts, in ms: fast, then slowing (1.1 to 1.5 s)."""
     return [SPIN_FIRST_MS + SPIN_GROWTH_MS * i for i in range(steps)]
 
 

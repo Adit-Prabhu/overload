@@ -161,7 +161,10 @@ def test_defeat_the_regulator_clears_its_chamber() -> None:
     enter(campaign, "s1_chamber")
     session.campaign = campaign
     tools = devmode.DevTools()
+    campaign.world.rival.boot = 30  # even mid-boot it falls, by a real killing hit
     tools.press(session, [r[0] for r in tools.rows()].index("DEFEAT THE REGULATOR"), "select")
+    kinds = [e.kind for e in campaign.world.events]
+    assert "rival_destroyed" in kinds, "so the death sequence plays"
     campaign.step(IDLE)
     assert "s1_chamber" in campaign.world.cleared
 

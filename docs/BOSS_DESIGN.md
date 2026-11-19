@@ -157,10 +157,10 @@ The kit attacks are Arc Ring (existing), Double Ring, Live Wire, Insulator Volle
 This lands on top of the fusion schedule (POWERS_AND_FUSION.md section 9), which already fills Nov 21 to 24. If both cannot fit before the Nov 25 playtest, the first thing to move is the Bulwark and Magnet pairs (spec cut order item 1).
 
 ## 6. Open points for Adit
-- **Scope.** This adds to the G3 overrun already logged.
+- **Scope (cut order accepted Nov 19).** This adds to the G3 overrun already logged.
   - Cut order: phase 3 of each chassis first, then the Insulator Volley and the Coolant Spray.
   - The vent windows stay in every phase, so cutting phase 3 never leaves a chassis without one.
-- **The reward:** spare charges, or a battery refill (the Surge's health)?
+- **The reward (decided Nov 19):** spare charges. A battery refill would add nothing, since the Fuse Box refills the battery after every chamber and the third chamber ends the run.
 - **The playtest on Nov 25.** Freeze the boss Tuning by Nov 23. The live suite (Nov 26 to 27) and the recording (Nov 28) then run the same `tuning_id` as the playtest, or their evidence is labelled with the other build.
 - **If the rework is not ready:** the playtest runs the pre-rework kit and art. The new look needs the new hit circle and phases, so it does not ship alone.
 

@@ -221,6 +221,6 @@ When a pair is cut it cannot be fused (the bench says NOT IN THIS BUILD), and th
 - Evidence labels as before: fixture, replay and live results are reported separately.
 
 ## 11. Open points for Adit
-- **The seed rule.** The game uses seed 1 unless given another. Recommendation: each participant plays both conditions on one seed, and different participants get different seeds. One seed per participant controls luck between that player's two conditions, at the cost of meeting the same rarity sequence twice (a possible learning effect). If that effect shows, the analysis can compare first sessions only.
+- **The seed rule (decided Nov 19, as recommended).** The game uses seed 1 unless given another. Recommendation: each participant plays both conditions on one seed, and different participants get different seeds. One seed per participant controls luck between that player's two conditions, at the cost of meeting the same rarity sequence twice (a possible learning effect). If that effect shows, the analysis can compare first sessions only.
 - Names and the exact rarity effects are provisional and can change in their PRs.
 - If rerolls feel too cheap or too stingy in play, `reroll_cost` and the odds are tuning values, not code changes.
