@@ -74,3 +74,29 @@ def test_enter_at_the_title_starts(display) -> None:
 
     pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
     assert run_title(display, pygame.time.Clock()) is True
+
+
+def test_start_reuses_the_fullscreen_title_window(monkeypatch, tmp_path) -> None:
+    from overload.game import app
+
+    windows = []
+    gameplay = []
+    draw = app.PixelView.draw
+
+    def open_fullscreen(headless):
+        assert not headless
+        screen = pygame.display.set_mode(app.VIEW, pygame.FULLSCREEN)
+        windows.append(screen)
+        pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+        return screen
+
+    def draw_gameplay(self, screen, run, cursor):
+        assert screen.get_flags() & pygame.FULLSCREEN
+        gameplay.append(screen)
+        draw(self, screen, run, cursor)
+
+    monkeypatch.setattr(app, "_open_window", open_fullscreen)
+    monkeypatch.setattr(app.PixelView, "draw", draw_gameplay)
+    options = app.Options(condition="off", mute=True, frames=1, trace=tmp_path / "trace.jsonl")
+    assert app.play(options) == 0
+    assert len(windows) == 1 and gameplay == windows

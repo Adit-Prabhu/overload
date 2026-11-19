@@ -31,6 +31,51 @@ from overload.sim.tuning import TICK_RATE
 PANEL = pygame.Rect(8, 6, 240, 132)
 CARD_W, CARD_H = 72, 54
 
+# Names for compact cards. The selected power's detail panel shows its full name.
+_COMPACT_NAMES = {
+    "bulwark": "BULW",
+    "magnet": "MAG",
+    "arc_trail": "TRAIL",
+    "bolt_lance": "LANCE",
+    "chain_jump": "JUMP",
+    "shock_cone": "CONE",
+    "shock_mine": "MINE",
+    "storm_aura": "AURA",
+    "impact_blink": "BLAST",
+    "displacer": "SWAP",
+    "static_guard": "STATIC",
+    "tesla_coil": "COIL",
+    "capacitor_armor": "ARMOR",
+    "lodestone": "LODE",
+    "ion_hook": "HOOK",
+    "magrail": "RAIL",
+    "bastion": "BAST",
+    "reflector_wave": "WAVE",
+    "fortress": "FORT",
+    "vortex_cone": "VORTEX",
+    "implosion": "IMPLO",
+    "gravity_well": "WELL",
+    "phase_guard": "PHASE",
+    "afterimage": "DECOY",
+    "undertow": "TOW",
+    "grapple": "GRAP",
+    "lightning_rod": "ROD",
+    "shield_toss": "TOSS",
+    "mirror_field": "MIRR",
+}
+
+
+def _power_label(ability: str, width: int) -> str:
+    """Fit a power name in the available pixels beside its icon."""
+    name = NAMES[ability]
+    font = hud.pixel_font()
+    if font.size(name)[0] <= width:
+        return name
+    label = _COMPACT_NAMES.get(ability, name)
+    while label and font.size(label)[0] > width:
+        label = label[:-1]
+    return label
+
 
 def _wrap(text: str, width: int) -> list[str]:
     lines: list[str] = []
@@ -132,8 +177,11 @@ def draw_hub(screen, menu: Menu, session, ready: bool, message: str | None, sect
         hud.key_glyph(screen, "QE"[i], card.x + 2, card.y + 2, "ui.text")
         if ability:
             screen.blit(_icon(ability), (card.x + 9, card.y + 5))
-            hud.text(screen, NAMES[ability], (card.x + 19, card.y + 4), "ui.text")
-            if ability in FUSED:
+            fused = ability in FUSED
+            width = card.width - 19 - (16 if fused else 2)
+            label = _power_label(ability, width)
+            hud.text(screen, label, (card.x + 19, card.y + 4), "ui.text")
+            if fused:
                 hud.rarity_marks(screen, rarity_of(ability), card.right - 14, card.y + 7)
         else:
             hud.text(screen, "EMPTY", (card.x + 19, card.y + 4), "px.floor.3")
@@ -165,7 +213,8 @@ def draw_loadout(screen, menu: Menu, session, tuning) -> None:
         if chosen:
             screen.fill(rgb("px.wall.1"), (left - 2, y - 2, 108, 12))
         screen.blit(_icon(ability), (left, y))
-        hud.text(screen, NAMES[ability], (left + 10, y), "ui.text" if chosen else "ui.dim")
+        label = _power_label(ability, 82)
+        hud.text(screen, label, (left + 10, y), "ui.text" if chosen else "ui.dim")
         if ability in FUSED:
             hud.rarity_marks(screen, rarity_of(ability), left + 94, y + 2)
         elif ability in world.player.slots:
@@ -188,7 +237,8 @@ def draw_loadout(screen, menu: Menu, session, tuning) -> None:
         hud.key_glyph(screen, "QE"[i], card.x + 2, card.y + 2, "ui.text")
         if ability:
             screen.blit(_icon(ability), (card.x + 9, card.y + 5))
-            hud.text(screen, hud.SHORT[ability], (card.x + 18, card.y + 4), "ui.text")
+            label = _power_label(ability, card.width - 20)
+            hud.text(screen, label, (card.x + 18, card.y + 4), "ui.text")
     if pick >= 0:
         ability = rows[pick]
         y = top + 36
