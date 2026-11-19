@@ -164,7 +164,7 @@ def test_the_spin_always_stops_on_the_result(result) -> None:
     assert steps[-1] == result and len(steps) >= 10
     assert steps == [i % 3 for i in range(len(steps))], "it walks the cards in order"
     delays = spin_delays(len(steps))
-    assert delays == sorted(delays) and 1200 <= sum(delays) <= 2400, "slows, about 1.6 s"
+    assert delays == sorted(delays) and 900 <= sum(delays) <= 1600, "slows, 1.1 to 1.5 s"
 
 
 def test_a_roll_records_the_fusion_spins_and_reveals_what_the_sim_decided() -> None:
