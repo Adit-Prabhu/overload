@@ -43,6 +43,7 @@ REJECTED = {
     "chain_jump": "NO ROBOT IN REACH",
     "displacer": "NO ROBOT TO SWAP WITH",
     "meteor": "NO ROOM TO LAND",
+    "tesla_coil": "NO ROOM FOR A COIL",
     "rewind": "NO SAFE SPOT TO REWIND",
     "grapple": "NOTHING TO GRAPPLE",
 }
@@ -698,9 +699,7 @@ class PixelView:
             elif event.kind == "burst":
                 player = run.world.player
                 angle = math.atan2(player.aim_y, player.aim_x)
-                self.bursts.append(
-                    (event.x, event.y, angle, bool(event.ref), event.power == "shock_cone", 10)
-                )
+                self.bursts.append((event.x, event.y, angle, bool(event.ref), event.power, 10))
             elif event.kind == "blast":
                 self.blasts.append((event.x, event.y, event.ref, BLAST_TICKS))
                 self._burst(event.x, event.y, 14, "power.burst", 1.8)
@@ -1286,11 +1285,20 @@ class PixelView:
                     screen, self.glow.layer, v(shot.x, shot.y), math.atan2(shot.vy, shot.vx)
                 )
 
-        for x, y, angle, wide, shock, life in self.bursts:
+        for x, y, angle, wide, power, life in self.bursts:
             reach = tuning.burst_wide_range if wide else tuning.burst_range
             cone = tuning.burst_wide_cos if wide else tuning.burst_cos
+            vortex = power == "vortex_cone"
             effects.burst_cone(
-                screen, self.glow.layer, v(x, y), angle, reach, cone, life / 10, shock
+                screen,
+                self.glow.layer,
+                v(x, y),
+                angle,
+                tuning.vortex_range if vortex else reach,
+                cone,
+                life / 10,
+                power == "shock_cone",
+                vortex,
             )
         for a, b, _life in self.chains:
             effects.chain_bolt(screen, self.glow.layer, v(*a), v(*b))
@@ -1432,7 +1440,7 @@ class PixelView:
             )
         elif field.kind == "well":
             left = field.timer / tuning.well_ticks
-            effects.magnet_field(screen, glow, at, tuning.well_radius, left, tick, "power.burst")
+            effects.gravity_well(screen, glow, at, tuning.well_radius, left, tick)
         elif field.kind == "undertow":
             left = field.timer / tuning.undertow_ticks
             effects.magnet_field(

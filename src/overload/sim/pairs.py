@@ -20,7 +20,7 @@ from overload.sim.arena import Arena
 from overload.sim.collision import line_clear, move_body
 from overload.sim.geometry import circles_overlap, length, normalize, segment_distance_sq
 from overload.sim.inputs import InputFrame
-from overload.sim.state import Decoy, Device, Event, Projectile, World
+from overload.sim.state import CHARGE_BODY_RADIUS, Decoy, Device, Event, Projectile, World
 from overload.sim.tuning import Tuning
 
 # Eight directions for the Capacitor Armor's ring (exact constants, no runtime trig).
@@ -37,7 +37,17 @@ RING = (
 )
 
 
-def _spark(world: World, x: float, y: float, dx: float, dy: float, tuning: Tuning, kind="spark"):
+def _spark(
+    world: World,
+    x: float,
+    y: float,
+    dx: float,
+    dy: float,
+    tuning: Tuning,
+    kind: str = "spark",
+    *,
+    damage: int | None = None,
+) -> None:
     world.projectiles.append(
         Projectile(
             id=world.new_id(),
@@ -46,7 +56,7 @@ def _spark(world: World, x: float, y: float, dx: float, dy: float, tuning: Tunin
             vx=dx * tuning.spark_speed,
             vy=dy * tuning.spark_speed,
             radius=tuning.spark_radius,
-            damage=tuning.spark_damage,
+            damage=tuning.spark_damage if damage is None else damage,
             hostile=False,
             ttl=tuning.spark_ttl,
             kind=kind,
@@ -54,22 +64,39 @@ def _spark(world: World, x: float, y: float, dx: float, dy: float, tuning: Tunin
     )
 
 
-def _nearest_robot(world: World, x: float, y: float, reach: float):
+def _nearest_target(world: World, x: float, y: float, reach: float):
+    from overload.sim.fusions import _id, _targets
+
     near = [
-        h for h in world.hostiles if h.health > 0 and length(h.x - x, h.y - y) <= reach + h.radius
+        body for body in _targets(world) if length(body.x - x, body.y - y) <= reach + body.radius
     ]
-    return min(near, key=lambda h: (length(h.x - x, h.y - y), h.id), default=None)
+    return min(near, key=lambda body: (length(body.x - x, body.y - y), _id(body)), default=None)
 
 
-def _pull(world: World, robot, x: float, y: float, step: float, arena: Arena) -> None:
-    """Drag a robot toward (x, y) by up to `step`, walls winning."""
-    dx, dy = x - robot.x, y - robot.y
+def _pull(
+    world: World,
+    body,
+    x: float,
+    y: float,
+    step: float,
+    arena: Arena,
+    *,
+    radius: float | None = None,
+) -> None:
+    """Drag a body toward (x, y) by up to `step`, respecting walls."""
+    dx, dy = x - body.x, y - body.y
     distance = length(dx, dy)
     if distance <= 0.0:
         return
     step = min(step, distance)
-    robot.x, robot.y = move_body(
-        robot.x, robot.y, dx / distance * step, dy / distance * step, robot.radius, arena, world
+    body.x, body.y = move_body(
+        body.x,
+        body.y,
+        dx / distance * step,
+        dy / distance * step,
+        body.radius if radius is None else radius,
+        arena,
+        world,
     )
 
 
@@ -110,18 +137,19 @@ def capacitor_armor(world: World, inp: InputFrame, tuning: Tuning, arena: Arena)
 
 
 def _release_armor(world: World, tuning: Tuning) -> None:
-    """The stored charge bursts out: eight sparks, aimed at the nearest robots in turn (or
-    in a ring when none is near)."""
+    """Release the stored charge as a radial ring."""
     player = world.player
-    near = sorted(
-        (h for h in world.hostiles if h.health > 0),
-        key=lambda h: (length(h.x - player.x, h.y - player.y), h.id),
-    )[:4]
-    for i, (dx, dy) in enumerate(RING):
-        if near:
-            robot = near[i % len(near)]
-            dx, dy = normalize(robot.x - player.x, robot.y - player.y)
-        _spark(world, player.x + dx * 8, player.y + dy * 8, dx, dy, tuning)
+    for dx, dy in RING:
+        _spark(
+            world,
+            player.x + dx * 8,
+            player.y + dy * 8,
+            dx,
+            dy,
+            tuning,
+            "reflect",
+            damage=tuning.capacitor_damage,
+        )
     player.armor = player.armor_ticks = 0
     world.events.append(Event("armor_release", player.x, player.y))
 
@@ -204,15 +232,19 @@ def magrail(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool
     ax, ay = player.aim_x, player.aim_y
     start = (player.x, player.y)
     reach = tuning.magrail_range
-    while reach > 8.0 and not _clear_path(
+    while reach > 0.0 and not _clear_path(
         world, start, (start[0] + ax * reach, start[1] + ay * reach), arena
     ):
-        reach -= 4.0
+        reach = max(0.0, reach - 4.0)
+    if reach == 0.0:
+        return False
     end = (start[0] + ax * reach, start[1] + ay * reach)
     world.events.append(Event("rail", end[0], end[1], 0, "magrail"))
     for body in _targets(world):
         width = tuning.magrail_width + body.radius
         if segment_distance_sq((body.x, body.y), start, end) > width * width:
+            continue
+        if not _clear_path(world, start, (body.x, body.y), arena):
             continue
         _strike(world, body, tuning.magrail_damage)
         if getattr(body, "id", -1) == -1:
@@ -295,7 +327,8 @@ def vortex_cone(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> 
         if not inside(body):
             continue
         if getattr(body, "id", -1) != -1:
-            _pull(world, body, player.x, player.y, tuning.vortex_pull, arena)
+            for _ in range(2):
+                _pull(world, body, player.x, player.y, tuning.vortex_pull / 2, arena)
         _strike(world, body, tuning.vortex_damage)
     world.events.append(Event("burst", player.x, player.y, 0, "vortex_cone"))
     return True
@@ -361,17 +394,17 @@ def tick(world: World, tuning: Tuning, arena: Arena) -> None:
 
 def tick_object(world: World, field: Device, tuning: Tuning, arena: Arena) -> bool:
     """Advance one placed thing (not a Magnet field). False when it is gone."""
-    from overload.sim.fusions import _strike, blast
+    from overload.sim.fusions import _id, _strike, blast
 
     field.timer -= 1
     if field.kind == "coil":
         _soak(world, field.x, field.y, tuning.coil_radius)
         if field.timer % tuning.coil_interval == 0:
-            robot = _nearest_robot(world, field.x, field.y, tuning.coil_reach)
-            if robot is not None:
+            target = _nearest_target(world, field.x, field.y, tuning.coil_reach)
+            if target is not None:
                 world.events.append(Event("chain_from", field.x, field.y))
-                world.events.append(Event("chain", robot.x, robot.y, robot.id))
-                _strike(world, robot, tuning.coil_damage)
+                world.events.append(Event("chain", target.x, target.y, _id(target)))
+                _strike(world, target, tuning.coil_damage)
     elif field.kind == "wave":
         _roll_wave(world, field, tuning, arena)
     elif field.kind == "fortress":
@@ -400,7 +433,7 @@ def tick_object(world: World, field: Device, tuning: Tuning, arena: Arena) -> bo
         if well:
             for charge in world.charges:
                 if length(charge.x - field.x, charge.y - field.y) <= reach:
-                    _pull(world, charge, field.x, field.y, pull, arena)
+                    _pull(world, charge, field.x, field.y, pull, arena, radius=CHARGE_BODY_RADIUS)
             _drag_shots(world, field, reach, pull)
         if field.timer <= 0:
             damage = tuning.well_damage if well else tuning.implosion_damage

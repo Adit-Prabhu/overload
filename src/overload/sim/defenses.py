@@ -20,7 +20,7 @@ from overload.sim.collision import move_body
 from overload.sim.damage import damage_rival
 from overload.sim.geometry import circles_overlap, length, normalize
 from overload.sim.inputs import InputFrame
-from overload.sim.state import Device, Event, Projectile, World
+from overload.sim.state import CHARGE_BODY_RADIUS, Device, Event, Projectile, World
 from overload.sim.tuning import Tuning
 
 
@@ -105,11 +105,12 @@ def shield_shots(world: World, tuning: Tuning, arena: Arena) -> None:
 
 def _static_spark(world: World, shot, tuning: Tuning, kept: list) -> None:
     """Static Guard: an eaten shot becomes a spark at the nearest robot."""
-    near = [h for h in world.hostiles if h.health > 0]
-    if not near:
+    from overload.sim.pairs import _nearest_target
+
+    target = _nearest_target(world, shot.x, shot.y, float("inf"))
+    if target is None:
         return
-    robot = min(near, key=lambda h: (length(h.x - shot.x, h.y - shot.y), h.id))
-    ux, uy = normalize(robot.x - shot.x, robot.y - shot.y)
+    ux, uy = normalize(target.x - shot.x, target.y - shot.y)
     kept.append(
         Projectile(
             id=world.new_id(),
@@ -160,7 +161,7 @@ def tick_fields(world: World, tuning: Tuning, arena: Arena) -> None:
                     charge.y,
                     dx / distance * step,
                     dy / distance * step,
-                    2.0,
+                    CHARGE_BODY_RADIUS,
                     arena,
                     world,
                 )

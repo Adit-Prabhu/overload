@@ -76,6 +76,9 @@ class Projectile:
     kind: str = "shot"  # shot, spark, bolt or orb
 
 
+CHARGE_BODY_RADIUS = 2.0
+
+
 @dataclass(slots=True)
 class Hostile:
     id: int

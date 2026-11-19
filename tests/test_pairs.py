@@ -6,10 +6,10 @@ from __future__ import annotations
 import dataclasses
 
 import pytest
-from test_fusion import AIM, OPEN, armed, dummy, fire
+from test_fusion import AIM, OPEN, armed, dummy, fire, fire_walled, walled
 
 from overload.sim.inputs import IDLE, InputFrame
-from overload.sim.state import Projectile
+from overload.sim.state import Charge, Projectile
 from overload.sim.tuning import DEFAULT
 from overload.sim.world import step
 
@@ -56,7 +56,7 @@ def test_tesla_coil_strikes_robots_and_soaks_the_shots_that_hit_it() -> None:
 
 
 def test_capacitor_armor_eats_three_hits_then_bursts_into_sparks() -> None:
-    world = armed("capacitor_armor")
+    world = armed("capacitor_armor", {"spark": DEFAULT.evolve_at})
     dummy(world, 170, 120)
     fire(world)
     player = world.player
@@ -68,9 +68,26 @@ def test_capacitor_armor_eats_three_hits_then_bursts_into_sparks() -> None:
     assert player.charge == DEFAULT.player_max_charge
     kinds = idle(world, 1)
     assert "armor_release" in kinds and player.armor == 0
+    released = [p for p in world.projectiles if not p.hostile]
+    assert len(released) == 8 and all(p.kind == "reflect" for p in released)
+    assert len({(p.vx, p.vy) for p in released}) == 8
     player.invulnerable = 0
     hurt_player(world, 1, DEFAULT)
     assert player.charge == DEFAULT.player_max_charge - 1, "a fourth hit lands"
+
+
+@pytest.mark.parametrize("power", ["static_guard", "tesla_coil"])
+def test_spark_defenses_can_target_a_solo_regulator(power) -> None:
+    from overload.sim.spawns import spawn_rival
+
+    world = armed(power)
+    rival = spawn_rival(world, 172, 120, "lateral")
+    rival.boot = 0
+    fire(world, aim_x=142, aim_y=120)
+    if power == "static_guard":
+        bolt_at(world, world.player.x + 20, world.player.y, -2.0, 0.0)
+    idle(world, 42)
+    assert rival.health < rival.max_health
 
 
 # Spark + Magnet ------------------------------------------------------------------------------
@@ -118,6 +135,15 @@ def test_magrail_slams_a_robot_into_a_wall_for_more() -> None:
     against = dummy(world, 312, 120)  # right at the edge
     fire(world, aim_x=300, aim_y=120)
     assert 999 - against.health == DEFAULT.magrail_damage + DEFAULT.magrail_slam
+
+
+def test_magrail_does_not_hit_a_robot_across_a_wall() -> None:
+    world = walled("magrail")
+    robot = dummy(world, 173, 120)
+    world.player.x, world.player.y = 145.0, 120.0
+    fire_walled(world, aim_x=210, aim_y=120)
+    assert next(e for e in world.events if e.kind == "rail").x < 150
+    assert robot.health == 999
 
 
 # Burst + Bulwark -----------------------------------------------------------------------------
@@ -174,13 +200,16 @@ def test_implosion_draws_robots_together_then_blasts() -> None:
     assert abs(a.y - b.y) < gap and "blast" in kinds and a.health < 999
 
 
-def test_gravity_well_eats_shots_and_ends_in_a_heavy_blast() -> None:
+def test_gravity_well_eats_shots_pulls_charges_and_ends_in_a_heavy_blast() -> None:
     world = armed("gravity_well")
     robot = dummy(world, 160, 140)
     fire(world, aim_x=160, aim_y=120)
     well = next(f for f in world.fields if f.kind == "well")
     bolt_at(world, well.x + 30, well.y, 0.0, 0.0)  # a shot lingering inside its reach
+    charge = Charge(world.new_id(), "spark", well.x, well.y - 28)
+    world.charges.append(charge)
     idle(world, DEFAULT.well_ticks + 1)
+    assert charge.y == pytest.approx(well.y)
     assert not [p for p in world.projectiles if p.hostile]
     assert 999 - robot.health >= DEFAULT.well_damage
 
