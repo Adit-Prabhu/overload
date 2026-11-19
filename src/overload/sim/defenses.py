@@ -34,7 +34,8 @@ def bulwark(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool
 def magnet(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:
     from overload.sim.powers import evolved, place_point
 
-    spot = place_point(world, inp, tuning, arena, tuning.magnet_range, 1.0)
+    # A field sits a charge's width clear of walls, so what it drags never ends up in one.
+    spot = place_point(world, inp, tuning, arena, tuning.magnet_range, tuning.charge_radius)
     player = world.player
     if spot is None:
         world.events.append(Event("magnet_rejected", player.x, player.y))
@@ -76,7 +77,7 @@ def shield_shots(world: World, tuning: Tuning) -> None:
                         damage=tuning.spark_damage,
                         hostile=False,
                         ttl=tuning.spark_ttl,
-                        kind="spark",
+                        kind="reflect",  # a spark, but never chained by Spark's evolution
                     )
                 )
                 world.events.append(Event("shield_reflect", shot.x, shot.y, shot.id))
@@ -107,8 +108,16 @@ def tick_fields(world: World, tuning: Tuning, arena: Arena) -> None:
             distance = length(dx, dy)
             if 0.0 < distance <= reach:
                 step = min(tuning.magnet_pull, distance)
-                charge.x += dx / distance * step
-                charge.y += dy / distance * step
+                # Walls win for charges too: dragged like a small body, never through one.
+                charge.x, charge.y = move_body(
+                    charge.x,
+                    charge.y,
+                    dx / distance * step,
+                    dy / distance * step,
+                    2.0,
+                    arena,
+                    world,
+                )
         field.timer -= 1
         if field.timer > 0:
             left.append(field)
@@ -118,6 +127,8 @@ def tick_fields(world: World, tuning: Tuning, arena: Arena) -> None:
 
 
 def _crush(world: World, field: Device, tuning: Tuning) -> None:
+    """CRUSH: robots whose center is still inside the field take damage. The Regulator,
+    far bigger, counts once any of its body reaches in. It is dented, never moved."""
     from overload.sim.powers import evolved
 
     crush = evolved(world.fragments, "magnet", tuning)

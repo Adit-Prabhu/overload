@@ -241,8 +241,8 @@ class Tuning:
     core_spiral_ticks: int = 90
     # Bulwark (from the Sentry) and Magnet (from the Sweeper), powers spec section 3.
     bulwark_ticks: int = 45
-    bulwark_radius: float = 14.0  # the Surge's radius plus 8
-    bulwark_cooldown: int = 150
+    bulwark_radius: float = 14.0  # the Surge's radius (5) plus 9
+    bulwark_cooldown: int = 180  # 150 in the spec: 45 of every 150 ticks left a floor of 0.70
     magnet_range: float = 72.0
     magnet_radius: float = 44.0
     magnet_ticks: int = 30

@@ -100,9 +100,9 @@ It stays at range and fills the air.
 
 | Phase | Rotation | Gap between attacks |
 | --- | --- | --- |
-| 1 | Arc Ring (8 bolts, 0.8 s tell), Live Wire | 4.5 s |
-| 2 | Double Ring (a second ring 0.25 s later, offset half a gap), Live Wire, Insulator Volley | 3.5 s |
-| 3 | Double Ring, Live Wire twice, Insulator Volley | 3 s |
+| 1 | Arc Ring (8 bolts, 0.8 s tell), Live Wire | 5 s |
+| 2 | Double Ring (a second ring 0.25 s later, offset half a gap), Live Wire, Insulator Volley | 4.3 s |
+| 3 | Double Ring, Live Wire twice, Insulator Volley | 3.8 s |
 
 - **Live Wire:** three lines fan from the crossarm toward the Surge (0.9 s tell), then crackle for 0.4 s. They hurt within 3 px. **It vents after.** "Twice" means a second set lands in the first set's gaps after a 0.9 s tell of its own.
 - **Insulator Volley:** three landing circles appear around the Surge (1 s tell), one where it stands. Each bursts into a ring of 6 bolts. The circle's own tell covers its ring, so standing on a circle is like standing on a marked mine.
@@ -113,9 +113,9 @@ It stays at range and fills the air.
 
 | Phase | Rotation | Gap |
 | --- | --- | --- |
-| 1 | Quake, Bull Charge | 3.7 s |
-| 2 | Coolant Spray, Double Quake (0.5 s apart), Bull Charge | 3.2 s |
-| 3 | Coolant Spray, Double Quake, Bull Charge twice | 2.7 s |
+| 1 | Quake, Bull Charge | 4.7 s |
+| 2 | Coolant Spray, Double Quake (0.5 s apart), Bull Charge | 4.2 s |
+| 3 | Coolant Spray, Double Quake, Bull Charge twice | 3.7 s |
 
 - **Bull Charge:** a lane is marked toward the Surge (1 s tell). It runs at 3.6 px a tick, below the tunneling limit, for at most 110 ticks. It stops dead on a wall or a prop, and that stuns it into its vent. Touching the Surge on the way hurts and it keeps going. Its read differs from Clamp's lunge: a wide two-sided lane instead of a dotted aim line, and a much longer run.
 - **Charge twice:** after the first run it re-aims with a 0.75 s tell and charges again. Only the second impact stuns it, and it drops up to three debris tiles at fixed offsets (any that would land outside the chamber are left out, so usually one or two by a wall). A charge runs through the Surge: one hit, then it carries on, never shoving the Surge down the lane.
@@ -126,9 +126,9 @@ It stays at range and fills the air.
 
 | Phase | Rotation | Gap |
 | --- | --- | --- |
-| 1 | Summon (two Arc Drones, skipped while two robots are up), Lattice | 4.7 s |
-| 2 (its Overload) | Spiral (two arms), Lattice twice, Summon | 4 s |
-| 3 | Core Spiral (four arms), Lattice twice | 3.5 s |
+| 1 | Summon (two Arc Drones, skipped while two robots are up), Lattice | 7 s |
+| 2 (its Overload) | Spiral (two arms), Lattice twice, Summon | 6.3 s |
+| 3 | Core Spiral (four arms), Lattice twice | 5.7 s |
 
 - **Lattice:** a checkerboard of 32 px cells over 5 x 3 cells around the Surge (1 s tell), burning for 0.8 s. A cell is two tiles wide, so the Surge fits inside a dark one with room to spare, and one dodge (29 px) crosses a cell. Insulate's own tiles are swept away when a Lattice starts, so they never cover a dark cell. Only cells inside the chamber burn.
 - **Lattice twice:** the other color arms as the first burns, and lights 0.6 s after the first goes out, so the player has to move once.
@@ -138,6 +138,7 @@ It stays at range and fills the air.
 - **Hit circle:** 18 px for the Linesman and Grid Core, 22 for the wider Transformer. The legacy single-arena Regulator keeps 14. The Transformer's radius also sizes body contact and its Bull Charge lane, and moves its projectile and quake origins outward by 4 px. Attack rotations, tells and timing values are the same.
 - **Transformer radius follow-up:** With seed 3 and lateral/pressure, the bot enters sector 3 on tick 5,702 at either radius. The larger chassis changes its position by about half a pixel at the Fuse Box, enough to change its route and fight. The 22 px run finishes on tick 72,473, with 27 bus-room deaths and 3 chamber deaths. The protocol still runs for 64, 56 and 70 percent of the three fights. The test retains this case with an 80,000-tick limit, and seeds 2 and 4 retain 40,000. These are scripted bot runs for protocol coverage. Human difficulty is assessed at the playtest.
 - **Protocol share of fight time before widening the Transformer:** 50 to 66 percent across the sectors and orders measured.
+- **Longer gaps (Nov 19):** in a long fight (35 to 100 s, as a human plays it) the kit runs its whole rotation, and the Grid Core's protocol share fell to 0.45. The gaps above were lengthened, so the protocol now runs 0.55 to 0.66 of a long fight under every chassis and protocol, phase changes counted. A test holds 0.55, and the bot test still holds 0.5.
 - **Bot boss fights:** about 8 to 13 s. A human is slower and the vents reward patience.
 - **Chamber deaths:** none in sectors 1 and 2. Up to 3 in sector 3, where most deaths stay in the combat rooms, as before.
 

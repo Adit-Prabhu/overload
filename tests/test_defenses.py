@@ -86,7 +86,7 @@ def test_reflect_sends_an_eaten_shot_back_as_a_spark() -> None:
         step(world, IDLE, arena=ROOM)
         now = [e for e in world.events if e.kind == "shield_reflect"]
         if now:  # the moment it reflects (it soon meets the room's middle wall)
-            sparks = [p for p in world.projectiles if p.kind == "spark" and not p.hostile]
+            sparks = [p for p in world.projectiles if p.kind == "reflect" and not p.hostile]
         reflected += now
     assert len(reflected) == 1
     assert sparks and sparks[0].vx > 0, "it flies back the way the shot came"
@@ -187,9 +187,9 @@ def test_the_new_tuning_is_guarded() -> None:
             Tuning(**bad)
 
 
-def _hits_standing(sector: int, protocol: str, power: str | None, ticks: int = 1800) -> int:
-    """A Surge that stands and shoots at the chassis, pressing E whenever it is ready, kept
-    alive and the chassis kept in phase 1. The hits it takes."""
+def _hits_standing(sector: int, protocol: str, power: str | None, offset: int) -> int:
+    """A Surge that stands and shoots at the chassis, pressing E whenever it is ready from
+    tick `offset` on, kept alive and the chassis kept in phase 1. The hits it takes."""
     from floorbot import enter
 
     from overload.sim.campaign import Campaign
@@ -206,11 +206,12 @@ def _hits_standing(sector: int, protocol: str, power: str | None, ticks: int = 1
     world = campaign.world
     world.player.y += 50
     hits = 0
-    for _ in range(ticks):
+    for tick in range(1800):
         rival = world.rival
         rival.health = rival.max_health
         world.player.charge = DEFAULT.player_max_charge
-        campaign.step(InputFrame(aim_x=int(rival.x), aim_y=int(rival.y), fire=True, power_e=True))
+        aim = {"aim_x": int(rival.x), "aim_y": int(rival.y)}
+        campaign.step(InputFrame(**aim, fire=True, power_e=tick >= offset))
         hits += sum(e.kind == "player_hit" for e in world.events)
     return hits
 
@@ -219,7 +220,38 @@ def _hits_standing(sector: int, protocol: str, power: str | None, ticks: int = 1
 def test_a_shield_never_trivializes_a_projectile_protocol(sector) -> None:
     """GDD: no loadout may make a tactic trivial. Against Oscillate, the most projectile-heavy
     protocol, a Surge standing in the open with Bulwark on every cooldown still takes at
-    least 70 percent of the hits it takes without it (measured: 0.85 and 0.80)."""
-    without = _hits_standing(sector, "lateral", None)
-    shielded = _hits_standing(sector, "lateral", "bulwark")
+    least 70 percent of the hits it takes without it. Averaged over four timings of the
+    first press, since one timing can line the bubble up with the volleys by luck (measured
+    over eight timings and a minute: 0.81 to 1.00 under every chassis and protocol)."""
+    offsets = (0, 20, 40, 60)
+    without = sum(_hits_standing(sector, "lateral", None, o) for o in offsets)
+    shielded = sum(_hits_standing(sector, "lateral", "bulwark", o) for o in offsets)
     assert without > 0 and shielded >= 0.7 * without
+
+
+def test_a_field_never_drags_a_charge_through_a_wall() -> None:
+    from overload.sim.state import Device
+
+    world = bare_world()
+    # The room's middle wall runs x 96 to 112, y 0 to 80. A charge east of it, a field west.
+    charge = Charge(world.new_id(), "spark", 120.0, 40.0)
+    world.charges.append(charge)
+    world.fields.append(Device(world.new_id(), "magnet", 86.0, 40.0, 86.0, 40.0, 30))
+    for _ in range(30):
+        step(world, IDLE, arena=ROOM)
+    assert charge.x >= 112.0, "walls win: it stays on its own side"
+
+
+def test_reflected_sparks_never_chain_through_sparks_evolution() -> None:
+    """REFLECT is Bulwark's evolution. Its sparks do not also pick up CHAIN from an evolved
+    Spark, so the two evolutions stay separate."""
+    kit = evolve(evolve(kit_with("bulwark", "spark", slots=("bulwark", "")), "bulwark"), "spark")
+    world = bare_world(kit)
+    player = world.player
+    press(world, power_q=True)
+    hostile_shot(world, player.x + 30, player.y, -2.0, 0.0)
+    kinds = set()
+    for _ in range(20):
+        step(world, IDLE, arena=ROOM)
+        kinds |= {p.kind for p in world.projectiles if not p.hostile}
+    assert "reflect" in kinds and "spark" not in kinds

@@ -1001,3 +1001,19 @@ def test_every_chassis_pose_renders(headless_pygame) -> None:
             image = regulators.body(kind, charged=charged, phase=phase, vent=vent)
             sizes.add(image.get_size())
     assert len(sizes) == 1, "every pose on one canvas, so the anchor never jumps"
+
+
+def test_tab_to_equip_shows_only_when_the_new_power_found_no_slot(headless_pygame) -> None:
+    from overload.game.view import PixelView
+    from overload.sim.campaign import Campaign
+    from overload.sim.state import Event
+
+    campaign = Campaign(1)
+    view = PixelView(campaign)
+    world = campaign.world
+    world.player.slots = ["spark", "magnet"]  # Magnet filled the last empty slot
+    view.consume(campaign, [Event("unlock", 10, 10, 1, "magnet")])
+    assert view.notice[0] == "MAGNET STOLEN"
+    world.player.slots = ["spark", "magnet"]  # Bulwark found both slots full
+    view.consume(campaign, [Event("unlock", 10, 10, 2, "bulwark")])
+    assert view.notice[0] == "BULWARK STOLEN. TAB TO EQUIP"

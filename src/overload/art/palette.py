@@ -96,7 +96,7 @@ TOKENS = MappingProxyType(
         "px.blink.light": "#B5F6FF",
         "px.burst.light": "#FFB3E1",
         "px.bulwark.light": "#D6F7B8",
-        "px.magnet.light": "#CBD0FF",
+        "px.magnet.light": "#A3ACFF",  # kept off the Surge's halo
         "px.concrete.0": "#1D2129",
         "px.concrete.1": "#2A2F39",
         "px.concrete.2": "#353B47",

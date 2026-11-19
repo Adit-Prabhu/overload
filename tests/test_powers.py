@@ -331,7 +331,7 @@ def test_full_loop_collect_equip_fuse_use(tmp_path) -> None:
     path = tmp_path / "loop.json"
     recording.save(path)
     assert play(Recording.load(path)).state_hash() == recording.final_hash
-    assert recording.final_hash == "1b4c49c234cb0f75", "pinned on Python 3.11 and 3.12"
+    assert recording.final_hash == "c851bd363b995a3a", "pinned on Python 3.11 and 3.12"
 
 
 @pytest.mark.parametrize(
