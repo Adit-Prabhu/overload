@@ -17,10 +17,10 @@ and trig-free.
 from __future__ import annotations
 
 from overload.sim.arena import Arena
-from overload.sim.collision import move_body
+from overload.sim.collision import line_clear, move_body
 from overload.sim.geometry import circles_overlap, length, normalize, segment_distance_sq
 from overload.sim.inputs import InputFrame
-from overload.sim.state import CHARGE_BODY_RADIUS, Device, Event, Projectile, World
+from overload.sim.state import CHARGE_BODY_RADIUS, Decoy, Device, Event, Projectile, World
 from overload.sim.tuning import Tuning
 
 # Eight directions for the Capacitor Armor's ring (exact constants, no runtime trig).
@@ -377,7 +377,7 @@ USE = {
 
 
 def tick(world: World, tuning: Tuning, arena: Arena) -> None:
-    """Lodestones drag, armor runs out, robots shake off their stun."""
+    """Lodestones drag and Capacitor Armor wears out."""
     for shot in world.projectiles:
         if shot.kind == "lodestone":
             for robot in world.hostiles:
@@ -421,6 +421,8 @@ def tick_object(world: World, field: Device, tuning: Tuning, arena: Arena) -> bo
                 tuning.fortress_knock,
                 "fortress",
             )
+    elif field.kind in ("undertow", "rod", "toss"):
+        _tick_blink_and_guard_field(world, field, tuning, arena)
     elif field.kind in ("implosion", "well"):
         well = field.kind == "well"
         reach = tuning.well_radius if well else tuning.implosion_radius
@@ -514,3 +516,315 @@ def _roll_wave(world: World, wave: Device, tuning: Tuning, arena: Arena) -> None
     world.projectiles = kept
     for shot in turned:  # each turned shot flies on as a spark along the wave's path
         _spark(world, shot.x, shot.y, dx, dy, tuning, "reflect")
+
+
+# Second half (spec step 7): Blink + Bulwark, Blink + Magnet, Bulwark + Magnet --------------
+#
+# | Pair (family) | Rare | Epic | Legendary |
+# | Blink + Bulwark (teleport) | Phase Guard | Afterimage | Rewind |
+# | Blink + Magnet (teleport) | Undertow | Grapple | Riptide |
+# | Bulwark + Magnet (pull) | Lightning Rod | Shield Toss | Mirror Field |
+
+
+def _hop(world: World, inp: InputFrame, tuning: Tuning, arena: Arena, power: str):
+    """A Blink toward the cursor. Returns where it took off, or None (rejected, nothing
+    happens)."""
+    from overload.sim.powers import blink_destination
+
+    player = world.player
+    spot = blink_destination(world, inp, tuning, arena)
+    if spot is None:
+        world.events.append(Event("blink_rejected", player.x, player.y, 0, power))
+        return None
+    start = (player.x, player.y)
+    world.events.append(Event("blink_from", *start))
+    player.x, player.y = spot
+    world.events.append(Event("blink_to", *spot))
+    return start
+
+
+def phase_guard(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:
+    """Blink, arriving inside a Bulwark bubble."""
+    if _hop(world, inp, tuning, arena, "phase_guard") is None:
+        return False
+    player = world.player
+    # A teleport must not cancel or extend a shield already raised by another power.
+    if player.shield <= 0:
+        player.shield, player.shield_kind = tuning.bulwark_ticks, "phase_guard"
+    world.events.append(Event("bulwark_up", player.x, player.y, 0, "phase_guard"))
+    return True
+
+
+def afterimage(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:
+    """Blink, leaving a decoy at the take-off point that robots and the Regulator aim at."""
+    start = _hop(world, inp, tuning, arena, "afterimage")
+    if start is None:
+        return False
+    world.decoy = Decoy(start[0], start[1], tuning.decoy_ticks)
+    world.events.append(Event("decoy", *start))
+    return True
+
+
+def rewind(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:  # noqa: ARG001
+    """Snap back to where the Surge stood `rewind_ticks` ago, with the charge it had then.
+    Only to a spot in the room it is in now (a locked room stays locked) and still free:
+    otherwise the oldest such spot since. Rejected when there is none."""
+    from overload.sim import floorplay
+    from overload.sim.powers import _free
+
+    player = world.player
+    here = (player.x, player.y)
+    for x, y, charge in player.history:
+        if floorplay.same_room(arena, here, (x, y)) and _free(
+            world, (x, y), tuning.player_radius, arena
+        ):
+            if (x, y, charge) == (*here, player.charge):
+                break
+            world.events.append(Event("blink_from", *here))
+            player.x, player.y = x, y
+            player.charge = charge
+            world.events.append(Event("blink_to", x, y))
+            world.events.append(Event("rewound", x, y, player.charge))
+            return True
+    world.events.append(Event("blink_rejected", player.x, player.y, 0, "rewind"))
+    return False
+
+
+def undertow(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:
+    """Blink, and the take-off point drags nearby robots into it for a moment."""
+    start = _hop(world, inp, tuning, arena, "undertow")
+    if start is None:
+        return False
+    world.fields.append(Device(world.new_id(), "undertow", *start, *start, tuning.undertow_ticks))
+    world.events.append(Event("undertow", *start))
+    return True
+
+
+def grapple(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:
+    """Grapple along the cursor's ray, stopping in front of the first body or wall."""
+    from overload.sim.fusions import _strike, _targets
+    from overload.sim.powers import _free, knock
+
+    player = world.player
+    ax, ay = player.aim_x, player.aim_y
+    start = (player.x, player.y)
+    limit = min(tuning.grapple_range, length(inp.aim_x - player.x, inp.aim_y - player.y))
+    targets = _targets(world)
+    caught = None
+    reach = 0.0
+    while reach < limit:
+        reach = min(reach + 4.0, limit)
+        point = (start[0] + ax * reach, start[1] + ay * reach)
+        if not _free(world, point, 1.0, arena):
+            break
+        caught = next(
+            (
+                body
+                for body in targets
+                if length(body.x - point[0], body.y - point[1]) <= body.radius
+            ),
+            None,
+        )
+        if caught is not None:
+            break
+    else:
+        world.events.append(Event("blink_rejected", *start, 0, "grapple"))
+        return False
+
+    stop = reach - tuning.player_radius - 3.0
+    while stop > 0:
+        landing = (start[0] + ax * stop, start[1] + ay * stop)
+        if _free(world, landing, tuning.player_radius, arena):
+            break
+        stop -= 2.0
+    if stop <= 0:
+        world.events.append(Event("blink_rejected", *start, 0, "grapple"))
+        return False
+    world.events.append(Event("blink_from", *start))
+    player.x, player.y = landing
+    world.events.append(Event("grapple", *landing))
+    if caught is not None:
+        _strike(world, caught, tuning.grapple_damage)
+        if caught is not world.rival:
+            knock(world, caught, ax, ay, tuning.grapple_knock, arena)
+    return True
+
+
+def riptide(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:
+    """Blink, and every robot near the take-off point is yanked there and stunned."""
+    start = _hop(world, inp, tuning, arena, "riptide")
+    if start is None:
+        return False
+    for robot in world.hostiles:
+        if robot.health > 0 and length(robot.x - start[0], robot.y - start[1]) <= (
+            tuning.riptide_radius
+        ):
+            for _ in range(16):  # in small steps, walls winning
+                _pull(world, robot, *start, 6.0, arena)
+            robot.stun = max(robot.stun, tuning.riptide_stun)
+            world.events.append(Event("hooked", robot.x, robot.y, robot.id))
+    world.events.append(Event("riptide", *start))
+    return True
+
+
+def lightning_rod(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:
+    """A field at the aim point that pulls hostile shots in and eats them."""
+    from overload.sim.powers import place_point
+
+    spot = place_point(world, inp, tuning, arena, tuning.rod_range, tuning.charge_radius)
+    if spot is None:
+        world.events.append(Event("magnet_rejected", world.player.x, world.player.y))
+        return False
+    world.fields.append(Device(world.new_id(), "rod", *spot, *spot, tuning.rod_ticks))
+    world.events.append(Event("rod_planted", *spot))
+    return True
+
+
+def shield_toss(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:  # noqa: ARG001
+    """Throw the shield like a boomerang: out along the aim, then back to the Surge. It eats
+    the hostile shots it touches and knocks the robots it meets."""
+    player = world.player
+    world.fields.append(
+        Device(
+            world.new_id(),
+            "toss",
+            player.x,
+            player.y,
+            player.aim_x,
+            player.aim_y,
+            tuning.toss_out + tuning.toss_back,
+        )
+    )
+    world.events.append(Event("toss", player.x, player.y))
+    return True
+
+
+def mirror_field(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:  # noqa: ARG001
+    """For `mirror_ticks`, hostile shots near the Surge are caught in orbit. Then they fly
+    back at the nearest robots as sparks."""
+    player = world.player
+    player.mirror, player.caught = tuning.mirror_ticks, 0
+    world.events.append(Event("mirror_up", player.x, player.y))
+    return True
+
+
+USE.update(
+    {
+        "phase_guard": phase_guard,
+        "afterimage": afterimage,
+        "rewind": rewind,
+        "undertow": undertow,
+        "grapple": grapple,
+        "riptide": riptide,
+        "lightning_rod": lightning_rod,
+        "shield_toss": shield_toss,
+        "mirror_field": mirror_field,
+    }
+)
+
+
+def record_position(world: World, tuning: Tuning) -> None:
+    """Save the completed tick for Rewind and age the decoy after enemies have aimed."""
+    if world.decoy is not None:
+        world.decoy.ticks -= 1
+        if world.decoy.ticks <= 0:
+            world.decoy = None
+    player = world.player
+    player.history.append((player.x, player.y, player.charge))
+    if len(player.history) > tuning.rewind_ticks:
+        del player.history[0]
+
+
+def catch_mirror_shots(world: World, tuning: Tuning, arena: Arena) -> None:
+    """Catch bolts after they move and fire the orbiting shots back when the field expires."""
+    from overload.sim.fusions import _id, _targets
+
+    player = world.player
+    if player.mirror <= 0:
+        return
+    player.mirror -= 1
+    center = (player.x, player.y)
+    kept = []
+    for shot in world.projectiles:
+        spot = (shot.x, shot.y)
+        if (
+            shot.hostile
+            and player.caught < tuning.mirror_cap
+            and circles_overlap(spot, shot.radius, center, tuning.mirror_radius)
+            and line_clear(world, arena, center, spot)
+        ):
+            player.caught += 1
+            world.events.append(Event("shield_absorb", shot.x, shot.y, shot.id))
+        else:
+            kept.append(shot)
+    world.projectiles = kept
+    if player.mirror > 0:
+        return
+    near = sorted(
+        _targets(world),
+        key=lambda body: (length(body.x - player.x, body.y - player.y), _id(body)),
+    )[:4]
+    for i in range(player.caught):
+        dx, dy = RING[i % len(RING)]
+        if near:
+            target = near[i % len(near)]
+            dx, dy = normalize(target.x - player.x, target.y - player.y)
+        _spark(world, player.x + dx * 8, player.y + dy * 8, dx, dy, tuning, "reflect")
+    if player.caught:
+        world.events.append(Event("mirror_release", player.x, player.y, player.caught))
+        player.caught = 0
+
+
+def _tick_blink_and_guard_field(world: World, field: Device, tuning: Tuning, arena: Arena) -> None:
+    """Undertow drags, the rod eats shots, the tossed shield flies out and back."""
+    from overload.sim.fusions import _id, _strike, _targets
+    from overload.sim.powers import knock
+
+    if field.kind == "undertow":
+        for robot in world.hostiles:
+            if robot.health > 0 and length(robot.x - field.x, robot.y - field.y) <= (
+                tuning.undertow_radius
+            ):
+                _pull(world, robot, field.x, field.y, tuning.undertow_pull, arena)
+    elif field.kind == "rod":
+        kept = []
+        for shot in world.projectiles:
+            distance = length(field.x - shot.x, field.y - shot.y)
+            if (
+                shot.hostile
+                and distance <= tuning.rod_radius
+                and line_clear(world, arena, (shot.x, shot.y), (field.x, field.y))
+            ):
+                if distance <= 8.0:
+                    world.events.append(Event("shield_absorb", shot.x, shot.y, shot.id))
+                    continue
+                _pull(world, shot, field.x, field.y, tuning.rod_pull, arena)
+            kept.append(shot)
+        world.projectiles = kept
+    elif field.kind == "toss":
+        player = world.player
+        returning = field.timer < tuning.toss_back
+        if returning:
+            dx, dy = normalize(player.x - field.x, player.y - field.y)
+            if field.timer == tuning.toss_back - 1:
+                field.hit = []  # it strikes again on the way back
+        else:
+            dx, dy = field.tx, field.ty
+        field.x, field.y = move_body(
+            field.x, field.y, dx * tuning.toss_speed, dy * tuning.toss_speed, 2.0, arena, world
+        )
+        _soak(world, field.x, field.y, tuning.toss_radius)
+        for body in _targets(world):
+            body_id = _id(body)
+            if body_id in field.hit or not circles_overlap(
+                (body.x, body.y), body.radius, (field.x, field.y), tuning.toss_radius
+            ):
+                continue
+            if not line_clear(world, arena, (field.x, field.y), (body.x, body.y)):
+                continue
+            field.hit.append(body_id)
+            _strike(world, body, tuning.toss_damage)
+            if body is not world.rival:
+                knock(world, body, dx, dy, tuning.toss_knock, arena)
+        if returning and length(player.x - field.x, player.y - field.y) <= 6.0:
+            field.timer = 0  # caught

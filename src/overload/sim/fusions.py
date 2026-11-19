@@ -49,6 +49,9 @@ INHERITS = {
     frozenset(("spark", "magnet")): (),
     frozenset(("burst", "bulwark")): (),
     frozenset(("burst", "magnet")): (),
+    frozenset(("blink", "bulwark")): (),
+    frozenset(("blink", "magnet")): (),
+    frozenset(("bulwark", "magnet")): (),
 }
 
 

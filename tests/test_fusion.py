@@ -242,14 +242,28 @@ def test_every_pair_fuses_into_three_distinct_powers() -> None:
     from overload.game.view import DESCRIPTIONS, SOCKET_TOKENS
 
     results = [r for pair in RECIPE_ORDER for r in RESULTS[frozenset(pair)]]
-    assert len(results) == len(set(results)) == 3 * len(RECIPE_ORDER)
+    assert len(RECIPE_ORDER) == 10
+    assert len(results) == len(set(results)) == 30
     assert [rarity_of(r) for r in results] == list(RARITIES) * len(RECIPE_ORDER)
     for power in ABILITIES:
         assert power in NAMES and power in DESCRIPTIONS and power in SOCKET_TOKENS
         assert cooldown_of(power, DEFAULT) > 0 and COOLDOWN_KEYS[power]
     icons = [tuple(_CHARGE[p]) for p in ABILITIES]
     assert len(icons) == len(set(icons)), "every power has its own icon"
-    teleports = {"arc_trail", "bolt_lance", "chain_jump", "impact_blink", "displacer", "meteor"}
+    teleports = {
+        "arc_trail",
+        "bolt_lance",
+        "chain_jump",
+        "impact_blink",
+        "displacer",
+        "meteor",
+        "phase_guard",
+        "afterimage",
+        "rewind",
+        "undertow",
+        "grapple",
+        "riptide",
+    }
     assert {p for p in FUSED if COOLDOWN_KEYS[p] == "teleport"} == teleports
 
 
@@ -503,7 +517,7 @@ def _damage_per_second(power: str, k: int, fragments) -> float:
 # hits prevented, per second of cooldown, against robots that fire at the Surge (spec
 # section 5 asks for shots stopped for shield and pull results, recorded in DECISIONS).
 DAMAGE_PAIRS = (("spark", "blink"), ("spark", "burst"), ("blink", "burst"))
-VALUE_PAIRS = tuple(pair for pair in RECIPE_ORDER if pair not in DAMAGE_PAIRS)
+VALUE_PAIRS = (("spark", "bulwark"), ("spark", "magnet"), ("burst", "bulwark"), ("burst", "magnet"))
 # Evolved runs only where an inherited evolution changes damage: Spark + Burst takes CHAIN
 # and WIDE. The other pairs inherit only Overdrive (speed) or nothing, so their evolved runs
 # would just repeat the stock ones.

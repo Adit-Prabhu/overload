@@ -311,6 +311,39 @@ class Tuning:
     well_pull: float = 1.2
     well_blast: float = 40.0
     well_damage: int = 6
+    # Blink pairs and Bulwark + Magnet (docs/POWERS_AND_FUSION.md section 5).
+    phase_guard_cooldown: int = 150
+    afterimage_cooldown: int = 280
+    decoy_ticks: int = 120
+    rewind_cooldown: int = 390
+    rewind_ticks: int = 120
+    undertow_cooldown: int = 150
+    undertow_ticks: int = 60
+    undertow_radius: float = 44.0
+    undertow_pull: float = 1.2
+    grapple_cooldown: int = 165
+    grapple_range: float = 96.0
+    grapple_damage: int = 3
+    grapple_knock: float = 14.0
+    riptide_cooldown: int = 270
+    riptide_radius: float = 90.0
+    riptide_stun: int = 60
+    lightning_rod_cooldown: int = 340
+    rod_range: float = 72.0
+    rod_radius: float = 40.0
+    rod_ticks: int = 60
+    rod_pull: float = 2.4
+    shield_toss_cooldown: int = 110
+    toss_out: int = 16
+    toss_back: int = 28
+    toss_speed: float = 4.0
+    toss_radius: float = 13.0
+    toss_damage: int = 3
+    toss_knock: float = 12.0
+    mirror_field_cooldown: int = 405
+    mirror_ticks: int = 180
+    mirror_radius: float = 26.0
+    mirror_cap: int = 8
     signature_quiet: int = 66  # the protocol rests this long after a signature (a quake's run)
 
     # Rooms (overhaul): robots warp in after a visible marker, secret walls crack open.
@@ -439,6 +472,41 @@ class Tuning:
         )
         if any(getattr(self, name) < 1 for name in timers + ("fortress_interval", "hook_stun")):
             raise ValueError("Fused power timers and counts must be positive")
+        steps = (self.undertow_pull, self.rod_pull, self.toss_speed)
+        if not all(0 < step < THINNEST_OBSTACLE for step in steps):
+            raise ValueError("Field pull and shield travel steps must respect walls")
+        if not all(
+            0 < knock / 2 < THINNEST_OBSTACLE
+            for knock in (
+                self.grapple_knock,
+                self.toss_knock,
+            )
+        ):
+            raise ValueError("Grapple and Shield Toss knockback must respect walls")
+        timers = (
+            self.decoy_ticks,
+            self.rewind_ticks,
+            self.undertow_ticks,
+            self.riptide_stun,
+            self.rod_ticks,
+            self.toss_out,
+            self.toss_back,
+            self.mirror_ticks,
+            self.mirror_cap,
+        )
+        if any(value < 1 for value in timers):
+            raise ValueError("Blink and Bulwark fusion timers and counts must be positive")
+        radii = (
+            self.undertow_radius,
+            self.grapple_range,
+            self.riptide_radius,
+            self.rod_range,
+            self.rod_radius,
+            self.toss_radius,
+            self.mirror_radius,
+        )
+        if any(radius <= 0 for radius in radii):
+            raise ValueError("Blink and Bulwark fusion ranges must be positive")
         if self.dodge_speed >= self.player_radius:
             raise ValueError("Dodge speed must stay below the player radius to avoid tunneling")
 

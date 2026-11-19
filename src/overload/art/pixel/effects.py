@@ -282,6 +282,15 @@ _CHARGE = {
         ".N...N.",
         "..NNN..",
     ],
+    "phase_guard": ["..BBB..", ".BKKKB.", "B.K.K.B", "B..k..B", ".BK.KB.", "..BKB..", "...B..."],
+    "afterimage": ["..KK...", "..KKN..", ".KKNNN.", "..K.N..", ".K.K.N.", "K...N.N", "......."],
+    "rewind": ["..kkk..", ".k...k.", "kB.K..k", "BB.KK.k", ".B...k.", "..kkkk.", "......."],
+    "undertow": ["K.....K", ".KN.NK.", "..KNK..", "N..k..N", ".N...N.", "..N.N..", "...N..."],
+    "grapple": ["....NN.", "...N..N", "..N..NN", ".K...N.", "K......", "k......", "......."],
+    "riptide": ["N.....N", ".Nn.nN.", "..KKK..", "nKK.KKn", "..KKK..", ".Nn.nN.", "N.....N"],
+    "lightning_rod": ["...N...", ".N.B.N.", "N..b..N", "...B...", ".n.B.n.", "..BBB..", "NNNNNNN"],
+    "shield_toss": [".....BB", "...BB.B", "NNB.N.B", ".NB.BB.", "..BB...", "NN.....", ".N....."],
+    "mirror_field": ["b..N..b", ".N...N.", "..BbB..", "N.B.B.N", "..BBB..", ".N...N.", "b..N..b"],
 }
 _DIAMOND = [
     "..k..",
@@ -474,8 +483,15 @@ def burst_cone(
         pygame.draw.lines(surface, rgb("px.burst.light"), False, points, 1)
 
 
-def chain_bolt(target: pygame.Surface, light: pygame.Surface, a: Point, b: Point) -> None:
-    """An evolved Spark arcing from one robot to the next: a jagged yellow line."""
+def chain_bolt(
+    target: pygame.Surface, light: pygame.Surface, a: Point, b: Point, cable: bool = False
+) -> None:
+    """A jagged Spark arc or a taut Grapple cable."""
+    if cable:
+        for surface in (target, light):
+            pygame.draw.line(surface, rgb("power.magnet"), a, b, 3)
+            pygame.draw.line(surface, rgb("px.blink.light"), a, b, 1)
+        return
     dx, dy = b[0] - a[0], b[1] - a[1]
     distance = math.hypot(dx, dy) or 1.0
     nx, ny = -dy / distance, dx / distance
@@ -683,15 +699,20 @@ def ghost(target: pygame.Surface, image: pygame.Surface, top_left: Point, alpha:
 
 
 def blast_ring(
-    target: pygame.Surface, light: pygame.Surface, pos: Point, radius: float, life: float
+    target: pygame.Surface,
+    light: pygame.Surface,
+    pos: Point,
+    radius: float,
+    life: float,
+    power: str = "burst",
 ) -> None:
-    """A ring blast (Impact Blink, Displacer, Shock Mine, Meteor): a magenta ring that runs
+    """A ring blast (Impact Blink, Displacer, Shock Mine, Meteor): a ring that runs
     out to the blast's edge as `life` falls from 1 to 0."""
     r = max(2, round(radius * (1.0 - 0.7 * life)))
     center = (round(pos[0]), round(pos[1]))
     for surface in (target, light):
-        pygame.draw.circle(surface, rgb("power.burst"), center, r, 2)
-        pygame.draw.circle(surface, rgb("px.burst.light"), center, max(1, r - 3), 1)
+        pygame.draw.circle(surface, rgb(f"power.{power}"), center, r, 2)
+        pygame.draw.circle(surface, rgb(f"px.{power}.light"), center, max(1, r - 3), 1)
 
 
 def mine(target: pygame.Surface, light: pygame.Surface, pos: Point, fuse: float) -> None:
@@ -1040,3 +1061,20 @@ def gravity_well(
         r = 12 + i * 7
         a = tick * 0.075 + i * 2.09
         pygame.draw.arc(target, rgb("power.burst"), (x - r, y - r, r * 2, r * 2), a, a + 1.4)
+
+
+def fusion_orbit(
+    target: pygame.Surface, light: pygame.Surface, pos: Point, radius: float, tick: int, count: int
+) -> None:
+    """The Mirror Field's broken indigo ring and the bolts orbiting within it."""
+    x, y = (round(c) for c in pos)
+    r = max(2, round(radius))
+    for i in range(4):
+        a = tick * 0.035 + i * math.pi / 2
+        pygame.draw.arc(target, rgb("power.magnet"), (x - r, y - r, 2 * r, 2 * r), a, a + 0.9)
+    for i in range(count):
+        a = tick * 0.12 + math.tau * i / count
+        px, py = round(x + math.cos(a) * r * 0.65), round(y + math.sin(a) * r * 0.65)
+        points = [(px, py - 2), (px + 2, py), (px, py + 2), (px - 2, py)]
+        for surface in (target, light):
+            pygame.draw.polygon(surface, rgb("px.bulwark.light"), points)

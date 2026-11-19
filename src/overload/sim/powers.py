@@ -46,6 +46,9 @@ RECIPE_ORDER = (
     ("spark", "magnet"),
     ("burst", "bulwark"),
     ("burst", "magnet"),
+    ("blink", "bulwark"),
+    ("blink", "magnet"),
+    ("bulwark", "magnet"),
 )
 RESULTS = {
     frozenset(("spark", "blink")): ("arc_trail", "bolt_lance", "chain_jump"),
@@ -55,6 +58,9 @@ RESULTS = {
     frozenset(("spark", "magnet")): ("lodestone", "ion_hook", "magrail"),
     frozenset(("burst", "bulwark")): ("bastion", "reflector_wave", "fortress"),
     frozenset(("burst", "magnet")): ("vortex_cone", "implosion", "gravity_well"),
+    frozenset(("blink", "bulwark")): ("phase_guard", "afterimage", "rewind"),
+    frozenset(("blink", "magnet")): ("undertow", "grapple", "riptide"),
+    frozenset(("bulwark", "magnet")): ("lightning_rod", "shield_toss", "mirror_field"),
 }
 # Every fused power: its ingredients and its rarity.
 FUSED = {
@@ -91,6 +97,15 @@ NAMES = {
     "vortex_cone": "VORTEX CONE",
     "implosion": "IMPLOSION",
     "gravity_well": "GRAVITY WELL",
+    "phase_guard": "PHASE GUARD",
+    "afterimage": "AFTERIMAGE",
+    "rewind": "REWIND",
+    "undertow": "UNDERTOW",
+    "grapple": "GRAPPLE",
+    "riptide": "RIPTIDE",
+    "lightning_rod": "LIGHTNING ROD",
+    "shield_toss": "SHIELD TOSS",
+    "mirror_field": "MIRROR FIELD",
 }
 DROPS = {
     "drone": "spark",
@@ -130,6 +145,15 @@ COOLDOWN_KEYS = {
     "vortex_cone": "pulse",
     "implosion": "pulse",
     "gravity_well": "pulse",
+    "phase_guard": "teleport",
+    "afterimage": "teleport",
+    "rewind": "teleport",
+    "undertow": "teleport",
+    "grapple": "teleport",
+    "riptide": "teleport",
+    "lightning_rod": "pull",
+    "shield_toss": "pull",
+    "mirror_field": "pull",
 }
 # One evolution per base power, unlocked by two more charges after the first (GDD).
 EVOLUTIONS = {

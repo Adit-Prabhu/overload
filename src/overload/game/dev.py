@@ -208,7 +208,9 @@ def skip_sector(campaign) -> str:
     player = world.player
     # Stop anything that would carry the Surge back: a Meteor in the air, a lance, an aura.
     player.leap, player.dodge_ticks, player.lance, player.aura = 0, 0, False, 0
-    player.shield = 0
+    player.shield = player.armor = player.armor_ticks = player.mirror = player.caught = 0
+    player.history.clear()
+    world.decoy = None
     world.fields.clear()
     floor = campaign.arena.floor
     sector = campaign.encounter

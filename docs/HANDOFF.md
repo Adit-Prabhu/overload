@@ -19,11 +19,16 @@ Snapshot of November 19, 2026. For any agent or chat picking up the work. The st
 - Review images: the [nine phase images](art/bosses.png), the [Grid Core victory](art/boss_down.png), the [robot walk cycles](art/robot_walk_cycles.png) and the [roster](art/robot_style_frame.png). The design and its research are in [BOSS_DESIGN.md](BOSS_DESIGN.md). These are headless renders, not playtest evidence.
 - Practice mode (the single arena) still has the legacy Regulator with no kit. Check boss work in the campaign or with `tools/art/boss_review.py`.
 
-## Next steps (spec section 9)
-1. Bulwark (from the Sentry) and Magnet (from the Sweeper) base powers: drops, charge cores, evolutions (REFLECT, CRUSH), effects, sounds, and the slotting banner. Then a bot protocol check that shields do not trivialize projectile protocols.
-2. `config/evidence.json` version 4, which counts power uses by cooldown family (shot, teleport, pulse, shield, pull). Make `config_hash` cover it. Adit then redeploys the Worker and runs the smoke test (docs/DEPLOY.md).
-3. The 21 powers of the Bulwark and Magnet pairs (spec section 5), each its own verb and icon, held to the power step guard. The cut order is whole pairs (section 9).
-4. Balance the full power roster against the new boss kits with the floor bot over 8 seeds, and freeze the Tuning, by Nov 23 (one timeline, recorded in DECISIONS, Nov 19). The boss protocol guard runs three seeds that cover every protocol.
+## Powers and evidence integration
+
+- Bulwark and Magnet landed in #45.
+- #48 brings evidence version 4 to main. Adit then redeploys the Worker and runs the smoke test in [DEPLOY.md](DEPLOY.md).
+- #47 has the first twelve new fusion results. The final nine are on its stacked `feat/fusion-pairs-b` branch. Together they give all ten pairs and thirty results.
+- The dedicated cue pass is still open. Each result currently has a fitting existing cue and a visual twin.
+
+## Next step (spec section 9)
+
+Balance the full roster against the bosses with the floor bot over eight seeds and freeze the Tuning by Nov 23. The boss protocol guard runs three seeds that cover every protocol.
 
 ## Decided Nov 19
 - The playtest seed rule: one seed per participant for both conditions, different seeds across participants.
@@ -52,4 +57,4 @@ Development ends with the steps above. Then, one timeline (DECISIONS, Nov 19):
 - **Dev mode** (`game/dev.py`): it edits the world between ticks and never touches the sim. A dev run makes no rival call and writes no trace or recording, and DEV is always on screen.
 - **Guards**:
   - `tests/test_fusion.py` holds the power step guard: epic at most 1.35 times its rare, legendary at most 1.75, measured as damage per second of cooldown.
-  - The Tuning guards are in `sim/tuning.py`.
+  - The Bulwark + Magnet volley guard and the Blink utility cases are in `tests/test_blink_and_guard_fusions.py`. Tuning guards are in `sim/tuning.py`.

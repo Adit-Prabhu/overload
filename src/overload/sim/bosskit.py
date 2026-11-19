@@ -26,7 +26,7 @@ from overload.sim.bosses import (
 from overload.sim.collision import move_body
 from overload.sim.damage import hurt_player
 from overload.sim.geometry import circles_overlap, length, normalize
-from overload.sim.state import Event, Hazard, Projectile, Rival, Shockwave, Warp, World
+from overload.sim.state import Event, Hazard, Projectile, Rival, Shockwave, Warp, World, target_of
 from overload.sim.tuning import Tuning
 
 COS20 = 0.9396926207859084
@@ -67,7 +67,7 @@ def charging(rival: Rival) -> bool:
 
 
 def lock_aim(rival: Rival, world: World) -> None:
-    player = world.player
+    player = target_of(world)
     dx, dy = normalize(player.x - rival.x, player.y - rival.y)
     rival.aim_x, rival.aim_y = (dx, dy) if (dx or dy) else (1.0, 0.0)
 
@@ -180,7 +180,7 @@ def _begin(world: World, rival: Rival, name: str, tuning: Tuning, arena) -> None
     if name.startswith("live_wire"):
         rival.wires = [turn(rival.aim_x, rival.aim_y, d) for d in WIRES]
     elif name == "volley":
-        p = world.player
+        p = target_of(world)
         s = tuning.volley_spread
         rival.marks = [(p.x, p.y), (p.x - s, p.y + s / 2), (p.x + s, p.y + s / 2)]
     elif name.startswith("lattice"):
@@ -380,7 +380,7 @@ def _lattice(world: World, rival: Rival, tuning: Tuning, arena, parity: int, arm
     if parity == 0:
         world.hazards = [h for h in world.hazards if h.kind != "insulate"]
     size = tuning.lattice_cell
-    player = world.player
+    player = target_of(world)
     cx, cy = int(player.x // size), int(player.y // size)
     for gy in range(cy - tuning.lattice_rows, cy + tuning.lattice_rows + 1):
         for gx in range(cx - tuning.lattice_cols, cx + tuning.lattice_cols + 1):
