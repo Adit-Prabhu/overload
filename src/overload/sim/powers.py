@@ -34,7 +34,7 @@ from overload.sim.inputs import InputFrame
 from overload.sim.state import Charge, Event, Projectile, Trail, World
 from overload.sim.tuning import DEFAULT, Tuning
 
-BASE_POWERS = ("spark", "blink", "burst")
+BASE_POWERS = ("spark", "blink", "burst", "bulwark", "magnet")
 RARITIES = ("rare", "epic", "legendary")
 # Each pair fuses into one of three powers, one per rarity, each its own verb
 # (docs/POWERS_AND_FUSION.md section 5). The order is the order the menu offers the pairs.
@@ -65,8 +65,16 @@ NAMES = {
     "impact_blink": "IMPACT BLINK",
     "displacer": "DISPLACER",
     "meteor": "METEOR",
+    "bulwark": "BULWARK",
+    "magnet": "MAGNET",
 }
-DROPS = {"drone": "spark", "relay": "blink", "breaker": "burst"}
+DROPS = {
+    "drone": "spark",
+    "relay": "blink",
+    "breaker": "burst",
+    "sentry": "bulwark",
+    "sweeper": "magnet",
+}
 SLOTS = 2
 # Every teleport shares one cooldown and every pulse another, so two slots can never chain
 # them into a double jump or a double pulse.
@@ -83,9 +91,17 @@ COOLDOWN_KEYS = {
     "shock_cone": "pulse",
     "shock_mine": "pulse",
     "storm_aura": "pulse",
+    "bulwark": "shield",
+    "magnet": "pull",
 }
 # One evolution per base power, unlocked by two more charges after the first (GDD).
-EVOLUTIONS = {"spark": "CHAIN", "blink": "OVERDRIVE", "burst": "WIDE"}
+EVOLUTIONS = {
+    "spark": "CHAIN",
+    "blink": "OVERDRIVE",
+    "burst": "WIDE",
+    "bulwark": "REFLECT",
+    "magnet": "CRUSH",
+}
 
 
 def cooldown_of(ability: str, tuning: Tuning) -> int:
@@ -207,7 +223,7 @@ def use_powers(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> N
     cooldown or with an empty slot. A power with nothing valid to do (a Blink with nowhere to
     land, a Chain Jump with no robot in reach) is rejected, keeps its cooldown free and does
     not count as a use."""
-    from overload.sim import fusions  # fusions builds on this module's helpers
+    from overload.sim import defenses, fusions  # both build on this module's helpers
 
     player = world.player
     for slot, pressed in enumerate((inp.power_q, inp.power_e)):
@@ -224,6 +240,10 @@ def use_powers(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> N
             used = True
         elif ability in ("blink", "arc_trail"):
             used = _blink(world, inp, tuning, arena, trail=ability == "arc_trail")
+        elif ability == "bulwark":
+            used = defenses.bulwark(world, inp, tuning, arena)
+        elif ability == "magnet":
+            used = defenses.magnet(world, inp, tuning, arena)  # False: nowhere to set it
         else:
             used = fusions.USE[ability](world, inp, tuning, arena)
         if not used:
@@ -350,6 +370,28 @@ def blink_destination(
     while distance >= tuning.blink_min_distance:
         spot = (player.x + ux * distance, player.y + uy * distance)
         if _free(world, spot, tuning.player_radius, arena) and _clear_path(
+            world, (player.x, player.y), spot, arena
+        ):
+            return spot
+        distance -= 4.0
+    return None
+
+
+def place_point(
+    world: World, inp: InputFrame, tuning: Tuning, arena: Arena, reach: float, radius: float
+) -> tuple[float, float] | None:
+    """Where something set at the cursor lands (a Magnet field): as far along the aim as it
+    can, up to the cursor and `reach`, never inside a wall or prop, outside the room or past
+    a wall. None if nowhere is valid."""
+    player = world.player
+    dx, dy = inp.aim_x - player.x, inp.aim_y - player.y
+    ux, uy = normalize(dx, dy)
+    if not (ux or uy):
+        ux, uy = player.aim_x, player.aim_y
+    distance = min(max(length(dx, dy), 4.0), reach)
+    while distance >= 4.0:
+        spot = (player.x + ux * distance, player.y + uy * distance)
+        if _free(world, spot, radius, arena) and _clear_path(
             world, (player.x, player.y), spot, arena
         ):
             return spot

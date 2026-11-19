@@ -49,9 +49,9 @@ BOSSES = {
         48,
         18.0,
         (
-            Phase(("ring", "live_wire"), 270, 1.0),
-            Phase(("double_ring", "live_wire", "volley"), 210, 0.9),
-            Phase(("double_ring", "live_wire_twice", "volley"), 180, 0.8),
+            Phase(("ring", "live_wire"), 300, 1.0),
+            Phase(("double_ring", "live_wire", "volley"), 260, 0.9),
+            Phase(("double_ring", "live_wire_twice", "volley"), 230, 0.8),
         ),
     ),
     2: Boss(
@@ -60,9 +60,9 @@ BOSSES = {
         64,
         22.0,  # the widest chassis: a bigger circle covers its tank and hump
         (
-            Phase(("quake", "charge"), 220, 0.9),
-            Phase(("spray", "double_quake", "charge"), 190, 0.8),
-            Phase(("spray", "double_quake", "charge_twice"), 160, 0.7),
+            Phase(("quake", "charge"), 280, 0.9),
+            Phase(("spray", "double_quake", "charge"), 250, 0.8),
+            Phase(("spray", "double_quake", "charge_twice"), 220, 0.7),
         ),
     ),
     3: Boss(
@@ -71,9 +71,9 @@ BOSSES = {
         80,
         18.0,
         (
-            Phase(("summon", "lattice"), 280, 0.85),
-            Phase(("spiral", "lattice_twice", "summon"), 240, 0.75),
-            Phase(("core_spiral", "lattice_twice"), 210, 0.65),
+            Phase(("summon", "lattice"), 420, 0.85),
+            Phase(("spiral", "lattice_twice", "summon"), 380, 0.75),
+            Phase(("core_spiral", "lattice_twice"), 340, 0.65),
         ),
     ),
 }

@@ -14,6 +14,10 @@ TOKENS = MappingProxyType(
         "power.spark": "#FFD23F",
         "power.blink": "#3DE0FF",
         "power.burst": "#FF4FB4",
+        # Bulwark (yellow green, kept off the rare rarity's mint) and Magnet (indigo, kept off
+        # Blink's cyan). Shapes carry them first: a shield and a horseshoe.
+        "power.bulwark": "#8FE84A",
+        "power.magnet": "#7A86FF",
         "hostile.danger": "#FF3B3B",
         "ui.text": "#E6ECF5",
         "ui.dim": "#7D8AA3",
@@ -91,6 +95,8 @@ TOKENS = MappingProxyType(
         "px.spark.light": "#FFF3A6",
         "px.blink.light": "#B5F6FF",
         "px.burst.light": "#FFB3E1",
+        "px.bulwark.light": "#D6F7B8",
+        "px.magnet.light": "#A3ACFF",  # kept off the Surge's halo
         "px.concrete.0": "#1D2129",
         "px.concrete.1": "#2A2F39",
         "px.concrete.2": "#353B47",

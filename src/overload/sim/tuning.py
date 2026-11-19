@@ -239,6 +239,16 @@ class Tuning:
     lattice_cols: int = 2  # cells each side of the Surge
     lattice_rows: int = 1
     core_spiral_ticks: int = 90
+    # Bulwark (from the Sentry) and Magnet (from the Sweeper), powers spec section 3.
+    bulwark_ticks: int = 45
+    bulwark_radius: float = 14.0  # the Surge's radius (5) plus 9
+    bulwark_cooldown: int = 180  # 150 in the spec: 45 of every 150 ticks left a floor of 0.70
+    magnet_range: float = 72.0
+    magnet_radius: float = 44.0
+    magnet_ticks: int = 30
+    magnet_pull: float = 1.5  # px a tick, under the thinnest obstacle: walls win
+    magnet_cooldown: int = 120
+    magnet_crush_damage: int = 2
     signature_quiet: int = 66  # the protocol rests this long after a signature (a quake's run)
 
     # Rooms (overhaul): robots warp in after a visible marker, secret walls crack open.
@@ -347,6 +357,12 @@ class Tuning:
             raise ValueError("An evolution never shrinks a blast")
         if self.blink_min_distance > self.meteor_range:
             raise ValueError("Meteor range is below the Blink minimum")
+        if self.bulwark_radius <= self.player_radius or self.bulwark_ticks < 1:
+            raise ValueError("The Bulwark bubble must reach past the Surge and last a tick")
+        if self.magnet_pull >= THINNEST_OBSTACLE or self.magnet_pull <= 0:
+            raise ValueError("A Magnet step must be positive and under the thinnest obstacle")
+        if self.magnet_radius <= 0 or self.magnet_range <= 0 or self.magnet_ticks < 1:
+            raise ValueError("Magnet range, radius and duration must be positive")
         if self.dodge_speed >= self.player_radius:
             raise ValueError("Dodge speed must stay below the player radius to avoid tunneling")
 

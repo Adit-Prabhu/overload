@@ -47,6 +47,10 @@ LEGEND = {
     "k": "px.blink.light",
     "U": "power.burst",
     "u": "px.burst.light",
+    "F": "power.bulwark",
+    "f": "px.bulwark.light",
+    "N": "power.magnet",
+    "n": "px.magnet.light",
     "A": "px.led.amber",
     "j": "px.lamp",
     "J": "px.lamp.light",
@@ -298,7 +302,7 @@ def breaker(
 
 # Sweeper ------------------------------------------------------------------------------------
 # A white dome with a red sensor stripe and a striped bumper, scuttling on four spider legs
-# that step in diagonal pairs. Rushes. Carries nothing. While it revs,
+# that step in diagonal pairs. Rushes. Carries Magnet (a horseshoe core). While it revs,
 # its legs dig in and the dome shudders.
 
 SWEEPER_SIZE = (25, 14)
@@ -354,6 +358,7 @@ def sweeper_frame(step: int | None, dig: bool, shudder: int) -> pygame.Surface:
         swing, lift = rig.pose(step, group, _SWEEPER_LEG)
         _sweeper_leg(canvas, hip, hips, out, reach, swing, lift)
     paint(canvas, _sweeper_dome(), 5 + shudder, top)
+    paint(canvas, ["N.N", "NnN"], 10 + shudder, top + 1)  # its Magnet core, a horseshoe
     return render(rows_of(canvas), LEGEND)
 
 
@@ -376,7 +381,7 @@ def sweeper_frames() -> tuple[pygame.Surface, ...]:
 # Sentry -------------------------------------------------------------------------------------
 # A dark armored turret on a planted tripod: a sensor eye that sweeps while it waits, an
 # orange barrel with a cooling shroud, an ammo drum and an amber status light. Long tell,
-# slow shell. Carries nothing. Its barrel kicks back when it fires.
+# slow shell. Carries Bulwark (a shield core). Its barrel kicks back when it fires.
 
 _SENTRY_HEAD = [
     "...dXXXXXXd..",
@@ -407,9 +412,8 @@ def sentry_frame(scan: int = 1, kick: int = 0) -> pygame.Surface:
     paint(canvas, _SENTRY_DRUM, 1, 4)
     paint(canvas, _SENTRY_BARREL, 14 - kick, 3)
     paint(canvas, _SENTRY_HEAD, 3, 0)
-    paint(
-        canvas, ["E"], 6 + scan * 2, 3
-    )  # scan 0 to 3, all inside the visor  # the sensor eye sweeps across the visor
+    paint(canvas, ["E"], 6 + scan * 2, 3)  # the eye sweeps the visor, scan 0 to 3
+    paint(canvas, ["FfF", ".F."], 8, 4)  # its Bulwark core, a shield
     paint(canvas, _SENTRY_BASE, 2, h - len(_SENTRY_BASE))
     return render(rows_of(canvas), LEGEND)
 

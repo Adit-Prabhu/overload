@@ -39,6 +39,7 @@ class Player:
     leap_x1: float = 0.0
     leap_y1: float = 0.0
     aura: int = 0
+    shield: int = 0  # Bulwark: ticks the bubble has left
 
     @property
     def dodging(self) -> bool:
@@ -235,6 +236,7 @@ class World:
     warps: list[Warp] = field(default_factory=list)
     shockwaves: list[Shockwave] = field(default_factory=list)
     devices: list[Device] = field(default_factory=list)
+    fields: list[Device] = field(default_factory=list)  # Magnet fields: (x, y), ticks left
     secret_hits: dict[str, int] = field(default_factory=dict)
     events: list[Event] = field(default_factory=list)
 
@@ -261,6 +263,7 @@ def state_hash(world: World) -> str:
         "charges": [asdict(c) for c in world.charges],
         "trails": [asdict(t) for t in world.trails],
         "devices": [asdict(d) for d in world.devices],
+        "fields": [asdict(f) for f in world.fields],
         "unlocked": world.unlocked,
         "fragments": world.fragments,
         "bank": world.bank,

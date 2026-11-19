@@ -26,7 +26,7 @@ These come from AGENTS.md and the GDD and every part of this spec keeps them.
 | **Bulwark** (new) | Sentry | A shield bubble around the Surge for 45 ticks (0.75 s). Hostile shots that touch it fizzle. It does not stop shockwaves, hazard tiles or bodies | REFLECT: absorbed shots fly back as sparks, reversed along the path they came in on | shield |
 | **Magnet** (new) | Sweeper | A field at the aim point, up to 72 px away. It is placed like a Blink lands: as far along the aim as it can, never inside a prop or behind a wall. With nowhere valid, the use is rejected, keeps its cooldown free and is not counted, as a Blink is. For 30 ticks (0.5 s) it drags robots and loose charges within 44 px toward its center. No damage of its own | CRUSH: robots still in the field when it ends take 2 damage | pull |
 
-Starting tuning, all in `Tuning` with guards: `bulwark_ticks 45`, `bulwark_radius 14.0` (the Surge's radius plus 8, written out because a dataclass default cannot refer to another field), `bulwark_cooldown 150`, `magnet_range 72`, `magnet_radius 44`, `magnet_ticks 30`, `magnet_pull 1.5` px per tick (each step under the thinnest obstacle, walls win), `magnet_cooldown 120`, `magnet_crush_damage 2`.
+Starting tuning, all in `Tuning` with guards: `bulwark_ticks 45`, `bulwark_radius 14.0` (the Surge's radius plus 9, written out because a dataclass default cannot refer to another field), `bulwark_cooldown 150` (180 as built, see DECISIONS Nov 19), `magnet_range 72`, `magnet_radius 44`, `magnet_ticks 30`, `magnet_pull 1.5` px per tick (each step under the thinnest obstacle, walls win), `magnet_cooldown 120`, `magnet_crush_damage 2`.
 
 **Fusions inherit evolutions.** Every power of a pair inherits the evolutions its rare inherits, as Shock Cone's sparks chain and Arc Trail gets Overdrive today:
 - Spark + Blink and Blink + Burst take Overdrive.
@@ -198,7 +198,7 @@ The work is split so the playtest on Nov 25 plays a complete system on the three
 | 2 | The roll system: bank, cost, odds, guarantee, roll stream, retries, trace, seed in the trace (PR #31). Its attached epics and legendaries are placeholders, replaced in step 3 | Nov 17–18 | 3 |
 | 3 | The six unique epics and legendaries of Spark + Blink and Spark + Burst, plus Blink + Burst's three, with icons, effects and cues | Nov 18–20 | 6 |
 | 4 | The menu hub, LOADOUT, FUSE with the spin and reveal, CONTROLS, HUD marks | Nov 19–21 | 5 |
-| 5 | Bulwark and Magnet: drops, charge cores, evolutions, effects, sounds, slotting banner | Nov 21–22 | 4 |
+| 5 | Bulwark and Magnet: drops, charge cores, evolutions, effects, sounds, slotting banner (built Nov 19) | Nov 21–22 | 4 |
 | 6 | Evidence version 4 and `config_hash` covering it. Adit redeploys and runs the smoke test | Nov 22 | 1.5 |
 | 7 | The Bulwark and Magnet pairs, 21 powers in two PRs | Nov 22–24 | 8 |
 | 8 | Balance with the bot and the protocol check, numbers in the PR | Nov 26–27 | 2 |

@@ -283,8 +283,16 @@ def test_robots_never_use_power_colors_except_their_core(headless_pygame) -> Non
         "spark": {rgb("power.spark"), rgb("px.spark.light")},
         "blink": {rgb("power.blink"), rgb("px.blink.light")},
         "burst": {rgb("power.burst"), rgb("px.burst.light")},
+        "bulwark": {rgb("power.bulwark"), rgb("px.bulwark.light")},
+        "magnet": {rgb("power.magnet"), rgb("px.magnet.light")},
     }
-    carries = {"drone": "spark", "relay": "blink", "breaker": "burst"}
+    carries = {
+        "drone": "spark",
+        "relay": "blink",
+        "breaker": "burst",
+        "sentry": "bulwark",
+        "sweeper": "magnet",
+    }
     every_power = set().union(*power.values())
     for name, frames in _robot_frames(robots).items():
         allowed = power.get(carries.get(name, ""), set())
@@ -993,3 +1001,19 @@ def test_every_chassis_pose_renders(headless_pygame) -> None:
             image = regulators.body(kind, charged=charged, phase=phase, vent=vent)
             sizes.add(image.get_size())
     assert len(sizes) == 1, "every pose on one canvas, so the anchor never jumps"
+
+
+def test_tab_to_equip_shows_only_when_the_new_power_found_no_slot(headless_pygame) -> None:
+    from overload.game.view import PixelView
+    from overload.sim.campaign import Campaign
+    from overload.sim.state import Event
+
+    campaign = Campaign(1)
+    view = PixelView(campaign)
+    world = campaign.world
+    world.player.slots = ["spark", "magnet"]  # Magnet filled the last empty slot
+    view.consume(campaign, [Event("unlock", 10, 10, 1, "magnet")])
+    assert view.notice[0] == "MAGNET STOLEN"
+    world.player.slots = ["spark", "magnet"]  # Bulwark found both slots full
+    view.consume(campaign, [Event("unlock", 10, 10, 2, "bulwark")])
+    assert view.notice[0] == "BULWARK STOLEN. TAB TO EQUIP"

@@ -50,6 +50,8 @@ SURGE_FEET = 8  # sprite feet sit this many pixels below the body center
 SOCKET_TOKENS = {
     "spark": "spark",
     "blink": "blink",
+    "bulwark": "bulwark",
+    "magnet": "magnet",
     "burst": "burst",
     "arc_trail": "spark",
     "bolt_lance": "spark",
@@ -64,6 +66,8 @@ SOCKET_TOKENS = {
 DESCRIPTIONS = {
     "spark": "A HEAVY BOLT. TWO MORE CHARGES EVOLVE IT",
     "blink": "TELEPORT TOWARD THE CURSOR",
+    "bulwark": "A SHIELD BUBBLE THAT EATS SHOTS",
+    "magnet": "A FIELD AT THE AIM THAT DRAGS ROBOTS IN",
     "burst": "KNOCKBACK CONE THAT WIPES SHOTS",
     "arc_trail": "A BLINK THAT LEAVES A SHOCK LINE",
     "bolt_lance": "DASH AS A BOLT, STRIKING ALL YOU PASS",
@@ -79,10 +83,18 @@ EVOLVED_INFO = {
     "spark": "EVOLVED. HITS CHAIN TO A SECOND ROBOT",
     "blink": "EVOLVED. A BURST OF SPEED ON ARRIVAL",
     "burst": "EVOLVED. A WIDER, LONGER CONE",
+    "bulwark": "EVOLVED. EATEN SHOTS FLY BACK AS SPARKS",
+    "magnet": "EVOLVED. ROBOTS LEFT INSIDE ARE CRUSHED",
 }
 RIVAL_FEET = regulators_art.FEET  # per chassis: feet below the body center
 ROBOT_FEET = {"drone": 9, "relay": 10, "breaker": 12, "sweeper": 7, "sentry": 8}
-CORE_GLOW = {"drone": "power.spark", "relay": "power.blink", "breaker": "power.burst"}
+CORE_GLOW = {
+    "drone": "power.spark",
+    "relay": "power.blink",
+    "breaker": "power.burst",
+    "sentry": "power.bulwark",
+    "sweeper": "power.magnet",
+}
 SHOT_ART = {
     "shard": robots_art.shard,
     "shell": robots_art.shell,
@@ -544,6 +556,7 @@ class PixelView:
 
     def consume(self, run: Run | Campaign, events: list[Event]) -> None:
         stolen: list[str] = []
+        stolen_ids: list[str] = []
         chain_start = None
         for event in events:
             if event.kind == "shot":
@@ -581,6 +594,20 @@ class PixelView:
             elif event.kind == "blink_to":
                 self.blinks.append((event.x, event.y, 10))
                 self._burst(event.x, event.y, 8, "px.blink.light", 1.4)
+            elif event.kind == "bulwark_up":
+                self._burst(event.x, event.y, 10, "power.bulwark", 1.2)
+            elif event.kind == "shield_absorb":
+                self._burst(event.x, event.y, 4, "px.bulwark.light", 1.0)
+            elif event.kind == "shield_reflect":
+                self._burst(event.x, event.y, 3, "power.spark", 1.4)
+            elif event.kind == "magnet_field":
+                self._burst(event.x, event.y, 8, "power.magnet", 1.0)
+            elif event.kind == "magnet_end" and event.ref:
+                self._burst(event.x, event.y, 16, "px.magnet.light", 1.8)
+                self.shake = max(self.shake, 4)
+            elif event.kind == "magnet_rejected":
+                self._burst(event.x, event.y, 4, "ui.dim", 0.6)
+                self.toast("NO ROOM FOR A FIELD", 40)
             elif event.kind == "blink_rejected":
                 self._burst(event.x, event.y, 4, "ui.dim", 0.6)
                 self.toast(REJECTED.get(event.power, "NO ROOM TO BLINK"), 40)
@@ -588,6 +615,7 @@ class PixelView:
                 self._burst(event.x, event.y, 24, f"power.{event.power}", 2.2)
                 self.unlock_flash = 12
                 stolen.append(NAMES.get(event.power, event.power.upper()))
+                stolen_ids.append(event.power)
             elif event.kind == "absorb":
                 self._burst(event.x, event.y, 10, f"power.{event.power}", 1.4)
             elif event.kind == "burst":
@@ -664,7 +692,11 @@ class PixelView:
             elif event.kind == "fizzle":
                 self._burst(event.x, event.y, 2, "px.bot.3", 0.6)
         if stolen:
-            self.toast(" AND ".join(stolen) + " STOLEN", 120)
+            # A power that found no empty slot waits in the loadout (powers spec section 3).
+            slots = run.world.player.slots
+            waiting = "" not in slots and any(power not in slots for power in stolen_ids)
+            hint = ". TAB TO EQUIP" if waiting else ""
+            self.toast(" AND ".join(stolen) + " STOLEN" + hint, 150 if waiting else 120)
         player = run.world.player
         moved = math.dist(self.last_player, (player.x, player.y)) > 0.1
         self.walking = self.walking + 1 if moved else 0
@@ -897,6 +929,15 @@ class PixelView:
                 v(trail.x2, trail.y2),
                 trail.ttl / tuning.trail_ttl,
             )
+        for field in world.fields:  # Magnet fields
+            effects.magnet_field(
+                screen,
+                self.glow.layer,
+                v(field.x, field.y),
+                tuning.magnet_radius,
+                field.timer / tuning.magnet_ticks,
+                tick,
+            )
         for device in world.devices:  # Shock Mines
             fuse = device.timer / tuning.shock_mine_fuse if device.timer >= 0 else -1.0
             effects.mine(screen, self.glow.layer, v(device.x, device.y), fuse)
@@ -1038,6 +1079,15 @@ class PixelView:
                 self.lance_from = None
             if player.aura > 0:
                 effects.aura(screen, self.glow.layer, v(player.x, player.y), tick)
+            if player.shield > 0:
+                effects.bubble(
+                    screen,
+                    self.glow.layer,
+                    v(player.x, player.y),
+                    tuning.bulwark_radius,
+                    player.shield / tuning.bulwark_ticks,
+                    tick,
+                )
             hand = v(*aiming.hand(player, tuning))
             hand = (hand[0], hand[1] - lift)  # the caster rises with a Meteor
             caster = pygame.transform.rotate(actors.caster(), -math.degrees(aim))
@@ -1113,7 +1163,7 @@ class PixelView:
                     surface.blit(image, image.get_rect(center=center))
             elif shot.hostile:
                 effects.bolt(screen, self.glow.layer, v(shot.x, shot.y))
-            elif shot.kind == "spark":
+            elif shot.kind in ("spark", "reflect"):
                 effects.spark_shot(
                     screen, self.glow.layer, v(shot.x, shot.y), math.atan2(shot.vy, shot.vx)
                 )
