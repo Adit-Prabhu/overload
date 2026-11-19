@@ -1,16 +1,16 @@
 {
-  "version": 3,
-  "note": "The only observation kinds the rival may receive. Evidence IDs are e<encounter>.<kind>. The service writes these labels into the prompt itself, so no client text reaches the model.",
+  "version": 4,
+  "note": "The only observation kinds the rival may receive. Evidence IDs are e<encounter>.<kind>. The service writes these labels into the prompt itself, so no client text reaches the model. Version 4 counts power uses by cooldown family, never by power or rarity (docs/POWERS_AND_FUSION.md section 6).",
   "kinds": {
     "far_share": "share of the fight the Surge spent far away",
     "mid_share": "share of the fight at middle range",
     "near_share": "share of the fight the Surge spent close",
     "shots_per_minute": "shots fired per minute",
     "dodges": "dodges used",
-    "spark_uses": "Spark power shots used",
-    "blink_uses": "Blink teleports used",
-    "arc_trail_uses": "Arc Trail teleports used",
-    "burst_uses": "Burst shockwaves used",
-    "shock_cone_uses": "Shock Cone blasts used"
+    "shot_power_uses": "Spark-type shots used",
+    "teleport_uses": "Teleports used",
+    "pulse_uses": "Pulse blasts used",
+    "shield_uses": "Shields raised",
+    "pull_uses": "Pull fields used"
   }
 }

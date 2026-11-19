@@ -119,7 +119,7 @@ An epic must beat its rare and stay at or under 1.35 times it. A legendary must 
 
 Distance shares, shots per minute and dodges stay. Uses count only when the power actually fires on screen (version 3 rule). Rarity is never sent. The tactic catalogue (pressure, spacing, lateral) does not change.
 
-This needs a Worker redeploy from main and one live smoke run, both by Adit (docs/DEPLOY.md). Until the redeploy, live requests carrying version 4 kinds fall back to the neutral tactic, labelled as fallback, as with version 3. The trace's `config_hash` does not cover `config/evidence.json` today. Step 8 adds it, so traces from the two versions can be told apart.
+This needs a Worker redeploy from main and one live smoke run, both by Adit (docs/DEPLOY.md). Until the redeploy, live requests carrying version 4 kinds fall back to the neutral tactic, labelled as fallback, as with version 3. Since step 6 (Nov 19) the trace's `config_hash` covers `config/evidence.json`, so traces from the two versions can be told apart.
 
 ## 7. The menu and the Fuse screen
 Adit, Nov 17, on the interim menu: "its too convoluted... all i do is press f and dont really know which one is fusing", "make it so when i click tab, i see many options and one of those is fuse and then in fuse i can go and do the rolls". The loadout and fusion stop sharing one panel. The structure follows the pause menus of action games like Hades and Dead Cells: a short list of sections, each a full screen with one job.
@@ -199,7 +199,7 @@ The work is split so the playtest on Nov 25 plays a complete system on the three
 | 3 | The six unique epics and legendaries of Spark + Blink and Spark + Burst, plus Blink + Burst's three, with icons, effects and cues | Nov 18–20 | 6 |
 | 4 | The menu hub, LOADOUT, FUSE with the spin and reveal, CONTROLS, HUD marks | Nov 19–21 | 5 |
 | 5 | Bulwark and Magnet: drops, charge cores, evolutions, effects, sounds, slotting banner (built Nov 19) | Nov 21–22 | 4 |
-| 6 | Evidence version 4 and `config_hash` covering it. Adit redeploys and runs the smoke test | Nov 22 | 1.5 |
+| 6 | Evidence version 4 and `config_hash` covering it (built Nov 19). Adit redeploys and runs the smoke test | Nov 22 | 1.5 |
 | 7 | The Bulwark and Magnet pairs, 21 powers in two PRs | Nov 22–24 | 8 |
 | 8 | Balance with the bot and the protocol check, numbers in the PR | Nov 26–27 | 2 |
 

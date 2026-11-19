@@ -391,8 +391,8 @@ def test_power_uses_are_counted_only_when_seen() -> None:
     )  # Blink on cooldown: nothing happens, nothing counted
     observe_world(log, world)
     values = {item["id"]: item["value"] for item in log.summary("lateral")["items"]}
-    assert values["e2.spark_uses"] == 1 and values["e2.blink_uses"] == 1
-    assert values["e2.arc_trail_uses"] == 0
+    assert values["e2.shot_power_uses"] == 1 and values["e2.teleport_uses"] == 1
+    assert values["e2.pulse_uses"] == 0
 
 
 def test_powers_that_do_not_happen_are_never_observed() -> None:
@@ -418,7 +418,7 @@ def test_powers_that_do_not_happen_are_never_observed() -> None:
         observe_world(log, world)
         assert log.ticks == 1, "the fight was observed, so a zero below means nothing was seen"
         values = {item["id"]: item["value"] for item in log.summary("lateral")["items"]}
-        kinds = ("spark", "blink", "arc_trail", "burst", "shock_cone")
+        kinds = ("shot_power", "teleport", "pulse", "shield", "pull")
         assert [values[f"e2.{kind}_uses"] for kind in kinds] == [0] * len(kinds), case
 
 
@@ -426,7 +426,7 @@ def test_a_rejected_blink_is_not_observed() -> None:
     log = ObservationLog(1)
     log.observe((0.0, 0.0), (100.0, 0.0), ["blink_rejected"])
     values = {item["id"]: item["value"] for item in log.summary("lateral")["items"]}
-    assert values["e1.blink_uses"] == 0
+    assert values["e1.teleport_uses"] == 0
 
 
 def test_trace_records_decisions_without_identity(tmp_path) -> None:
@@ -441,10 +441,19 @@ def test_trace_records_decisions_without_identity(tmp_path) -> None:
     assert not {"name", "email", "player"} & set(record)
 
 
-@pytest.mark.parametrize("power", ["burst", "shock_cone"])
-def test_burst_and_shock_cone_uses_are_observed(power) -> None:
-    """Each Burst or Shock Cone the Surge actually fires is counted, the same as the other
-    powers. A press on cooldown shows nothing and counts nothing."""
+@pytest.mark.parametrize(
+    "power, kind",
+    [
+        ("burst", "pulse_uses"),
+        ("shock_cone", "pulse_uses"),
+        ("bulwark", "shield_uses"),
+        ("magnet", "pull_uses"),
+    ],
+)
+def test_each_power_counts_toward_its_family(power, kind) -> None:
+    """Evidence version 4: each power the Surge actually uses counts toward its cooldown
+    family, never its own name or rarity. A press on cooldown shows nothing and counts
+    nothing."""
     from overload.sim.campaign import encounter_world
     from overload.sim.powers import Kit
     from overload.sim.world import step
@@ -457,7 +466,44 @@ def test_burst_and_shock_cone_uses_are_observed(power) -> None:
         step(world, InputFrame(**aim, power_q=True))
         observe_world(log, world)
     values = {item["id"]: item["value"] for item in log.summary("lateral")["items"]}
-    assert values[f"e2.{power}_uses"] == 1
-    others = {"spark_uses", "blink_uses", "arc_trail_uses", "burst_uses", "shock_cone_uses"}
-    for kind in others - {f"{power}_uses"}:
-        assert values[f"e2.{kind}"] == 0
+    assert values[f"e2.{kind}"] == 1
+    families = {"shot_power_uses", "teleport_uses", "pulse_uses", "shield_uses", "pull_uses"}
+    for other in families - {kind}:
+        assert values[f"e2.{other}"] == 0
+
+
+def test_every_power_has_a_family_and_rarity_never_shows() -> None:
+    """Every ability, base or fused, counts toward one of the five family kinds, and the
+    three rarities of a pair count toward the same kind, so the summary never tells which
+    one the Surge rolled (powers spec section 6)."""
+    from overload.agent.observations import FAMILY_KINDS, evidence_labels
+    from overload.sim.powers import ABILITIES, COOLDOWN_KEYS, RESULTS
+
+    for ability in ABILITIES:
+        assert FAMILY_KINDS[COOLDOWN_KEYS[ability]] in evidence_labels(), ability
+    for results in RESULTS.values():
+        assert len({COOLDOWN_KEYS[r] for r in results}) == 1
+    assert len(evidence_labels()) <= 12, "under the Worker's summary item cap"
+
+
+def test_the_config_hash_covers_the_evidence_kinds() -> None:
+    import hashlib
+
+    from overload.agent.observations import EVIDENCE_PATH
+    from overload.agent.tactics import CATALOGUE_PATH, SCHEDULES_PATH
+    from overload.session.trace import config_hash
+
+    digest = hashlib.sha256()
+    for path in (CATALOGUE_PATH, SCHEDULES_PATH, EVIDENCE_PATH):
+        digest.update(path.read_bytes())
+    assert config_hash() == digest.hexdigest()[:16]
+
+
+def test_unknown_power_events_count_nothing() -> None:
+    """Only a known power's use counts, toward its own family: a kind that is not a power,
+    or a power with no family, leaves every count at zero."""
+    log = ObservationLog(1)
+    log.observe((0.0, 0.0), (100.0, 0.0), ["power_unknown", "power_", "powerless", "fizzle"])
+    values = {item["id"]: item["value"] for item in log.summary("lateral")["items"]}
+    families = ("shot_power", "teleport", "pulse", "shield", "pull")
+    assert [values[f"e1.{kind}_uses"] for kind in families] == [0] * 5

@@ -4,7 +4,9 @@ ObservationLog never receives the World. The caller hands it visible facts only:
 Surge and the nearest fighting hostile stand, and the Surge's visible actions, including the
 powers it used. Hidden state (charge, cooldowns, inventory and loadout, RNG, other entities)
 cannot reach the summary by construction. Power use is counted only when it happens on screen,
-so an unused or unequipped power is never revealed.
+so an unused or unequipped power is never revealed. Since evidence version 4 power uses are
+counted by cooldown family (shot, teleport, pulse, shield, pull), never by power or rarity, so
+which fusion the Surge rolled never reaches the model.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from collections.abc import Iterable
 from functools import cache
 
 from overload.paths import ROOT
+from overload.sim.powers import COOLDOWN_KEYS  # static data: which family each power is in
 
 EVIDENCE_PATH = ROOT / "config" / "evidence.json"
 
@@ -28,16 +31,15 @@ def evidence_labels() -> dict[str, str]:
 NEAR = 40.0  # px, about 2.5 tiles
 FAR = 104.0  # px, about 6.5 tiles
 # Visible actions only: a gun shot, a dodge, and a power the Surge actually used (a rejected
-# Blink shows nothing and is not counted).
-VISIBLE_ACTIONS = (
-    "shot",
-    "dodge",
-    "power_spark",
-    "power_blink",
-    "power_arc_trail",
-    "power_burst",
-    "power_shock_cone",
-)
+# Blink or Magnet shows nothing and is not counted). A power counts toward its cooldown family.
+VISIBLE_ACTIONS = ("shot", "dodge")
+FAMILY_KINDS = {
+    "spark": "shot_power_uses",
+    "teleport": "teleport_uses",
+    "pulse": "pulse_uses",
+    "shield": "shield_uses",
+    "pull": "pull_uses",
+}
 TICKS_PER_MINUTE = 60 * 60
 
 
@@ -49,6 +51,7 @@ class ObservationLog:
         self.ticks = 0
         self.bands = {"near": 0, "mid": 0, "far": 0}
         self.actions = dict.fromkeys(VISIBLE_ACTIONS, 0)
+        self.families = dict.fromkeys(FAMILY_KINDS.values(), 0)
 
     def observe(
         self, surge: tuple[float, float], rival: tuple[float, float], actions: Iterable[str]
@@ -61,6 +64,10 @@ class ObservationLog:
         for action in actions:
             if action in self.actions:
                 self.actions[action] += 1
+            elif action.startswith("power_"):
+                family = COOLDOWN_KEYS.get(action.removeprefix("power_"))
+                if family in FAMILY_KINDS:
+                    self.families[FAMILY_KINDS[family]] += 1
 
     def summary(self, previous_tactic: str) -> dict:
         """The request summary: ten evidence items with stable IDs, under 1 KB."""
@@ -73,11 +80,7 @@ class ObservationLog:
             "near_share": round(self.bands["near"] / total, 2),
             "shots_per_minute": round(self.actions["shot"] / minutes, 1),
             "dodges": self.actions["dodge"],
-            "spark_uses": self.actions["power_spark"],
-            "blink_uses": self.actions["power_blink"],
-            "arc_trail_uses": self.actions["power_arc_trail"],
-            "burst_uses": self.actions["power_burst"],
-            "shock_cone_uses": self.actions["power_shock_cone"],
+            **self.families,
         }
         labels = evidence_labels()
         items = [
