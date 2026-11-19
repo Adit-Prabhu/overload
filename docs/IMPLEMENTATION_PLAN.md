@@ -148,7 +148,7 @@ overload/
 ### Knowledge boundary
 - `observations.py` is the only code that reads world state for the model. It emits a summary of at most 300 tokens. The summary contains:
   - the share of visible time in each distance band (near, mid, far)
-  - power uses by power
+  - power uses by cooldown family (shot, teleport, pulse, shield, pull) since evidence version 4, never by power or rarity
   - dodge count
   - the previous accepted tactic
   - an evidence ID for each item, such as `e1.far_share`
