@@ -14,6 +14,7 @@ PRESETS = {
         sentry_health=8,
         sweeper_health=3,
         rival_health=34,
+        chassis_health_pct=85,
         bolt_speed=1.7,
     ),
     "medium": DEFAULT,
@@ -26,6 +27,7 @@ PRESETS = {
         sentry_health=12,
         sweeper_health=5,
         rival_health=48,
+        chassis_health_pct=120,
         bolt_speed=2.15,
     ),
     "nightmare": replace(
@@ -37,6 +39,7 @@ PRESETS = {
         sentry_health=15,
         sweeper_health=6,
         rival_health=58,
+        chassis_health_pct=145,
         bolt_speed=2.45,
     ),
 }

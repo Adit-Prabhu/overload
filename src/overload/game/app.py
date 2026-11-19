@@ -55,7 +55,6 @@ MAX_TICKS_PER_FRAME = 5
 @dataclass
 class Options:
     seed: int = 1
-    difficulty: str = "medium"
     headless: bool = False
     frames: int = 0
     record: Path | None = None
@@ -67,6 +66,7 @@ class Options:
     mute: bool = False
     skip_title: bool = False
     dev: bool = False  # test tools, gated by a local git-ignored file (game/dev.py)
+    difficulty: str = "medium"
 
 
 class InputReader:

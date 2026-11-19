@@ -172,10 +172,8 @@ def run_title(
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return None
-            if event.type == pygame.KEYDOWN:
+            if event.type == pygame.KEYDOWN and title.choice is None:
                 title.press(event.key)
-                if title.choice is not None:
-                    break
         title.update()
         title.draw(screen)
         pygame.display.flip()

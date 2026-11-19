@@ -111,3 +111,11 @@ def test_start_returns_the_difficulty_selected_with_arrow_keys(display) -> None:
     for key in (pygame.K_RIGHT, pygame.K_RIGHT, pygame.K_RETURN):
         pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=key))
     assert run_title(display, pygame.time.Clock()) == "nightmare"
+
+
+def test_closing_the_window_in_the_same_batch_as_start_quits(display) -> None:
+    from overload.game.title import run_title
+
+    pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    pygame.event.post(pygame.event.Event(pygame.QUIT))
+    assert run_title(display, pygame.time.Clock()) is None

@@ -111,8 +111,7 @@ def spawn_rival(
     boss = BOSSES[sector] if sector is not None else REGULATOR
     health = tuning.rival_health
     if boss.health:
-        # Scale each chassis by the preset's Regulator health relative to Medium.
-        health = (boss.health * health + DEFAULT.rival_health // 2) // DEFAULT.rival_health
+        health = max(1, (boss.health * tuning.chassis_health_pct + 50) // 100)
     world.rival = Rival(
         x=x,
         y=y,

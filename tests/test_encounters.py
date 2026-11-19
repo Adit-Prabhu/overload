@@ -116,3 +116,16 @@ def test_difficulty_presets_scale_player_charge_robots_and_each_chassis() -> Non
     player, *enemy_health = zip(*rows, strict=True)
     assert player == (8, 6, 5, 4)
     assert all(tuple(sorted(set(health))) == health for health in enemy_health)
+
+
+def test_legacy_rival_health_override_keeps_campaign_chassis_health() -> None:
+    from dataclasses import replace
+
+    from overload.sim.bosses import BOSSES
+    from overload.sim.spawns import spawn_rival
+    from overload.sim.tuning import DEFAULT
+
+    tuning = replace(DEFAULT, rival_health=25)
+    world = Campaign(1, tuning).world
+    assert spawn_rival(world, 80, 80, "lateral", tuning).health == 25
+    assert spawn_rival(world, 80, 80, "lateral", tuning, 1).health == BOSSES[1].health
