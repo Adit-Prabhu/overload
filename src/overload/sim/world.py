@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import random
 
-from overload.sim import bosskit, floorplay, fusions, robots
+from overload.sim import bosskit, defenses, floorplay, fusions, robots
 from overload.sim.aiming import aim, launch_point
 from overload.sim.arena import SUBSTATION, Arena
 from overload.sim.bosses import BY_KIND
@@ -85,6 +85,8 @@ def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena =
     _hazards(world, tuning)
     _separate(world, tuning, arena)
     _move_projectiles(world, tuning, arena)
+    defenses.shield_shots(world, tuning)
+    defenses.tick_fields(world, tuning, arena)
     tick_trails(world, tuning)
     _hits(world, tuning)
     absorb_charges(world, tuning)

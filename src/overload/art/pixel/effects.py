@@ -28,6 +28,10 @@ LEGEND = {
     "k": "px.blink.light",
     "U": "power.burst",
     "u": "px.burst.light",
+    "B": "power.bulwark",
+    "b": "px.bulwark.light",
+    "N": "power.magnet",
+    "n": "px.magnet.light",
     "F": "player.core",
     "C": "player.core",
 }
@@ -86,6 +90,24 @@ _CHARGE = {
         "U..u..U",
         ".U...U.",
         "..UUU..",
+    ],
+    "bulwark": [  # a shield with a center ridge
+        ".BBBBB.",
+        "BbbBbbB",
+        "BbbBbbB",
+        "BbbBbbB",
+        ".BbBbB.",
+        "..BBB..",
+        "...B...",
+    ],
+    "magnet": [  # a horseshoe magnet
+        ".NNNNN.",
+        "NNnnnNN",
+        "NN...NN",
+        "NN...NN",
+        "NN...NN",
+        "nn...nn",
+        "nn...nn",
     ],
     # Fused powers: one icon per power, drawn for its own verb (POWERS_AND_FUSION section 8).
     "bolt_lance": [  # a lightning spear
@@ -769,3 +791,54 @@ def explosion(target: pygame.Surface, light: pygame.Surface, pos: Point, age: fl
         if core:
             pygame.draw.circle(surface, rgb("px.lamp"), (x, y), core + 1)
             pygame.draw.circle(surface, rgb("px.lamp.light"), (x, y), core)
+
+
+def bubble(
+    target: pygame.Surface,
+    light: pygame.Surface,
+    center: Point,
+    radius: float,
+    left: float,
+    tick: int,
+) -> None:
+    """Bulwark's shield: a ring of hex-like dashes around the Surge, a pale inner ring, and
+    a flicker as it runs out (the last quarter)."""
+    if left < 0.25 and tick % 4 < 2:
+        return
+    x, y = round(center[0]), round(center[1])
+    r = round(radius)
+    count = 18
+    for i in range(count):
+        if i % 3 == 2:
+            continue
+        a = math.tau * i / count + tick * 0.03
+        px, py = round(x + math.cos(a) * r), round(y + math.sin(a) * r)
+        for surface in (target, light):
+            surface.fill(rgb("power.bulwark"), (px, py, 2, 2))
+    pygame.draw.circle(light, rgb("px.bulwark.light"), (x, y), r - 2, 1)
+
+
+def magnet_field(
+    target: pygame.Surface,
+    light: pygame.Surface,
+    center: Point,
+    radius: float,
+    left: float,
+    tick: int,
+) -> None:
+    """A Magnet field: a ring at its reach and dashes running inward toward its center."""
+    x, y = round(center[0]), round(center[1])
+    r = round(radius)
+    for surface in (target, light):
+        pygame.draw.circle(surface, rgb("power.magnet"), (x, y), r, 1)
+        pygame.draw.circle(surface, rgb("px.magnet.light"), (x, y), 2)
+    for i in range(8):
+        a = math.tau * i / 8
+        d = r - ((tick * 2 + i * 5) % r)  # each dash runs in, then starts again outside
+        ox, oy = math.cos(a), math.sin(a)
+        start = (round(x + ox * d), round(y + oy * d))
+        end = (round(x + ox * max(3, d - 4)), round(y + oy * max(3, d - 4)))
+        for surface in (target, light):
+            pygame.draw.line(surface, rgb("power.magnet"), start, end, 1)
+    if left < 0.2:  # about to end
+        pygame.draw.circle(target, rgb("px.magnet.light"), (x, y), r - 3, 1)

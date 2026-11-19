@@ -219,7 +219,7 @@ def draw_fuse(screen, menu: Menu, session) -> None:
     world = session.campaign.world
     # The base powers, with their spare charges, and the two sockets.
     for i, power in enumerate(BASE_POWERS):
-        box = pygame.Rect(left + i * 26, top + 15, 22, 22)
+        box = pygame.Rect(left + i * 24, top + 15, 22, 22)
         stolen = power in world.unlocked
         socketed = power in menu.sockets
         token = "px.hazard.1" if i == menu.cursor else ("ui.text" if socketed else "px.wall.2")
@@ -231,7 +231,7 @@ def draw_fuse(screen, menu: Menu, session) -> None:
         spare = world.bank.get(power, 0)
         label = f"+{spare}" if stolen else "?"
         hud.text(screen, label, (box.centerx, box.bottom + 1), "ui.dim", "midtop")
-    sx = left + 92
+    sx = left + len(BASE_POWERS) * 24 + 8
     for i in range(2):
         box = pygame.Rect(sx + i * 34, top + 15, 22, 22)
         pygame.draw.rect(screen, rgb("ui.dim"), box, 1)

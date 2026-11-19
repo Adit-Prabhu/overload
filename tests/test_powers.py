@@ -83,7 +83,10 @@ def test_clearing_a_room_absorbs_every_charge_left() -> None:
         for hostile in world.hostiles:
             hostile.health = 0
         campaign.step(IDLE)
-    assert world.unlocked == ["spark"] and world.fragments == {"spark": 3}  # 3 Drones, 2 Sweepers
+    # 3 Drones and 2 Sweepers: Spark first, then Magnet fills the other slot.
+    assert world.unlocked == ["spark", "magnet"]
+    assert world.fragments == {"spark": 3, "magnet": 2}
+    assert world.player.slots == ["spark", "magnet"]
     assert world.charges == []
 
 
@@ -328,7 +331,7 @@ def test_full_loop_collect_equip_fuse_use(tmp_path) -> None:
     path = tmp_path / "loop.json"
     recording.save(path)
     assert play(Recording.load(path)).state_hash() == recording.final_hash
-    assert recording.final_hash == "75f016ce1664f8fe", "pinned on Python 3.11 and 3.12"
+    assert recording.final_hash == "1b4c49c234cb0f75", "pinned on Python 3.11 and 3.12"
 
 
 @pytest.mark.parametrize(

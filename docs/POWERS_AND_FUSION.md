@@ -198,7 +198,7 @@ The work is split so the playtest on Nov 25 plays a complete system on the three
 | 2 | The roll system: bank, cost, odds, guarantee, roll stream, retries, trace, seed in the trace (PR #31). Its attached epics and legendaries are placeholders, replaced in step 3 | Nov 17–18 | 3 |
 | 3 | The six unique epics and legendaries of Spark + Blink and Spark + Burst, plus Blink + Burst's three, with icons, effects and cues | Nov 18–20 | 6 |
 | 4 | The menu hub, LOADOUT, FUSE with the spin and reveal, CONTROLS, HUD marks | Nov 19–21 | 5 |
-| 5 | Bulwark and Magnet: drops, charge cores, evolutions, effects, sounds, slotting banner | Nov 21–22 | 4 |
+| 5 | Bulwark and Magnet: drops, charge cores, evolutions, effects, sounds, slotting banner (built Nov 19) | Nov 21–22 | 4 |
 | 6 | Evidence version 4 and `config_hash` covering it. Adit redeploys and runs the smoke test | Nov 22 | 1.5 |
 | 7 | The Bulwark and Magnet pairs, 21 powers in two PRs | Nov 22–24 | 8 |
 | 8 | Balance with the bot and the protocol check, numbers in the PR | Nov 26–27 | 2 |

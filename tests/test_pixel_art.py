@@ -283,8 +283,16 @@ def test_robots_never_use_power_colors_except_their_core(headless_pygame) -> Non
         "spark": {rgb("power.spark"), rgb("px.spark.light")},
         "blink": {rgb("power.blink"), rgb("px.blink.light")},
         "burst": {rgb("power.burst"), rgb("px.burst.light")},
+        "bulwark": {rgb("power.bulwark"), rgb("px.bulwark.light")},
+        "magnet": {rgb("power.magnet"), rgb("px.magnet.light")},
     }
-    carries = {"drone": "spark", "relay": "blink", "breaker": "burst"}
+    carries = {
+        "drone": "spark",
+        "relay": "blink",
+        "breaker": "burst",
+        "sentry": "bulwark",
+        "sweeper": "magnet",
+    }
     every_power = set().union(*power.values())
     for name, frames in _robot_frames(robots).items():
         allowed = power.get(carries.get(name, ""), set())

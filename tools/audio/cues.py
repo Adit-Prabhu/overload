@@ -495,6 +495,44 @@ def _boss_down() -> np.ndarray:
     return out
 
 
+# Bulwark and Magnet (powers spec section 8).
+
+
+def _bulwark_up() -> np.ndarray:
+    """A shield snapping up: a bright rising fifth over a glassy shimmer."""
+    n = samples(0.4)
+    rise = sine(sweep(hz("B4"), hz("F#5"), n), n) * envelope(n, 0.01, 0.1, 0.6, 0.2)
+    shimmer = svf(noise(n, "shield"), 6000, q=0.7, mode="high") * decay(n, 0.15)
+    return rise * 0.5 + shimmer * 0.25
+
+
+def _bulwark_absorb() -> np.ndarray:
+    """A shot eaten by the shield: a short dull tick with a glassy ring."""
+    n = samples(0.14)
+    return (sine(hz("F#5"), n) * 0.4 + noise(n, "absorb") * 0.3) * decay(n, 0.05)
+
+
+def _bulwark_reflect() -> np.ndarray:
+    """A shot sent back: a ping that flips upward."""
+    n = samples(0.2)
+    return square(sweep(hz("B4"), hz("B5"), n), n, duty=0.25) * decay(n, 0.12) * 0.4
+
+
+def _magnet_field() -> np.ndarray:
+    """A Magnet field: a low wobbling hum that pulls in."""
+    n = samples(0.55)
+    hum = saw(hz("B2") * (1 + 0.04 * sine(9, n)), n)
+    return svf(hum, sweep(1800, 400, n), q=2.0) * envelope(n, 0.02, 0.1, 0.7, 0.2) * 0.4
+
+
+def _magnet_crush() -> np.ndarray:
+    """CRUSH: the field slams shut, a metal crunch."""
+    n = samples(0.3)
+    crunch = noise(n, "crush") * decay(n, 0.08)
+    thud = sine(sweep(120, 50, n), n) * decay(n, 0.2)
+    return drive(crunch * 0.5 + thud * 0.7, 2.0) * 0.7
+
+
 def _motif(notes: tuple[str, ...], step: float, length: float, octave_up: bool = True):
     out = np.zeros(samples(step * len(notes) + length))
     for i, note in enumerate(notes):
@@ -597,6 +635,11 @@ SFX: dict[str, Callable[[], np.ndarray]] = {
     "sfx_quake": _quake,
     "sfx_summon": _summon,
     "sfx_overload": _overload,
+    "sfx_bulwark_up": _bulwark_up,
+    "sfx_bulwark_absorb": _bulwark_absorb,
+    "sfx_bulwark_reflect": _bulwark_reflect,
+    "sfx_magnet_field": _magnet_field,
+    "sfx_magnet_crush": _magnet_crush,
     "sfx_live_wire": _live_wire,
     "sfx_volley": _volley,
     "sfx_charge": _charge,

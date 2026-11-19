@@ -460,9 +460,11 @@ def test_every_attack_in_every_phase_runs_to_the_end(sector) -> None:
     ],
 )
 def test_the_protocol_runs_at_least_half_of_every_boss_fight(seed, order, limit) -> None:
-    """The protocol is the study's treatment, so the kit (its tells, attacks, vents and
-    phase changes) may take at most half of the fight time per sector across the bot's
-    attempts. The sampled orders include every protocol. The 1.5 s boot does not count."""
+    """The protocol is the study's treatment, so the kit (its tells, attacks and vents) may
+    take at most half of the fight time per sector across the bot's attempts. The sampled
+    orders include every protocol. Pauses where nothing acts (the 1.5 s boot and the 1.2 s
+    phase changes) do not count: the bot clears a boss in about 9 s, so they would otherwise
+    measure the bot's speed rather than the kit."""
     from collections import Counter
 
     from floorbot import FloorBot
@@ -485,8 +487,8 @@ def test_the_protocol_runs_at_least_half_of_every_boss_fight(seed, order, limit)
             frame = InputFrame(restart=True)
         campaign.step(frame)
         rival = campaign.world.rival
-        if rival is not None and rival.health > 0 and rival.boot == 0:
-            busy = rival.change or rival.vent or rival.sig_action != "idle"
+        if rival is not None and rival.health > 0 and rival.boot == 0 and not rival.change:
+            busy = rival.vent or rival.sig_action != "idle"
             share[(campaign.encounter, not busy)] += 1
     assert campaign.stage == "ending"
     for sector in (1, 2, 3):

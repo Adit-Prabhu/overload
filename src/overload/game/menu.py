@@ -357,7 +357,7 @@ def roll_terms(session: Session, a: str, b: str) -> dict:
     short = [p for p in (a, b) if world.bank.get(p, 0) < cost]
     blocked = ""
     if not results:
-        blocked = "THESE TWO DO NOT FUSE"
+        blocked = "NOT IN THIS BUILD"  # a planned pair whose powers are not built yet
     elif a not in world.unlocked or b not in world.unlocked:
         blocked = "STEAL BOTH POWERS FIRST"
     elif short:

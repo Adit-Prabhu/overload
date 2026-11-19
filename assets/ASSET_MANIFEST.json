@@ -171,6 +171,42 @@
       "approval": "Pending Adit's listen-through"
     },
     {
+      "id": "SFX.bulwark_absorb",
+      "path": "assets/audio/sfx_bulwark_absorb.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "CC-BY-4.0",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "59e285c5b141cf2c35774d168972e29155d78f440fc75f388ac8de61c5ad8d6a",
+      "added": "2026-11-19",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
+      "id": "SFX.bulwark_reflect",
+      "path": "assets/audio/sfx_bulwark_reflect.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "CC-BY-4.0",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "ffffbd9f649ed754811c562586cc2e49052a1195779711ca889d81ac2b7e4fd7",
+      "added": "2026-11-19",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
+      "id": "SFX.bulwark_up",
+      "path": "assets/audio/sfx_bulwark_up.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "CC-BY-4.0",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "f8bc494739d3b2055dc67b405ace28110abf50fb6bb0dc4d8f8c27cdb9e4b132",
+      "added": "2026-11-19",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
       "id": "SFX.charge",
       "path": "assets/audio/sfx_charge.ogg",
       "kind": "audio",
@@ -360,6 +396,30 @@
       "license_file": "assets/audio/LICENSE.txt",
       "sha256": "f165e64897e5ab15303068069fc7897e954c25a062a9c1c9c6709e580323f638",
       "added": "2026-11-17",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
+      "id": "SFX.magnet_crush",
+      "path": "assets/audio/sfx_magnet_crush.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "CC-BY-4.0",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "8209a06d12d342ba8193db60d2a05fb9fce1129fd16663e34c66f85d8ea932dc",
+      "added": "2026-11-19",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
+      "id": "SFX.magnet_field",
+      "path": "assets/audio/sfx_magnet_field.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "CC-BY-4.0",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "0133587f846082c6502100b6b4a8d97a80d305e8a8eac221b1dc909560365921",
+      "added": "2026-11-19",
       "approval": "Pending Adit's listen-through"
     },
     {

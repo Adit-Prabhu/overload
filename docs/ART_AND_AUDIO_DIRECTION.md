@@ -76,7 +76,7 @@ The palette is organized as ramps, darkest first:
 | Paint and light | `px.hazard.*`, `px.paint`, `px.conduit.*`, `px.lamp`, `px.lamp.light`, `px.led.amber`, `px.ambient` | Safety paint, stencils, conduits, emergency lighting |
 | Surge | `px.helmet.*`, `px.skin.*`, `px.goggle.*`, `px.jacket.*`, `px.pack.*`, `px.pants.*`, `px.boots.*`, `player.core`, `player.halo` | The lineworker. White hard hat and teal jacket, so the player is never orange |
 | Machines | `px.bot.*`, `px.hostile.*`, `px.dial.*` | Gunmetal bodies with hostile orange-red shells and accents |
-| Powers | `power.spark`, `power.blink`, `power.burst` and their `px.*.light` variants | Yellow, cyan and magenta, used only for powers and power cores |
+| Powers | `power.spark`, `power.blink`, `power.burst`, `power.bulwark`, `power.magnet` and their `px.*.light` variants | Yellow, cyan, magenta, Bulwark's yellow green (kept off the rare rarity's mint) and Magnet's indigo (kept off Blink's cyan), used only for powers and power cores |
 | Shared | `hostile.danger`, `ui.text`, `ui.dim`, `fx.flash`, `fx.none` | Telegraphs, text, hit flashes, light math |
 | Rarity | `px.rarity.rare`, `px.rarity.epic`, `px.rarity.legendary` | Steel, mint and champagne for fusion rarities (docs/POWERS_AND_FUSION.md). Menus and HUD slots only, never in the world, and always with 1, 2 or 3 cross marks. Rare is deliberately plain, close to `ui.dim`. Champagne sits near Spark's yellow light, which is acceptable only because it never appears in play |
 
