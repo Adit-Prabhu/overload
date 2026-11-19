@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from overload.floor import WAVES
 from overload.paths import ROOT
 from overload.sim import floorplay
+from overload.sim.damage import damage_rival
 from overload.sim.powers import (
     BASE_POWERS,
     FUSED,
@@ -54,6 +55,7 @@ class DevTools:
     force: int = 0  # index into FORCE: the rarity the next roll lands on
     grant: int = 0  # index into GRANTABLE: the power GRANT POWER gives
     notice: str = ""
+    defeat: bool = False  # DEFEAT THE REGULATOR pressed: the kill lands after the next tick
 
     # Every tick ------------------------------------------------------------------------
 
@@ -73,6 +75,9 @@ class DevTools:
     def after_tick(self, run) -> None:
         if self.god:
             run.world.player.charge = run.tuning.player_max_charge
+        if self.defeat:
+            self.defeat = False
+            defeat_regulator(run.world)
 
     # The DEV page ----------------------------------------------------------------------
 
@@ -128,7 +133,9 @@ class DevTools:
             self.notice = clear_room(world)
         elif label == "DEFEAT THE REGULATOR":
             if world.rival is not None and world.rival.health > 0:
-                world.rival.health = 0
+                # The kill lands in after_tick: a press runs between ticks, and the next step
+                # clears events before the view and audio could see them.
+                self.defeat = True
                 self.notice = "REGULATOR DOWN"
             else:
                 self.notice = "NO REGULATOR HERE"
@@ -154,6 +161,16 @@ class DevTools:
         while roll_rarity(session.campaign.seed, n, guaranteed, tuning) != want:
             n += 1
         world.fusions = n
+
+
+def defeat_regulator(world) -> None:
+    """A real killing hit on the Regulator, after a tick and before the view and audio read
+    its events, so its death sequence, banner and sound play as in a fight."""
+    rival = world.rival
+    if rival is None or rival.health <= 0:
+        return
+    rival.boot, rival.change, rival.vent, rival.health = 0, 0, 0, 1
+    damage_rival(world, 1, rival.x, rival.y)
 
 
 def grant(world, power: str) -> str:
