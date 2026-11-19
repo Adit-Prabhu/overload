@@ -18,7 +18,7 @@ from overload.sim import floorplay
 from overload.sim.collision import blocked, line_clear, move_body
 from overload.sim.damage import hurt_player
 from overload.sim.geometry import circles_overlap, length, normalize, outside_bounds
-from overload.sim.state import Event, Hostile, Projectile, Shockwave, World
+from overload.sim.state import Event, Hostile, Projectile, Shockwave, World, target_of
 from overload.sim.tuning import Tuning
 
 # Eight hop directions for the Relay Bot (unit vectors, exact constants).
@@ -95,8 +95,8 @@ def tell_progress(robot: Hostile, tuning: Tuning) -> float:
     return 1.0 - robot.fire_timer / total
 
 
-def _aim_at_player(world: World, robot: Hostile) -> None:
-    player = world.player
+def _lock_aim(world: World, robot: Hostile) -> None:
+    player = target_of(world)
     dx, dy = normalize(player.x - robot.x, player.y - robot.y)
     robot.tell_dx, robot.tell_dy = (dx, dy) if (dx or dy) else (1.0, 0.0)
 
@@ -131,7 +131,7 @@ def _shoot(
 
 def _drone(world: World, drone: Hostile, tuning: Tuning, arena) -> None:
     """Drift to mid range (never while aiming), then aim and fire a spark ball."""
-    player = world.player
+    player = target_of(world)
     dx, dy = player.x - drone.x, player.y - drone.y
     distance = length(dx, dy)
     if not telegraphing(drone, tuning) and distance > 0:
@@ -153,7 +153,7 @@ def _drone(world: World, drone: Hostile, tuning: Tuning, arena) -> None:
         )
     drone.fire_timer -= 1
     if drone.fire_timer == tuning.drone_tell:
-        _aim_at_player(world, drone)
+        _lock_aim(world, drone)
         world.events.append(Event("tell", drone.x, drone.y, drone.id))
     if drone.fire_timer <= 0:
         _shoot(
@@ -206,7 +206,7 @@ def _relay(world: World, relay: Hostile, tuning: Tuning, arena) -> None:
     elif relay.phase == "blink":
         world.events.append(Event("relay_from", relay.x, relay.y, relay.id))
         relay.x, relay.y = relay.dest_x, relay.dest_y
-        _aim_at_player(world, relay)
+        _lock_aim(world, relay)
         relay.phase, relay.fire_timer = "aim", tuning.relay_aim_tell
         world.events.append(Event("relay_blink", relay.x, relay.y, relay.id))
         world.events.append(Event("tell", relay.x, relay.y, relay.id))
@@ -235,7 +235,7 @@ def _relay(world: World, relay: Hostile, tuning: Tuning, arena) -> None:
 
 def _breaker(world: World, breaker: Hostile, tuning: Tuning, arena) -> None:
     """Walk in, raise the fists (the tell), slam a shockwave, then recover."""
-    player = world.player
+    player = target_of(world)
     if breaker.phase == "raise":
         breaker.fire_timer -= 1
         if breaker.fire_timer <= 0:
@@ -320,9 +320,10 @@ def _sweeper(world: World, sweeper: Hostile, tuning: Tuning, arena) -> None:
         if sweeper.fire_timer <= 0:
             sweeper.phase = ""
         return
-    dx, dy = player.x - sweeper.x, player.y - sweeper.y
+    target = target_of(world)
+    dx, dy = target.x - sweeper.x, target.y - sweeper.y
     if length(dx, dy) <= tuning.sweeper_trigger:
-        _aim_at_player(world, sweeper)
+        _lock_aim(world, sweeper)
         sweeper.phase, sweeper.fire_timer = "rev", tuning.sweeper_tell
         world.events.append(Event("tell", sweeper.x, sweeper.y, sweeper.id))
         return
@@ -342,7 +343,7 @@ def _sentry(world: World, sentry: Hostile, tuning: Tuning) -> None:
     """Stand still, aim for a long time, fire a slow heavy shell."""
     sentry.fire_timer -= 1
     if sentry.fire_timer == tuning.sentry_tell:
-        _aim_at_player(world, sentry)
+        _lock_aim(world, sentry)
         world.events.append(Event("tell", sentry.x, sentry.y, sentry.id))
     if sentry.fire_timer <= 0:
         _shoot(

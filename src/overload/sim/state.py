@@ -305,7 +305,7 @@ def state_hash(world: World) -> str:
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
 
-def target_of(world: World):
+def target_of(world: World) -> Player | Decoy:
     """What robots and the Regulator aim at: the Afterimage decoy while one stands, else the
     Surge. Hits, contact and shockwaves still land on the Surge itself."""
     return world.decoy if world.decoy is not None else world.player

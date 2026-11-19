@@ -45,6 +45,7 @@ from overload.sim.spawns import (  # noqa: F401 (re-exported for callers of the 
     spawn_rival,
 )
 from overload.sim.state import (
+    Decoy,
     Event,
     Hazard,
     Hostile,
@@ -52,6 +53,7 @@ from overload.sim.state import (
     Projectile,
     Rival,
     World,
+    target_of,
 )
 from overload.sim.tuning import DEFAULT, Tuning
 
@@ -86,12 +88,14 @@ def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena =
     _hazards(world, tuning)
     _separate(world, tuning, arena)
     _move_projectiles(world, tuning, arena)
+    pairs.catch_mirror_shots(world, tuning)
     defenses.shield_shots(world, tuning, arena)
     defenses.tick_fields(world, tuning, arena)
     tick_trails(world, tuning)
     _hits(world, tuning, arena)
     absorb_charges(world, tuning)
     floorplay.tick(world, tuning, arena)
+    pairs.record_position(world, tuning)
     _timers(world.player)
     tick_cooldowns(world)
     _outcome(world, tuning)
@@ -312,7 +316,7 @@ def rival_tell_progress(rival: Rival, tuning: Tuning = DEFAULT) -> float:
     return 1.0 - rival.timer / total
 
 
-def _lock_aim(rival: Rival, player: Player) -> None:
+def _lock_aim(rival: Rival, player: Player | Decoy) -> None:
     dx, dy = normalize(player.x - rival.x, player.y - rival.y)
     rival.aim_x, rival.aim_y = (dx, dy) if (dx or dy) else (1.0, 0.0)
 
@@ -356,7 +360,7 @@ def _rival(world: World, tuning: Tuning, arena: Arena) -> None:
         return  # shielded while the next phase starts
     if bosskit.run(world, rival, tuning, arena):
         return  # the protocol waits while a kit attack runs, or while it vents
-    player = world.player
+    player = target_of(world)
     if rival.protocol == "pressure":
         _clamp(world, rival, player, tuning, arena)
     elif rival.protocol == "spacing":
@@ -373,7 +377,9 @@ def _rest(rival: Rival, ticks: int) -> int:
 summon_points = bosskit.summon_points  # the view draws the Grid Core's summon markers
 
 
-def _clamp(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Arena) -> None:
+def _clamp(
+    world: World, rival: Rival, player: Player | Decoy, tuning: Tuning, arena: Arena
+) -> None:
     """Close the distance, telegraph a lunge, dash, then recover in the open."""
     if rival.action == "move":
         dx, dy = player.x - rival.x, player.y - rival.y
@@ -410,8 +416,9 @@ def _clamp(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Ar
             arena,
             world,
         )
+        surge = world.player
         if circles_overlap(
-            (rival.x, rival.y), rival.radius, (player.x, player.y), tuning.player_radius
+            (rival.x, rival.y), rival.radius, (surge.x, surge.y), tuning.player_radius
         ):
             hurt_player(world, tuning.rival_contact_damage, tuning)
         rival.timer -= 1
@@ -423,7 +430,9 @@ def _clamp(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Ar
             rival.action, rival.cooldown = "move", _rest(rival, tuning.clamp_rest)
 
 
-def _insulate(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Arena) -> None:
+def _insulate(
+    world: World, rival: Rival, player: Player | Decoy, tuning: Tuning, arena: Arena
+) -> None:
     """Hold the Surge at range, lay hazard tiles under them and lob slow orbs."""
     dx, dy = player.x - rival.x, player.y - rival.y
     nx, ny = normalize(dx, dy)
@@ -488,7 +497,9 @@ def _insulate(world: World, rival: Rival, player: Player, tuning: Tuning, arena:
             world.events.append(Event("rival_orb", rival.x, rival.y))
 
 
-def _oscillate(world: World, rival: Rival, player: Player, tuning: Tuning, arena: Arena) -> None:
+def _oscillate(
+    world: World, rival: Rival, player: Player | Decoy, tuning: Tuning, arena: Arena
+) -> None:
     """Strafe across the Surge's line of fire and answer with a three-bolt fan."""
     nx, ny = normalize(player.x - rival.x, player.y - rival.y)
     vx, vy = -ny * rival.strafe * tuning.oscillate_speed, nx * rival.strafe * tuning.oscillate_speed

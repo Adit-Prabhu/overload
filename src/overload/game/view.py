@@ -43,6 +43,8 @@ REJECTED = {
     "chain_jump": "NO ROBOT IN REACH",
     "displacer": "NO ROBOT TO SWAP WITH",
     "meteor": "NO ROOM TO LAND",
+    "rewind": "NO SAFE SPOT TO REWIND",
+    "grapple": "NOTHING TO GRAPPLE",
 }
 SURGE_FEET = 8  # sprite feet sit this many pixels below the body center
 # The glow on the Surge's pack for an equipped power: a fused power shows the ingredient
@@ -64,6 +66,15 @@ SOCKET_TOKENS = {
     "vortex_cone": "burst",
     "implosion": "magnet",
     "gravity_well": "magnet",
+    "phase_guard": "bulwark",
+    "afterimage": "blink",
+    "rewind": "blink",
+    "undertow": "magnet",
+    "grapple": "magnet",
+    "riptide": "magnet",
+    "lightning_rod": "magnet",
+    "shield_toss": "bulwark",
+    "mirror_field": "magnet",
     "burst": "burst",
     "arc_trail": "spark",
     "bolt_lance": "spark",
@@ -92,6 +103,15 @@ DESCRIPTIONS = {
     "vortex_cone": "A CONE THAT PULLS ROBOTS IN, THEN POPS",
     "implosion": "A FIELD THAT DRAWS ROBOTS IN, THEN BLASTS",
     "gravity_well": "A LONG WELL. PULLS EVERYTHING, BIG BLAST",
+    "phase_guard": "BLINK AND ARRIVE INSIDE A SHIELD",
+    "afterimage": "BLINK AND LEAVE A DECOY FOR 2 S",
+    "rewind": "GO BACK 2 S WITH YOUR BATTERY CHARGE",
+    "undertow": "BLINK. THE TAKEOFF POINT PULLS ROBOTS IN",
+    "grapple": "ZIP TO A WALL OR KNOCK A ROBOT BACK",
+    "riptide": "BLINK, YANK ROBOTS IN AND STUN THEM",
+    "lightning_rod": "PLANT A ROD THAT DRAWS IN HOSTILE SHOTS",
+    "shield_toss": "THROW A SHIELD THAT SOAKS SHOTS AND RETURNS",
+    "mirror_field": "CATCH SHOTS IN ORBIT AND FIRE THEM BACK",
     "burst": "KNOCKBACK CONE THAT WIPES SHOTS",
     "arc_trail": "A BLINK THAT LEAVES A SHOCK LINE",
     "bolt_lance": "DASH AS A BOLT, STRIKING ALL YOU PASS",
@@ -149,7 +169,11 @@ WALKING = 0.05  # moved at least this far on the last tick: walking, not standin
 SCAN = (0, 1, 2, 3, 3, 2, 1, 0)  # the Sentry's eye sweeping its visor
 RECOIL_TICKS = 12
 # A fused shield's bubble shows the power it was fused with (art direction rule 5).
-BUBBLE_ACCENTS = {"static_guard": "power.spark", "bastion": "power.burst"}
+BUBBLE_ACCENTS = {
+    "static_guard": "power.spark",
+    "bastion": "power.burst",
+    "phase_guard": "power.blink",
+}
 BOOM_TICKS = 14
 WRECK_TICKS = 90  # 1.5 s of explosions over the sinking wreck
 DOWNED_TICKS = 180
@@ -584,6 +608,7 @@ class PixelView:
         stolen: list[str] = []
         stolen_ids: list[str] = []
         chain_start = None
+        blink_start = None
         for event in events:
             if event.kind == "shot":
                 self.muzzle = 3
@@ -615,6 +640,7 @@ class PixelView:
             elif event.kind == "rival_shielded":
                 self._burst(event.x, event.y, 2, "ui.dim", 0.8)
             elif event.kind == "blink_from":
+                blink_start = (event.x, event.y)
                 self.blinks.append((event.x, event.y, 16))
                 self._burst(event.x, event.y, 6, "power.blink", 1.0)
             elif event.kind == "blink_to":
@@ -643,6 +669,19 @@ class PixelView:
             elif event.kind == "magnet_end" and event.ref:
                 self._burst(event.x, event.y, 16, "px.magnet.light", 1.8)
                 self.shake = max(self.shake, 4)
+            elif event.kind in ("undertow", "riptide", "rod_planted", "toss", "mirror_up"):
+                token = "power.blink" if event.kind in ("undertow", "riptide") else "power.bulwark"
+                self._burst(event.x, event.y, 10, token, 1.2)
+                if event.kind == "riptide":
+                    self.blasts.append((event.x, event.y, run.tuning.riptide_radius, BLAST_TICKS))
+            elif event.kind == "grapple" and blink_start is not None:
+                self.chains.append((blink_start, (event.x, event.y), 8))
+                self._burst(event.x, event.y, 8, "power.magnet", 1.2)
+            elif event.kind == "rewound":
+                self._burst(event.x, event.y, 14, "px.bulwark.light", 1.2)
+                self.blasts.append((event.x, event.y, 19, BLAST_TICKS))
+            elif event.kind == "mirror_release" and event.ref:
+                self._burst(event.x, event.y, 12, "power.magnet", 1.6)
             elif event.kind == "magnet_rejected":
                 self._burst(event.x, event.y, 4, "ui.dim", 0.6)
                 self.toast("NO ROOM FOR A FIELD", 40)
@@ -1124,6 +1163,15 @@ class PixelView:
                 effects.armor_pips(
                     screen, self.glow.layer, v(player.x, player.y), player.armor, tick
                 )
+            if player.mirror > 0:
+                effects.fusion_orbit(
+                    screen,
+                    self.glow.layer,
+                    v(player.x, player.y),
+                    tuning.mirror_radius,
+                    tick,
+                    player.caught,
+                )
             hand = v(*aiming.hand(player, tuning))
             hand = (hand[0], hand[1] - lift)  # the caster rises with a Meteor
             caster = pygame.transform.rotate(actors.caster(), -math.degrees(aim))
@@ -1139,6 +1187,30 @@ class PixelView:
                     pygame.draw.circle(
                         surface, rgb("player.core"), (round(tip[0]), round(tip[1])), 2
                     )
+
+        decoy = world.decoy
+        if decoy is not None:
+
+            def draw_decoy() -> None:
+                image = effects.tinted(actors.surge("idle", tick, facing_left), "power.blink")
+                fx, fy = v(decoy.x, decoy.y + SURGE_FEET)
+                effects.ghost(
+                    screen,
+                    image,
+                    (fx - image.get_width() / 2, fy - image.get_height()),
+                    min(165, decoy.ticks * 8),
+                )
+                effects.bubble(
+                    screen,
+                    self.glow.layer,
+                    v(decoy.x, decoy.y),
+                    11,
+                    decoy.ticks / tuning.decoy_ticks,
+                    tick,
+                    "power.blink",
+                )
+
+            drawables.append((decoy.y + SURGE_FEET, draw_decoy))
 
         drawables.append((surge_feet[1], draw_surge))
         for _, draw in sorted(drawables, key=lambda item: item[0]):
@@ -1361,6 +1433,18 @@ class PixelView:
         elif field.kind == "well":
             left = field.timer / tuning.well_ticks
             effects.magnet_field(screen, glow, at, tuning.well_radius, left, tick, "power.burst")
+        elif field.kind == "undertow":
+            left = field.timer / tuning.undertow_ticks
+            effects.magnet_field(
+                screen, glow, at, tuning.undertow_radius, left, tick, "power.blink"
+            )
+        elif field.kind == "rod":
+            left = field.timer / tuning.rod_ticks
+            effects.magnet_field(screen, glow, at, tuning.rod_radius, left, tick, "power.bulwark")
+            effects.coil(screen, glow, at, tick)
+        elif field.kind == "toss":
+            effects.bubble(screen, glow, at, tuning.toss_radius, 1.0, tick, "power.magnet")
+            effects.charge(screen, glow, at, "bulwark", tick / TICK_RATE)
 
     def _intro_card(self, screen: pygame.Surface, rival, tuning) -> None:
         """Bring in the chassis name during boot, in the space above the power slots."""

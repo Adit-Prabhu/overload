@@ -282,6 +282,15 @@ _CHARGE = {
         ".N...N.",
         "..NNN..",
     ],
+    "phase_guard": ["..BBB..", ".BKKKB.", "B.K.K.B", "B..k..B", ".BK.KB.", "..BKB..", "...B..."],
+    "afterimage": ["..KK...", "..KKN..", ".KKNNN.", "..K.N..", ".K.K.N.", "K...N.N", "......."],
+    "rewind": ["..kkk..", ".k...k.", "kB.K..k", "BB.KK.k", ".B...k.", "..kkkk.", "......."],
+    "undertow": ["K.....K", ".KN.NK.", "..KNK..", "N..k..N", ".N...N.", "..N.N..", "...N..."],
+    "grapple": ["....NN.", "...N..N", "..N..NN", ".K...N.", "K......", "k......", "......."],
+    "riptide": ["N.....N", ".Nn.nN.", "..KKK..", "nKK.KKn", "..KKK..", ".Nn.nN.", "N.....N"],
+    "lightning_rod": ["...N...", ".N.B.N.", "N..b..N", "...B...", ".n.B.n.", "..BBB..", "NNNNNNN"],
+    "shield_toss": [".....BB", "...BB.B", "NNB.N.B", ".NB.BB.", "..BB...", "NN.....", ".N....."],
+    "mirror_field": ["b..N..b", ".N...N.", "..BbB..", "N.B.B.N", "..BBB..", ".N...N.", "b..N..b"],
 }
 _DIAMOND = [
     "..k..",
@@ -1019,3 +1028,20 @@ def hook_shot(target: pygame.Surface, light: pygame.Surface, pos: Point, angle: 
     for surface in (target, light):
         pygame.draw.line(surface, rgb("power.magnet"), (x, y), (bx, by), 1)
         surface.fill(rgb("power.spark"), (x - 1, y - 1, 3, 3))
+
+
+def fusion_orbit(
+    target: pygame.Surface, light: pygame.Surface, pos: Point, radius: float, tick: int, count: int
+) -> None:
+    """The Mirror Field's broken indigo ring and the bolts orbiting within it."""
+    x, y = (round(c) for c in pos)
+    r = max(2, round(radius))
+    for i in range(4):
+        a = tick * 0.035 + i * math.pi / 2
+        pygame.draw.arc(target, rgb("power.magnet"), (x - r, y - r, 2 * r, 2 * r), a, a + 0.9)
+    for i in range(count):
+        a = tick * 0.12 + math.tau * i / count
+        px, py = round(x + math.cos(a) * r * 0.65), round(y + math.sin(a) * r * 0.65)
+        points = [(px, py - 2), (px + 2, py), (px, py + 2), (px - 2, py)]
+        for surface in (target, light):
+            pygame.draw.polygon(surface, rgb("px.bulwark.light"), points)
