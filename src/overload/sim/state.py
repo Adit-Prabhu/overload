@@ -43,6 +43,10 @@ class Player:
     shield_kind: str = ""  # which power raised it: bulwark, static_guard or bastion
     armor: int = 0  # Capacitor Armor: hits it can still absorb
     armor_ticks: int = 0  # and ticks it has left
+    mirror: int = 0  # Mirror Field: ticks left catching shots
+    caught: int = 0  # and the shots it has caught so far
+    # Rewind: where the Surge stood and the charge it had, one entry a tick, newest last.
+    history: list[tuple[float, float, int]] = field(default_factory=list)
 
     @property
     def dodging(self) -> bool:
@@ -190,6 +194,16 @@ class Device:
 
 
 @dataclass(slots=True)
+class Decoy:
+    """Afterimage: a copy of the Surge left behind. Robots and the Regulator aim at it while
+    it lasts. Nothing can hurt it, and it hurts nothing."""
+
+    x: float
+    y: float
+    ticks: int
+
+
+@dataclass(slots=True)
 class Warp:
     """A robot about to warp in: the marker shows for the whole timer (the tell)."""
 
@@ -242,6 +256,7 @@ class World:
     shockwaves: list[Shockwave] = field(default_factory=list)
     devices: list[Device] = field(default_factory=list)
     fields: list[Device] = field(default_factory=list)  # Magnet fields: (x, y), ticks left
+    decoy: Decoy | None = None  # Afterimage: what robots and the Regulator aim at instead
     secret_hits: dict[str, int] = field(default_factory=dict)
     events: list[Event] = field(default_factory=list)
 
@@ -269,6 +284,7 @@ def state_hash(world: World) -> str:
         "trails": [asdict(t) for t in world.trails],
         "devices": [asdict(d) for d in world.devices],
         "fields": [asdict(f) for f in world.fields],
+        "decoy": asdict(world.decoy) if world.decoy else None,
         "unlocked": world.unlocked,
         "fragments": world.fragments,
         "bank": world.bank,
@@ -287,3 +303,9 @@ def state_hash(world: World) -> str:
     }
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def target_of(world: World):
+    """What robots and the Regulator aim at: the Afterimage decoy while one stands, else the
+    Surge. Hits, contact and shockwaves still land on the Surge itself."""
+    return world.decoy if world.decoy is not None else world.player

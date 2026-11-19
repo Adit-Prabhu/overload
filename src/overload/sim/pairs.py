@@ -344,7 +344,9 @@ USE = {
 
 
 def tick(world: World, tuning: Tuning, arena: Arena) -> None:
-    """Lodestones drag, armor runs out, robots shake off their stun."""
+    """Lodestones drag, armor runs out, the decoy fades, the mirror catches and releases,
+    and the Rewind history grows."""
+    tick_second_half(world, tuning, arena)
     for shot in world.projectiles:
         if shot.kind == "lodestone":
             for robot in world.hostiles:
@@ -388,6 +390,8 @@ def tick_object(world: World, field: Device, tuning: Tuning, arena: Arena) -> bo
                 tuning.fortress_knock,
                 "fortress",
             )
+    elif field.kind in ("undertow", "rod", "toss"):
+        tick_second_half_object(world, field, tuning, arena)
     elif field.kind in ("implosion", "well"):
         well = field.kind == "well"
         reach = tuning.well_radius if well else tuning.implosion_radius
@@ -481,3 +485,284 @@ def _roll_wave(world: World, wave: Device, tuning: Tuning, arena: Arena) -> None
     world.projectiles = kept
     for shot in turned:  # each turned shot flies on as a spark along the wave's path
         _spark(world, shot.x, shot.y, dx, dy, tuning, "reflect")
+
+
+# Second half (spec step 7): Blink + Bulwark, Blink + Magnet, Bulwark + Magnet --------------
+#
+# | Pair (family) | Rare | Epic | Legendary |
+# | Blink + Bulwark (teleport) | Phase Guard | Afterimage | Rewind |
+# | Blink + Magnet (teleport) | Undertow | Grapple | Riptide |
+# | Bulwark + Magnet (pull) | Lightning Rod | Shield Toss | Mirror Field |
+
+
+def _hop(world: World, inp: InputFrame, tuning: Tuning, arena: Arena, power: str):
+    """A Blink toward the cursor. Returns where it took off, or None (rejected, nothing
+    happens)."""
+    from overload.sim.powers import blink_destination
+
+    player = world.player
+    spot = blink_destination(world, inp, tuning, arena)
+    if spot is None:
+        world.events.append(Event("blink_rejected", player.x, player.y, 0, power))
+        return None
+    start = (player.x, player.y)
+    world.events.append(Event("blink_from", *start))
+    player.x, player.y = spot
+    world.events.append(Event("blink_to", *spot))
+    return start
+
+
+def phase_guard(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:
+    """Blink, arriving inside a Bulwark bubble."""
+    if _hop(world, inp, tuning, arena, "phase_guard") is None:
+        return False
+    player = world.player
+    player.shield, player.shield_kind = tuning.bulwark_ticks, "phase_guard"
+    world.events.append(Event("bulwark_up", player.x, player.y, 0, "phase_guard"))
+    return True
+
+
+def afterimage(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:
+    """Blink, leaving a decoy at the take-off point that robots and the Regulator aim at."""
+    start = _hop(world, inp, tuning, arena, "afterimage")
+    if start is None:
+        return False
+    from overload.sim.state import Decoy
+
+    world.decoy = Decoy(start[0], start[1], tuning.decoy_ticks)
+    world.events.append(Event("decoy", *start))
+    return True
+
+
+def rewind(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:  # noqa: ARG001
+    """Snap back to where the Surge stood `rewind_ticks` ago, with the charge it had then.
+    Only to a spot in the room it is in now (a locked room stays locked) and still free:
+    otherwise the oldest such spot since. Rejected when there is none."""
+    from overload.sim import floorplay
+    from overload.sim.powers import _free
+
+    player = world.player
+    here = (player.x, player.y)
+    for x, y, charge in player.history:
+        if floorplay.same_room(arena, here, (x, y)) and _free(
+            world, (x, y), tuning.player_radius, arena
+        ):
+            world.events.append(Event("blink_from", *here))
+            player.x, player.y = x, y
+            player.charge = max(player.charge, charge)  # it only ever gives charge back
+            world.events.append(Event("blink_to", x, y))
+            world.events.append(Event("rewound", x, y))
+            return True
+    world.events.append(Event("blink_rejected", player.x, player.y, 0, "rewind"))
+    return False
+
+
+def undertow(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:
+    """Blink, and the take-off point drags nearby robots into it for a moment."""
+    start = _hop(world, inp, tuning, arena, "undertow")
+    if start is None:
+        return False
+    world.fields.append(Device(world.new_id(), "undertow", *start, *start, tuning.undertow_ticks))
+    return True
+
+
+def grapple(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:
+    """Zip along the aim to the first robot or wall within reach. A robot is struck and
+    knocked back as the Surge lands beside it. Rejected when nothing is in reach."""
+    from overload.sim.fusions import _strike
+    from overload.sim.powers import _clear_path, _free, knock
+
+    player = world.player
+    ax, ay = player.aim_x, player.aim_y
+    start = (player.x, player.y)
+    caught = None
+    reach = 0.0
+    while reach < tuning.grapple_range:
+        reach += 4.0
+        point = (start[0] + ax * reach, start[1] + ay * reach)
+        robot = next(
+            (
+                h
+                for h in world.hostiles
+                if h.health > 0 and length(h.x - point[0], h.y - point[1]) <= h.radius
+            ),
+            None,
+        )
+        if robot is not None:
+            caught = robot
+            break
+        if not _clear_path(world, start, point, arena):
+            break
+    else:
+        world.events.append(Event("blink_rejected", player.x, player.y, 0, "grapple"))
+        return False
+    stop = reach - (caught.radius if caught else 0.0) - tuning.player_radius - 2.0
+    while stop > 0 and not _free(
+        world, (start[0] + ax * stop, start[1] + ay * stop), tuning.player_radius, arena
+    ):
+        stop -= 2.0
+    if stop <= 0:
+        world.events.append(Event("blink_rejected", player.x, player.y, 0, "grapple"))
+        return False
+    world.events.append(Event("blink_from", *start))
+    player.x, player.y = start[0] + ax * stop, start[1] + ay * stop
+    world.events.append(Event("grapple", player.x, player.y))
+    if caught is not None:
+        _strike(world, caught, tuning.grapple_damage)
+        knock(world, caught, ax, ay, tuning.grapple_knock, arena)
+    return True
+
+
+def riptide(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:
+    """Blink, and every robot near the take-off point is yanked there and stunned."""
+    start = _hop(world, inp, tuning, arena, "riptide")
+    if start is None:
+        return False
+    for robot in world.hostiles:
+        if robot.health > 0 and length(robot.x - start[0], robot.y - start[1]) <= (
+            tuning.riptide_radius
+        ):
+            for _ in range(16):  # in small steps, walls winning
+                _pull(world, robot, *start, 6.0, arena)
+            robot.stun = max(robot.stun, tuning.riptide_stun)
+            world.events.append(Event("hooked", robot.x, robot.y, robot.id))
+    world.events.append(Event("riptide", *start))
+    return True
+
+
+def lightning_rod(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:
+    """A field at the aim point that pulls hostile shots in and eats them."""
+    from overload.sim.powers import place_point
+
+    spot = place_point(world, inp, tuning, arena, tuning.rod_range, tuning.charge_radius)
+    if spot is None:
+        world.events.append(Event("magnet_rejected", world.player.x, world.player.y))
+        return False
+    world.fields.append(Device(world.new_id(), "rod", *spot, *spot, tuning.rod_ticks))
+    world.events.append(Event("rod_planted", *spot))
+    return True
+
+
+def shield_toss(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:  # noqa: ARG001
+    """Throw the shield like a boomerang: out along the aim, then back to the Surge. It eats
+    the hostile shots it touches and knocks the robots it meets."""
+    player = world.player
+    world.fields.append(
+        Device(
+            world.new_id(), "toss", player.x, player.y, player.aim_x, player.aim_y,
+            tuning.toss_out + tuning.toss_back,
+        )
+    )
+    world.events.append(Event("toss", player.x, player.y))
+    return True
+
+
+def mirror_field(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:  # noqa: ARG001
+    """For `mirror_ticks`, hostile shots near the Surge are caught in orbit. Then they fly
+    back at the nearest robots as sparks."""
+    player = world.player
+    player.mirror, player.caught = tuning.mirror_ticks, 0
+    world.events.append(Event("mirror_up", player.x, player.y))
+    return True
+
+
+USE.update(
+    {
+        "phase_guard": phase_guard,
+        "afterimage": afterimage,
+        "rewind": rewind,
+        "undertow": undertow,
+        "grapple": grapple,
+        "riptide": riptide,
+        "lightning_rod": lightning_rod,
+        "shield_toss": shield_toss,
+        "mirror_field": mirror_field,
+    }
+)
+
+
+def tick_second_half(world: World, tuning: Tuning, arena: Arena) -> None:
+    """The decoy fades, the mirror catches and releases, the Rewind history grows."""
+    if world.decoy is not None:
+        world.decoy.ticks -= 1
+        if world.decoy.ticks <= 0:
+            world.decoy = None
+    player = world.player
+    if player.mirror > 0:
+        player.mirror -= 1
+        kept = []
+        for shot in world.projectiles:
+            if shot.hostile and length(shot.x - player.x, shot.y - player.y) <= (
+                tuning.mirror_radius
+            ):
+                player.caught = min(tuning.mirror_cap, player.caught + 1)
+                world.events.append(Event("shield_absorb", shot.x, shot.y, shot.id))
+                continue
+            kept.append(shot)
+        world.projectiles = kept
+        if player.mirror == 0:
+            near = sorted(
+                (h for h in world.hostiles if h.health > 0),
+                key=lambda h: (length(h.x - player.x, h.y - player.y), h.id),
+            )[:4]
+            for i in range(player.caught):
+                if near:
+                    robot = near[i % len(near)]
+                    dx, dy = normalize(robot.x - player.x, robot.y - player.y)
+                else:
+                    dx, dy = RING[i % len(RING)]
+                _spark(world, player.x + dx * 8, player.y + dy * 8, dx, dy, tuning, "reflect")
+            world.events.append(Event("mirror_release", player.x, player.y, player.caught))
+            player.caught = 0
+    player.history.append((player.x, player.y, player.charge))
+    if len(player.history) > tuning.rewind_ticks:
+        del player.history[0]
+
+
+def tick_second_half_object(world: World, field: Device, tuning: Tuning, arena: Arena) -> None:
+    """Undertow drags, the rod eats shots, the tossed shield flies out and back."""
+    from overload.sim.fusions import _strike
+    from overload.sim.powers import knock
+
+    if field.kind == "undertow":
+        for robot in world.hostiles:
+            if robot.health > 0 and length(robot.x - field.x, robot.y - field.y) <= (
+                tuning.undertow_radius
+            ):
+                _pull(world, robot, field.x, field.y, tuning.undertow_pull, arena)
+    elif field.kind == "rod":
+        kept = []
+        for shot in world.projectiles:
+            if shot.hostile:
+                dx, dy = field.x - shot.x, field.y - shot.y
+                distance = length(dx, dy)
+                if distance <= 8.0:
+                    world.events.append(Event("shield_absorb", shot.x, shot.y, shot.id))
+                    continue
+                if distance <= tuning.rod_radius:
+                    shot.x += dx / distance * tuning.rod_pull
+                    shot.y += dy / distance * tuning.rod_pull
+            kept.append(shot)
+        world.projectiles = kept
+    elif field.kind == "toss":
+        player = world.player
+        returning = field.timer <= tuning.toss_back
+        if returning:
+            dx, dy = normalize(player.x - field.x, player.y - field.y)
+            if field.timer == tuning.toss_back:
+                field.hit = []  # it strikes again on the way back
+        else:
+            dx, dy = field.tx, field.ty
+        field.x, field.y = move_body(
+            field.x, field.y, dx * tuning.toss_speed, dy * tuning.toss_speed, 2.0, arena, world
+        )
+        _soak(world, field.x, field.y, tuning.toss_radius)
+        for robot in world.hostiles:
+            if robot.health > 0 and robot.id not in field.hit and length(
+                robot.x - field.x, robot.y - field.y
+            ) <= tuning.toss_radius + robot.radius:
+                field.hit.append(robot.id)
+                _strike(world, robot, tuning.toss_damage)
+                knock(world, robot, dx, dy, tuning.toss_knock, arena)
+        if returning and length(player.x - field.x, player.y - field.y) <= 6.0:
+            field.timer = 0  # caught
