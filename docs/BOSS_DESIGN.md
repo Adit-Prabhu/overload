@@ -48,7 +48,7 @@ How a boss should look. These are my reading of the genre, not sourced claims:
 
 The [phase sheet](art/bosses.png) shows the three forms in their own chambers under game lighting, with the Surge for scale. The local [roster sheet](art/robot_style_frame.png) compares them to the five maintenance bots. Dark articulated legs and appendages extend beyond the damage circle. The colored armor stays near the aim point, with at least 80 percent covered in phase 1 and 65 percent in later phases. The game uses the same health breakpoints, attack rotations and attack timing values for the existing protocols.
 
-On a Grid Core win, the wreck and chained explosions run for 1.5 s and the banner holds for another 1.5 s. The results screen follows while the simulation is already at the ending. Simultaneous player death suppresses the victory presentation. The separate boss times row has its own space below shots. The entrance keeps the health and loadout HUD visible. The DEV instant defeat shortcut still skips the combat kill event. Capture the death presentation with normal damage, as the render tool does.
+On a Grid Core win, the wreck and chained explosions run for 1.5 s and the banner holds for another 1.5 s. The results screen follows while the simulation is already at the ending. Simultaneous player death suppresses the victory presentation. The separate boss times row has its own space below shots. The entrance keeps the health and loadout HUD visible. The DEV instant defeat lands a real killing hit after the next tick (Nov 19), so it plays the same sequence. Capture the death presentation with normal damage, as the render tool does.
 
 The follow-up uses a distance-driven foot step along each chassis' actual heading, including strafes, retreats and vertical movement. A foot swings up to nine screen pixels clear of the floor. During the planted part of the cycle, its offset counters the body's movement. The boss HUD keeps its current phase visible, including a bordered `SHIFTING` badge during the shielded transition. The capture tool crosses the breakpoints with projectiles and lets the simulation change phase.
 
@@ -158,10 +158,10 @@ The kit attacks are Arc Ring (existing), Double Ring, Live Wire, Insulator Volle
 This lands on top of the fusion schedule (POWERS_AND_FUSION.md section 9), which already fills Nov 21 to 24. If both cannot fit before the Nov 25 playtest, the first thing to move is the Bulwark and Magnet pairs (spec cut order item 1).
 
 ## 6. Open points for Adit
-- **Scope.** This adds to the G3 overrun already logged.
+- **Scope (cut order accepted Nov 19).** This adds to the G3 overrun already logged.
   - Cut order: phase 3 of each chassis first, then the Insulator Volley and the Coolant Spray.
   - The vent windows stay in every phase, so cutting phase 3 never leaves a chassis without one.
-- **The reward:** spare charges, or a battery refill (the Surge's health)?
+- **The reward (decided Nov 19):** spare charges. A battery refill would add nothing, since the Fuse Box refills the battery after every chamber and the third chamber ends the run.
 - **The playtest on Nov 25.** Freeze the boss Tuning by Nov 23. The live suite (Nov 26 to 27) and the recording (Nov 28) then run the same `tuning_id` as the playtest, or their evidence is labelled with the other build.
 - **If the rework is not ready:** the playtest runs the pre-rework kit and art. The new look needs the new hit circle and phases, so it does not ship alone.
 
