@@ -23,7 +23,7 @@ Snapshot of November 19, 2026. For any agent or chat picking up the work. The st
 1. Bulwark (from the Sentry) and Magnet (from the Sweeper) base powers: drops, charge cores, evolutions (REFLECT, CRUSH), effects, sounds, and the slotting banner. Then a bot protocol check that shields do not trivialize projectile protocols.
 2. `config/evidence.json` version 4, which counts power uses by cooldown family (shot, teleport, pulse, shield, pull). Make `config_hash` cover it. Adit then redeploys the Worker and runs the smoke test (docs/DEPLOY.md).
 3. The 21 powers of the Bulwark and Magnet pairs (spec section 5), each its own verb and icon, held to the power step guard. The cut order is whole pairs (section 9).
-4. Balance the planned power roster against the new boss kits with the floor bot over 8 seeds and Adit's playtest notes, Nov 26 to 27 (spec section 9, step 8). The three-seed boss protocol guard includes the slower seed 3 bot run. Details in [BOSS_DESIGN.md](BOSS_DESIGN.md).
+4. Balance the full power roster against the new boss kits with the floor bot over 8 seeds, and freeze the Tuning, by Nov 23 (one timeline, recorded in DECISIONS, Nov 19). The boss protocol guard runs three seeds that cover every protocol.
 
 ## Decided Nov 19
 - The playtest seed rule: one seed per participant for both conditions, different seeds across participants.
@@ -31,11 +31,10 @@ Snapshot of November 19, 2026. For any agent or chat picking up the work. The st
 - The boss reward stays spare charges, and the boss cut order for the G3 proposal is phase 3 first.
 
 ## After the fusion work
-Development ends with spec section 9, steps 5 to 7. Then:
-1. Balance against the new bosses with the floor bot, including the fused-power protocol check.
-2. Freeze the Tuning by Nov 23, so the playtest, the live suite and the recording share one `tuning_id`.
-3. The playtest on Nov 25 (Adit), the live suite on Nov 26 to 27 (paid, Adit authorizes), the recording on Nov 28.
-4. The UPDATE documents and the G3 scope-lock proposal for Nov 30, stating the overrun (floor, bosses, fusion) and the cut orders.
+Development ends with the steps above. Then, one timeline (DECISIONS, Nov 19):
+1. The playtest on Nov 25 (Adit), on the frozen build.
+2. The live suite on Nov 26 to 27 (paid, Adit authorizes) and the recording on Nov 28, on the same `tuning_id`. A Tuning change from the playtest notes makes a new build, and each build's evidence is labelled with its `tuning_id`.
+3. The UPDATE documents and the G3 scope-lock proposal for Nov 30, stating the overrun (floor, bosses, fusion) and the cut orders.
 
 ## How the fusion system fits together
 - **Rules** (`sim/powers.py`):

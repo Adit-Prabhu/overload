@@ -162,11 +162,18 @@ def test_defeat_the_regulator_clears_its_chamber() -> None:
     session.campaign = campaign
     tools = devmode.DevTools()
     campaign.world.rival.boot = 30  # even mid-boot it falls, by a real killing hit
-    tools.press(session, [r[0] for r in tools.rows()].index("DEFEAT THE REGULATOR"), "select")
-    kinds = [e.kind for e in campaign.world.events]
-    assert "rival_destroyed" in kinds, "so the death sequence plays"
+    row = [r[0] for r in tools.rows()].index("DEFEAT THE REGULATOR")
+    tools.press(session, row, "select")
+    # As app.py runs a tick: the step, then the dev hook, then audio and the view read the
+    # events. The kill must be among them, so the death sequence and its sound play.
+    tools.before_tick(campaign)
+    campaign.step(IDLE)
+    tools.after_tick(campaign)
+    assert "rival_destroyed" in [e.kind for e in campaign.world.events]
     campaign.step(IDLE)
     assert "s1_chamber" in campaign.world.cleared
+    tools.press(session, row, "select")
+    assert tools.notice == "NO REGULATOR HERE" and not tools.defeat
 
 
 def test_skipping_sector_three_goes_to_the_ending() -> None:
