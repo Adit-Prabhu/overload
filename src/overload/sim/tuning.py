@@ -260,6 +260,7 @@ class Tuning:
     coil_damage: int = 2
     capacitor_armor_cooldown: int = 265
     capacitor_hits: int = 3
+    capacitor_damage: int = 12
     capacitor_ticks: int = 240
     lodestone_cooldown: int = 90
     lodestone_speed: float = 1.8

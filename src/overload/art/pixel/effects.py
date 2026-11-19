@@ -443,6 +443,7 @@ def burst_cone(
     cos_half: float,
     life: float,
     shock: bool,
+    vortex: bool = False,
 ) -> None:
     """A Burst discharge: magenta rays fanning across the cone and an arc at its reach,
     fading over a few frames. A Shock Cone adds yellow sparks along the rays."""
@@ -456,6 +457,10 @@ def burst_cone(
         end = (ox + math.cos(a) * reach * life, oy + math.sin(a) * reach * life)
         start = (ox + math.cos(a) * 6, oy + math.sin(a) * 6)
         token = "power.spark" if shock and i % 2 else "power.burst"
+        if vortex and i % 2:
+            token = "px.magnet.light"
+            a += 0.22 * life
+            start = (ox + math.cos(a) * (6 + 15 * life), oy + math.sin(a) * (6 + 15 * life))
         for surface in (target, light):
             pygame.draw.line(surface, rgb(token), start, end, 1)
     points = [
@@ -939,7 +944,7 @@ def magnet_field(
     rim: str = "power.magnet",
 ) -> None:
     """A Magnet field: a ring at its reach and dashes running inward toward its center.
-    Implosion and Gravity Well draw the same pull with a Burst rim (they end in a blast)."""
+    Implosion uses a Burst rim because it ends in a blast."""
     x, y = round(center[0]), round(center[1])
     r = round(radius)
     for surface in (target, light):
@@ -1019,3 +1024,19 @@ def hook_shot(target: pygame.Surface, light: pygame.Surface, pos: Point, angle: 
     for surface in (target, light):
         pygame.draw.line(surface, rgb("power.magnet"), (x, y), (bx, by), 1)
         surface.fill(rgb("power.spark"), (x - 1, y - 1, 3, 3))
+
+
+def gravity_well(
+    target: pygame.Surface, light: pygame.Surface, pos: Point, radius: float, left: float, tick: int
+) -> None:
+    """An indigo well with an eclipsed core and rotating magenta arcs."""
+    magnet_field(target, light, pos, radius, left, tick)
+    x, y = round(pos[0]), round(pos[1])
+    core = 4 + round(3 * (1 - left))
+    for surface in (target, light):
+        pygame.draw.circle(surface, rgb("power.burst"), (x, y), core + 1, 1)
+    pygame.draw.circle(target, rgb("ui.dim"), (x, y), core)
+    for i in range(3):
+        r = 12 + i * 7
+        a = tick * 0.075 + i * 2.09
+        pygame.draw.arc(target, rgb("power.burst"), (x - r, y - r, r * 2, r * 2), a, a + 1.4)
