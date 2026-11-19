@@ -49,22 +49,6 @@ def _panel(target: pygame.Surface, rect: tuple[int, int, int, int]) -> None:
     pygame.draw.rect(target, rgb("px.wall.2"), rect, 1)
 
 
-SHORT = {
-    "spark": "SPARK",
-    "blink": "BLINK",
-    "burst": "BURST",
-    "arc_trail": "TRAIL",
-    "bolt_lance": "LANCE",
-    "chain_jump": "JUMP",
-    "shock_cone": "CONE",
-    "shock_mine": "MINE",
-    "storm_aura": "AURA",
-    "impact_blink": "BLAST",
-    "displacer": "SWAP",
-    "meteor": "METEOR",
-}
-
-
 def rarity_marks(target: pygame.Surface, rarity: str, x: int, y: int) -> None:
     """1, 2 or 3 small crosses in the rarity's color, left to right from (x, y), the top
     left of the first one's 3 x 3 box. Crosses, so they never read as the square evolution

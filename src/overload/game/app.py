@@ -304,12 +304,15 @@ def play(options: Options) -> int:
         os.environ["SDL_VIDEODRIVER"] = "dummy"
         os.environ["SDL_AUDIODRIVER"] = "dummy"
 
+    screen = None
     if not (options.headless or options.replay or options.skip_title):
         # The title comes first: no rival session or trace exists until the player starts.
         pygame.init()
         started = False
         try:
-            started = run_title(_open_window(False), pygame.time.Clock())
+            screen = _open_window(False)
+            pygame.display.set_caption("Overload")
+            started = run_title(screen, pygame.time.Clock())
         finally:
             if not started:
                 pygame.quit()
@@ -370,10 +373,12 @@ def play(options: Options) -> int:
     )
     scripted: Iterator[InputFrame] | None = iter(replay.frames) if replay else None
 
-    pygame.init()
     try:
-        screen = _open_window(options.headless)
-        pygame.display.set_caption("Overload")
+        # Keep the title's display mode. Reopening a fullscreen window can crash SDL on macOS.
+        if screen is None:
+            pygame.init()
+            screen = _open_window(options.headless)
+            pygame.display.set_caption("Overload")
         view = PixelView(run)
         if options.dev:
             view.stamp = f"DEV {view.stamp}"  # the build stamp on banners and the ending

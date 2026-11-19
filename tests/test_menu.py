@@ -21,7 +21,15 @@ from overload.game.menu import (
 )
 from overload.sim.campaign import Campaign
 from overload.sim.inputs import IDLE, InputFrame
-from overload.sim.powers import BASE_POWERS, RARITIES, RESULTS, owned_result, rarity_of
+from overload.sim.powers import (
+    ABILITIES,
+    BASE_POWERS,
+    INGREDIENTS,
+    RARITIES,
+    RESULTS,
+    owned_result,
+    rarity_of,
+)
 
 ROLL = len(BASE_POWERS)  # the ROLL button's place in the cursor row
 
@@ -407,3 +415,39 @@ def test_every_screen_draws_with_rarity_frames_and_marks() -> None:
         menu_view.draw_menu(screen, menu, session, session.campaign.tuning, False, "x", 2)
     menu.screen, menu.help = "fuse", True
     menu_view.draw_menu(screen, menu, session, session.campaign.tuning, True, None, 2)
+
+
+@pytest.mark.usefixtures("headless_pygame")
+@pytest.mark.parametrize("ability", ABILITIES)
+def test_each_power_can_be_equipped_and_drawn_in_both_slots(ability) -> None:
+    import pygame
+
+    from overload.art.pixel import hud
+    from overload.game import dev, menu_view
+
+    session = Session(Campaign(1), NeutralSelector())
+    campaign = session.campaign
+    campaign.world.unlocked = list(BASE_POWERS)
+    if ability in INGREDIENTS:
+        dev.grant(campaign.world, ability)
+    menu = Menu()
+    menu.show(in_fuse_box=False)
+    menu.hub = HUB_PAUSED.index("LOADOUT")
+    menu.press(session, "select")
+    menu.row = loadout_rows(campaign.world.unlocked).index(ability)
+    screen = pygame.Surface((256, 144))
+    for slot, key in enumerate(("q", "e")):
+        assert menu.press(session, key) == (["equip", slot, ability], ["confirm"])
+        assert campaign.world.player.slots[slot] == ability
+        for page in ("loadout", "hub"):
+            menu.screen = page
+            menu_view.draw_menu(screen, menu, session, campaign.tuning, True, None, 1)
+        menu.screen = "loadout"
+        hud.draw(
+            screen, hud.Hud(charge=6, max_charge=6, sockets=tuple(campaign.world.player.slots))
+        )
+    if ability in INGREDIENTS:
+        menu.screen = "fuse"
+        menu.sockets = list(INGREDIENTS[ability])
+        menu.discovered.update(RESULTS[frozenset(menu.sockets)])
+        menu_view.draw_menu(screen, menu, session, campaign.tuning, True, None, 1)
