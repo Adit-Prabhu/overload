@@ -20,13 +20,13 @@ from overload.sim.collision import move_body
 from overload.sim.damage import damage_rival
 from overload.sim.geometry import circles_overlap, length, normalize
 from overload.sim.inputs import InputFrame
-from overload.sim.state import Device, Event, Projectile, World
+from overload.sim.state import CHARGE_BODY_RADIUS, Device, Event, Projectile, World
 from overload.sim.tuning import Tuning
 
 
 def bulwark(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:  # noqa: ARG001
     player = world.player
-    player.shield = tuning.bulwark_ticks
+    player.shield, player.shield_kind = tuning.bulwark_ticks, "bulwark"
     world.events.append(Event("bulwark_up", player.x, player.y))
     return True
 
@@ -48,7 +48,7 @@ def magnet(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> bool:
     return True
 
 
-def shield_shots(world: World, tuning: Tuning) -> None:
+def shield_shots(world: World, tuning: Tuning, arena: Arena) -> None:
     """While the bubble is up, hostile shots that touch it fizzle (REFLECT sends them back as
     sparks). Runs after shots move and before they hit, so a shot never lands through it."""
     from overload.sim.powers import evolved
@@ -57,13 +57,16 @@ def shield_shots(world: World, tuning: Tuning) -> None:
     if player.shield <= 0:
         return
     player.shield -= 1
-    reflect = evolved(world.fragments, "bulwark", tuning)
+    kind = player.shield_kind
+    reflect = kind == "bulwark" and evolved(world.fragments, "bulwark", tuning)
     kept = []
     for shot in world.projectiles:
         if shot.hostile and circles_overlap(
             (shot.x, shot.y), shot.radius, (player.x, player.y), tuning.bulwark_radius
         ):
             world.events.append(Event("shield_absorb", shot.x, shot.y, shot.id))
+            if kind == "static_guard":
+                _static_spark(world, shot, tuning, kept)
             if reflect:
                 ux, uy = normalize(-shot.vx, -shot.vy)
                 kept.append(
@@ -84,13 +87,57 @@ def shield_shots(world: World, tuning: Tuning) -> None:
             continue
         kept.append(shot)
     world.projectiles = kept
+    if player.shield == 0 and kind == "bastion":  # Bastion's bubble ends in a blast
+        from overload.sim.fusions import blast
+
+        blast(
+            world,
+            tuning,
+            arena,
+            player.x,
+            player.y,
+            tuning.bastion_radius,
+            tuning.bastion_damage,
+            tuning.burst_knock,
+            "bastion",
+        )
+
+
+def _static_spark(world: World, shot, tuning: Tuning, kept: list) -> None:
+    """Static Guard: an eaten shot becomes a spark at the nearest robot."""
+    from overload.sim.pairs import _nearest_target
+
+    target = _nearest_target(world, shot.x, shot.y, float("inf"))
+    if target is None:
+        return
+    ux, uy = normalize(target.x - shot.x, target.y - shot.y)
+    kept.append(
+        Projectile(
+            id=world.new_id(),
+            x=shot.x,
+            y=shot.y,
+            vx=ux * tuning.spark_speed,
+            vy=uy * tuning.spark_speed,
+            radius=tuning.spark_radius,
+            damage=tuning.spark_damage,
+            hostile=False,
+            ttl=tuning.spark_ttl,
+            kind="reflect",
+        )
+    )
 
 
 def tick_fields(world: World, tuning: Tuning, arena: Arena) -> None:
     """Each Magnet field drags robots and loose charges toward its center, then ends,
     crushing what is still inside when it evolved."""
+    from overload.sim import pairs
+
     left = []
     for field in world.fields:
+        if field.kind != "magnet":  # what the fused powers place (sim/pairs.py)
+            if pairs.tick_object(world, field, tuning, arena):
+                left.append(field)
+            continue
         reach = tuning.magnet_radius
         for robot in world.hostiles:
             if robot.health <= 0:
@@ -114,7 +161,7 @@ def tick_fields(world: World, tuning: Tuning, arena: Arena) -> None:
                     charge.y,
                     dx / distance * step,
                     dy / distance * step,
-                    2.0,
+                    CHARGE_BODY_RADIUS,
                     arena,
                     world,
                 )

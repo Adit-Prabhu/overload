@@ -19,6 +19,7 @@ from overload.game.flow import Session
 from overload.session.trace import TraceWriter
 from overload.sim.arena import SUBSTATION, Arena
 from overload.sim.campaign import Campaign, encounter_world
+from overload.sim.geometry import normalize
 from overload.sim.inputs import IDLE, InputFrame
 from overload.sim.powers import (
     ABILITIES,
@@ -497,10 +498,67 @@ def _damage_per_second(power: str, k: int, fragments) -> float:
     return sum(999 - r.health for r in robots) / (cooldown_of(power, DEFAULT) / 60)
 
 
+# The first three pairs deal damage, so they compare on damage alone. The pairs Bulwark and
+# Magnet join mix damage with stopping shots, so they compare on value: damage dealt plus
+# hits prevented, per second of cooldown, against robots that fire at the Surge (spec
+# section 5 asks for shots stopped for shield and pull results, recorded in DECISIONS).
+DAMAGE_PAIRS = (("spark", "blink"), ("spark", "burst"), ("blink", "burst"))
+VALUE_PAIRS = tuple(pair for pair in RECIPE_ORDER if pair not in DAMAGE_PAIRS)
 # Evolved runs only where an inherited evolution changes damage: Spark + Burst takes CHAIN
-# and WIDE. The other pairs inherit only Overdrive (speed), so their evolved runs would just
-# repeat the stock ones.
-GUARD_CASES = [(pair, False) for pair in RECIPE_ORDER] + [(("spark", "burst"), True)]
+# and WIDE. The other pairs inherit only Overdrive (speed) or nothing, so their evolved runs
+# would just repeat the stock ones.
+GUARD_CASES = [(pair, False) for pair in DAMAGE_PAIRS] + [(("spark", "burst"), True)]
+
+
+def _volleys_and_damage(power: str | None, k: int) -> tuple[int, int]:
+    """Scene k with every robot firing a bolt at the Surge every 40 ticks (staggered), the
+    power used once. Returns the damage dealt and the hits the Surge took."""
+    world = armed(power or "spark")
+    if power is None:
+        world.player.slots = ["", ""]
+    robots = [dummy(world, x, y) for x, y in _scene(k)]
+    player = world.player
+    hits = 0
+    for tick in range(241):
+        for i, robot in enumerate(robots):
+            if robot.health > 0 and (tick + i * 10) % 40 == 0:
+                dx, dy = normalize(player.x - robot.x, player.y - robot.y)
+                speed = DEFAULT.bolt_speed
+                world.projectiles.append(
+                    Projectile(
+                        world.new_id(),
+                        robot.x + dx * 10,
+                        robot.y + dy * 10,
+                        dx * speed,
+                        dy * speed,
+                        DEFAULT.bolt_radius,
+                        1,
+                        True,
+                        200,
+                        "bolt",
+                    )
+                )
+        player.invulnerable, player.charge = 0, DEFAULT.player_max_charge  # count every hit
+        step(world, InputFrame(power_q=tick == 0, **AIM), arena=OPEN)
+        hits += sum(e.kind == "player_hit" for e in world.events)
+    return sum(999 - r.health for r in robots), hits
+
+
+@pytest.mark.parametrize("pair", VALUE_PAIRS, ids=lambda v: "+".join(v))
+def test_higher_rarities_are_worth_more_but_only_modestly(pair) -> None:
+    """The power step guard for the pairs Bulwark and Magnet join, on value per second of
+    cooldown over 40 fixed scenes (tuned Nov 19 to about 1.20 and 1.50 times the rare)."""
+    base = [_volleys_and_damage(None, k)[1] for k in range(40)]
+    values = []
+    for power in RESULTS[frozenset(pair)]:
+        total = 0
+        for k in range(40):
+            damage, hits = _volleys_and_damage(power, k)
+            total += damage + base[k] - hits
+        values.append(total / (cooldown_of(power, DEFAULT) / 60))
+    rare, epic, legendary = values
+    assert rare < epic <= 1.35 * rare
+    assert epic < legendary <= 1.75 * rare
 
 
 @pytest.mark.parametrize(

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import random
 
-from overload.sim import bosskit, defenses, floorplay, fusions, robots
+from overload.sim import bosskit, defenses, floorplay, fusions, pairs, robots
 from overload.sim.aiming import aim, launch_point
 from overload.sim.arena import SUBSTATION, Arena
 from overload.sim.bosses import BY_KIND
@@ -80,15 +80,16 @@ def step(world: World, inp: InputFrame, tuning: Tuning = DEFAULT, arena: Arena =
     _fire(world, inp, tuning, arena)
     use_powers(world, inp, tuning, arena)
     fusions.tick(world, tuning, arena)
+    pairs.tick(world, tuning, arena)
     robots.tick(world, tuning, arena)
     _rival(world, tuning, arena)
     _hazards(world, tuning)
     _separate(world, tuning, arena)
     _move_projectiles(world, tuning, arena)
-    defenses.shield_shots(world, tuning)
+    defenses.shield_shots(world, tuning, arena)
     defenses.tick_fields(world, tuning, arena)
     tick_trails(world, tuning)
-    _hits(world, tuning)
+    _hits(world, tuning, arena)
     absorb_charges(world, tuning)
     floorplay.tick(world, tuning, arena)
     _timers(world.player)
@@ -177,7 +178,7 @@ def _move_projectiles(world: World, tuning: Tuning, arena: Arena) -> None:
     world.projectiles = survivors
 
 
-def _hits(world: World, tuning: Tuning) -> None:
+def _hits(world: World, tuning: Tuning, arena: Arena) -> None:
     player = world.player
     survivors = []
     for shot in world.projectiles:
@@ -210,6 +211,8 @@ def _hits(world: World, tuning: Tuning) -> None:
                 world.events.append(Event("hostile_hit", target.x, target.y, target.id))
                 if shot.kind == "spark":
                     spark_chain(world, tuning, target)
+                elif shot.kind == "hook":
+                    pairs.hook_hit(world, target, tuning, arena)
                 continue
         survivors.append(shot)
     world.projectiles = survivors

@@ -38,11 +38,23 @@ BASE_POWERS = ("spark", "blink", "burst", "bulwark", "magnet")
 RARITIES = ("rare", "epic", "legendary")
 # Each pair fuses into one of three powers, one per rarity, each its own verb
 # (docs/POWERS_AND_FUSION.md section 5). The order is the order the menu offers the pairs.
-RECIPE_ORDER = (("spark", "blink"), ("spark", "burst"), ("blink", "burst"))
+RECIPE_ORDER = (
+    ("spark", "blink"),
+    ("spark", "burst"),
+    ("blink", "burst"),
+    ("spark", "bulwark"),
+    ("spark", "magnet"),
+    ("burst", "bulwark"),
+    ("burst", "magnet"),
+)
 RESULTS = {
     frozenset(("spark", "blink")): ("arc_trail", "bolt_lance", "chain_jump"),
     frozenset(("spark", "burst")): ("shock_cone", "shock_mine", "storm_aura"),
     frozenset(("blink", "burst")): ("impact_blink", "displacer", "meteor"),
+    frozenset(("spark", "bulwark")): ("static_guard", "tesla_coil", "capacitor_armor"),
+    frozenset(("spark", "magnet")): ("lodestone", "ion_hook", "magrail"),
+    frozenset(("burst", "bulwark")): ("bastion", "reflector_wave", "fortress"),
+    frozenset(("burst", "magnet")): ("vortex_cone", "implosion", "gravity_well"),
 }
 # Every fused power: its ingredients and its rarity.
 FUSED = {
@@ -67,6 +79,18 @@ NAMES = {
     "meteor": "METEOR",
     "bulwark": "BULWARK",
     "magnet": "MAGNET",
+    "static_guard": "STATIC GUARD",
+    "tesla_coil": "TESLA COIL",
+    "capacitor_armor": "CAPACITOR ARMOR",
+    "lodestone": "LODESTONE",
+    "ion_hook": "ION HOOK",
+    "magrail": "MAGRAIL",
+    "bastion": "BASTION",
+    "reflector_wave": "REFLECTOR WAVE",
+    "fortress": "FORTRESS",
+    "vortex_cone": "VORTEX CONE",
+    "implosion": "IMPLOSION",
+    "gravity_well": "GRAVITY WELL",
 }
 DROPS = {
     "drone": "spark",
@@ -93,6 +117,19 @@ COOLDOWN_KEYS = {
     "storm_aura": "pulse",
     "bulwark": "shield",
     "magnet": "pull",
+    # A pair's three powers share its family (spec section 6).
+    "static_guard": "shield",
+    "tesla_coil": "shield",
+    "capacitor_armor": "shield",
+    "lodestone": "spark",
+    "ion_hook": "spark",
+    "magrail": "spark",
+    "bastion": "shield",
+    "reflector_wave": "shield",
+    "fortress": "shield",
+    "vortex_cone": "pulse",
+    "implosion": "pulse",
+    "gravity_well": "pulse",
 }
 # One evolution per base power, unlocked by two more charges after the first (GDD).
 EVOLUTIONS = {
@@ -223,7 +260,7 @@ def use_powers(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> N
     cooldown or with an empty slot. A power with nothing valid to do (a Blink with nowhere to
     land, a Chain Jump with no robot in reach) is rejected, keeps its cooldown free and does
     not count as a use."""
-    from overload.sim import defenses, fusions  # both build on this module's helpers
+    from overload.sim import defenses, fusions, pairs  # all build on this module's helpers
 
     player = world.player
     for slot, pressed in enumerate((inp.power_q, inp.power_e)):
@@ -244,6 +281,8 @@ def use_powers(world: World, inp: InputFrame, tuning: Tuning, arena: Arena) -> N
             used = defenses.bulwark(world, inp, tuning, arena)
         elif ability == "magnet":
             used = defenses.magnet(world, inp, tuning, arena)  # False: nowhere to set it
+        elif ability in pairs.USE:
+            used = pairs.USE[ability](world, inp, tuning, arena)
         else:
             used = fusions.USE[ability](world, inp, tuning, arena)
         if not used:

@@ -29,6 +29,11 @@ def hurt_player(world: World, damage: int, tuning: Tuning) -> None:
     player = world.player
     if player.protected:
         return
+    if player.armor > 0:  # Capacitor Armor eats the hit and stores its charge
+        player.armor -= 1
+        player.invulnerable = tuning.hit_invulnerability
+        world.events.append(Event("armor_absorb", player.x, player.y, player.armor))
+        return
     player.charge = max(0, player.charge - damage)
     player.invulnerable = tuning.hit_invulnerability
     world.events.append(Event("player_hit", player.x, player.y))

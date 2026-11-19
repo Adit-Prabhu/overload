@@ -249,6 +249,68 @@ class Tuning:
     magnet_pull: float = 1.5  # px a tick, under the thinnest obstacle: walls win
     magnet_cooldown: int = 120
     magnet_crush_damage: int = 2
+    # The pairs Bulwark and Magnet join, first half (sim/pairs.py). Provisional (spec 5).
+    static_guard_cooldown: int = 200
+    tesla_coil_cooldown: int = 224
+    coil_range: float = 72.0
+    coil_radius: float = 8.0
+    coil_ticks: int = 180
+    coil_interval: int = 20
+    coil_reach: float = 80.0
+    coil_damage: int = 2
+    capacitor_armor_cooldown: int = 265
+    capacitor_hits: int = 3
+    capacitor_damage: int = 12
+    capacitor_ticks: int = 240
+    lodestone_cooldown: int = 90
+    lodestone_speed: float = 1.8
+    lodestone_radius: float = 4.0
+    lodestone_damage: int = 4
+    lodestone_ttl: int = 80
+    lodestone_reach: float = 30.0
+    lodestone_pull: float = 1.0
+    ion_hook_cooldown: int = 88
+    hook_speed: float = 4.0
+    hook_damage: int = 8
+    hook_ttl: int = 40
+    hook_stun: int = 30
+    magrail_cooldown: int = 128
+    magrail_range: float = 160.0
+    magrail_width: float = 4.0
+    magrail_damage: int = 12
+    magrail_drag: float = 20.0
+    magrail_slam: int = 2
+    bastion_cooldown: int = 200
+    bastion_radius: float = 32.0
+    bastion_damage: int = 3
+    reflector_wave_cooldown: int = 296
+    reflector_ticks: int = 24
+    reflector_speed: float = 3.0
+    reflector_width: float = 40.0
+    reflector_damage: int = 4
+    fortress_cooldown: int = 340
+    fortress_ticks: int = 150
+    fortress_radius: float = 36.0
+    fortress_interval: int = 20
+    fortress_damage: int = 2
+    fortress_knock: float = 10.0
+    vortex_cone_cooldown: int = 70
+    vortex_range: float = 52.0
+    vortex_pull: float = 12.0
+    vortex_damage: int = 4
+    implosion_cooldown: int = 188
+    implosion_ticks: int = 30
+    implosion_radius: float = 50.0
+    implosion_pull: float = 1.5
+    implosion_blast: float = 32.0
+    implosion_damage: int = 5
+    gravity_well_cooldown: int = 338
+    well_range: float = 90.0
+    well_ticks: int = 120
+    well_radius: float = 64.0
+    well_pull: float = 1.2
+    well_blast: float = 40.0
+    well_damage: int = 6
     signature_quiet: int = 66  # the protocol rests this long after a signature (a quake's run)
 
     # Rooms (overhaul): robots warp in after a visible marker, secret walls crack open.
@@ -363,6 +425,20 @@ class Tuning:
             raise ValueError("A Magnet step must be positive and under the thinnest obstacle")
         if self.magnet_radius <= 0 or self.magnet_range <= 0 or self.magnet_ticks < 1:
             raise ValueError("Magnet range, radius and duration must be positive")
+        steps = ("lodestone_pull", "implosion_pull", "well_pull", "reflector_speed", "hook_speed")
+        if any(getattr(self, name) >= THINNEST_OBSTACLE for name in steps):
+            raise ValueError("A pull, wave or hook step could carry a body through a prop")
+        if self.vortex_pull / 2 >= THINNEST_OBSTACLE or self.magrail_drag / 4 >= THINNEST_OBSTACLE:
+            raise ValueError("A vortex or rail drag step could carry a robot through a prop")
+        timers = (
+            "coil_interval",
+            "coil_ticks",
+            "capacitor_hits",
+            "capacitor_ticks",
+            "reflector_ticks",
+        )
+        if any(getattr(self, name) < 1 for name in timers + ("fortress_interval", "hook_stun")):
+            raise ValueError("Fused power timers and counts must be positive")
         if self.dodge_speed >= self.player_radius:
             raise ValueError("Dodge speed must stay below the player radius to avoid tunneling")
 

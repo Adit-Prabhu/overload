@@ -173,6 +173,115 @@ _CHARGE = {
         "....UUU",
         ".......",
     ],
+    # The pairs Bulwark and Magnet join (sim/pairs.py), each drawn for its own verb.
+    "static_guard": [  # a shield with a bolt
+        ".BBBBB.",
+        "BbbYbbB",
+        "BbYYbbB",
+        "BbbYYbB",
+        ".BbYbB.",
+        "..BBB..",
+        "...B...",
+    ],
+    "tesla_coil": [  # a coil tower throwing arcs
+        "Y..B..Y",
+        ".Y.B.Y.",
+        "..BbB..",
+        "..BbB..",
+        "..BbB..",
+        ".BBBBB.",
+        "BBBBBBB",
+    ],
+    "capacitor_armor": [  # three charge cells in a shield
+        ".BBBBB.",
+        "BY.Y.YB",
+        "BY.Y.YB",
+        "BbbbbbB",
+        ".BbbbB.",
+        "..BbB..",
+        "...B...",
+    ],
+    "lodestone": [  # a heavy spark with field lines
+        "N.....N",
+        ".N.Y.N.",
+        "..YyY..",
+        ".YyyyY.",
+        "..YyY..",
+        ".N.Y.N.",
+        "N.....N",
+    ],
+    "ion_hook": [  # a hook on a line
+        "...YY..",
+        "....Y..",
+        "....Y..",
+        "....Y..",
+        "N...Y..",
+        "NN..Y..",
+        ".NNNN..",
+    ],
+    "magrail": [  # a rail between two magnets
+        "N.....N",
+        "N.....N",
+        "NYYYYYN",
+        "NyyyyyN",
+        "NYYYYYN",
+        "N.....N",
+        "N.....N",
+    ],
+    "bastion": [  # a shield ringed by a blast
+        "U.BBB.U",
+        ".BbbbB.",
+        "UBbUbBU",
+        ".BbbbB.",
+        "U.BbB.U",
+        "...B...",
+        ".......",
+    ],
+    "reflector_wave": [  # a wall pushing out
+        "B......",
+        "BU.....",
+        "B.UU...",
+        "B...UUU",
+        "B.UU...",
+        "BU.....",
+        "B......",
+    ],
+    "fortress": [  # a dome over a core
+        "..BBB..",
+        ".BbbbB.",
+        "BbbUbbB",
+        "BbUuUbB",
+        "BbbUbbB",
+        "BBBBBBB",
+        ".......",
+    ],
+    "vortex_cone": [  # a cone that curls inward
+        "UU.....",
+        "U.NN...",
+        "U.N.NU.",
+        "U.NN.NU",
+        "U...NU.",
+        "U.UU...",
+        "UU.....",
+    ],
+    "implosion": [  # everything drawn to one point
+        "N..U..N",
+        ".N.U.N.",
+        "..NUN..",
+        "UUUuUUU",
+        "..NUN..",
+        ".N.U.N.",
+        "N..U..N",
+    ],
+    "gravity_well": [  # rings around a heavy heart
+        "..NNN..",
+        ".N...N.",
+        "N.UUU.N",
+        "N.UuU.N",
+        "N.UUU.N",
+        ".N...N.",
+        "..NNN..",
+    ],
 }
 _DIAMOND = [
     "..k..",
@@ -334,6 +443,7 @@ def burst_cone(
     cos_half: float,
     life: float,
     shock: bool,
+    vortex: bool = False,
 ) -> None:
     """A Burst discharge: magenta rays fanning across the cone and an arc at its reach,
     fading over a few frames. A Shock Cone adds yellow sparks along the rays."""
@@ -347,6 +457,10 @@ def burst_cone(
         end = (ox + math.cos(a) * reach * life, oy + math.sin(a) * reach * life)
         start = (ox + math.cos(a) * 6, oy + math.sin(a) * 6)
         token = "power.spark" if shock and i % 2 else "power.burst"
+        if vortex and i % 2:
+            token = "px.magnet.light"
+            a += 0.22 * life
+            start = (ox + math.cos(a) * (6 + 15 * life), oy + math.sin(a) * (6 + 15 * life))
         for surface in (target, light):
             pygame.draw.line(surface, rgb(token), start, end, 1)
     points = [
@@ -800,6 +914,7 @@ def bubble(
     radius: float,
     left: float,
     tick: int,
+    accent: str = "",
 ) -> None:
     """Bulwark's shield: a ring of hex-like dashes around the Surge, a pale inner ring, and
     a flicker as it runs out (the last quarter)."""
@@ -813,8 +928,9 @@ def bubble(
             continue
         a = math.tau * i / count + tick * 0.03
         px, py = round(x + math.cos(a) * r), round(y + math.sin(a) * r)
+        token = accent if accent and i % 3 == 1 else "power.bulwark"
         for surface in (target, light):
-            surface.fill(rgb("power.bulwark"), (px, py, 2, 2))
+            surface.fill(rgb(token), (px, py, 2, 2))
     pygame.draw.circle(light, rgb("px.bulwark.light"), (x, y), r - 2, 1)
 
 
@@ -825,12 +941,14 @@ def magnet_field(
     radius: float,
     left: float,
     tick: int,
+    rim: str = "power.magnet",
 ) -> None:
-    """A Magnet field: a ring at its reach and dashes running inward toward its center."""
+    """A Magnet field: a ring at its reach and dashes running inward toward its center.
+    Implosion uses a Burst rim because it ends in a blast."""
     x, y = round(center[0]), round(center[1])
     r = round(radius)
     for surface in (target, light):
-        pygame.draw.circle(surface, rgb("power.magnet"), (x, y), r, 1)
+        pygame.draw.circle(surface, rgb(rim), (x, y), r, 1)
         pygame.draw.circle(surface, rgb("px.magnet.light"), (x, y), 2)
     for i in range(8):
         a = math.tau * i / 8
@@ -842,3 +960,83 @@ def magnet_field(
             pygame.draw.line(surface, rgb("power.magnet"), start, end, 1)
     if left < 0.2:  # about to end
         pygame.draw.circle(target, rgb("px.magnet.light"), (x, y), r - 3, 1)
+
+
+def coil(target: pygame.Surface, light: pygame.Surface, pos: Point, tick: int) -> None:
+    """A Tesla Coil: a small green tower with a spark crackling on top."""
+    x, y = round(pos[0]), round(pos[1])
+    for surface in (target, light):
+        surface.fill(rgb("power.bulwark"), (x - 2, y - 6, 5, 8))
+        surface.fill(rgb("px.bulwark.light"), (x - 1, y - 5, 1, 6))
+    if tick % 6 < 3:
+        for surface in (target, light):
+            surface.fill(rgb("power.spark"), (x - 1 + (tick % 3) - 1, y - 9, 2, 2))
+
+
+def wall_of_force(target: pygame.Surface, light: pygame.Surface, a: Point, b: Point) -> None:
+    """A Reflector Wave: a bright bar of force with a magenta edge."""
+    for surface in (target, light):
+        pygame.draw.line(surface, rgb("power.bulwark"), a, b, 3)
+        pygame.draw.line(surface, rgb("power.burst"), a, b, 1)
+
+
+def dome(target: pygame.Surface, light: pygame.Surface, pos: Point, radius: float, tick: int):
+    """A Fortress: a ring of shield plates with a soft inner ring."""
+    x, y = round(pos[0]), round(pos[1])
+    r = round(radius)
+    for i in range(24):
+        if (i + tick // 6) % 4 == 3:
+            continue
+        a = math.tau * i / 24
+        px, py = round(x + math.cos(a) * r), round(y + math.sin(a) * r)
+        for surface in (target, light):
+            surface.fill(rgb("power.bulwark"), (px - 1, py - 1, 3, 3))
+    pygame.draw.circle(light, rgb("px.bulwark.light"), (x, y), r - 3, 1)
+
+
+def armor_pips(target: pygame.Surface, light: pygame.Surface, pos: Point, left: int, tick: int):
+    """Capacitor Armor: one charge cell orbiting the Surge per hit it can still eat."""
+    for i in range(left):
+        a = tick * 0.08 + math.tau * i / max(1, left)
+        x, y = round(pos[0] + math.cos(a) * 11), round(pos[1] + math.sin(a) * 9)
+        for surface in (target, light):
+            surface.fill(rgb("power.bulwark"), (x - 1, y - 1, 3, 3))
+            surface.fill(rgb("power.spark"), (x, y, 1, 1))
+
+
+def heavy_spark(target: pygame.Surface, light: pygame.Surface, pos: Point, tick: int) -> None:
+    """A Lodestone: a big slow spark with field lines turning around it."""
+    x, y = round(pos[0]), round(pos[1])
+    for surface in (target, light):
+        pygame.draw.circle(surface, rgb("power.spark"), (x, y), 4)
+        pygame.draw.circle(surface, rgb("px.spark.light"), (x, y), 2)
+    for i in range(4):
+        a = tick * 0.15 + math.tau * i / 4
+        target.fill(
+            rgb("power.magnet"), (round(x + math.cos(a) * 7), round(y + math.sin(a) * 7), 1, 1)
+        )
+
+
+def hook_shot(target: pygame.Surface, light: pygame.Surface, pos: Point, angle: float) -> None:
+    """An Ion Hook in flight: a spark with a barb behind it."""
+    x, y = round(pos[0]), round(pos[1])
+    bx, by = round(x - math.cos(angle) * 5), round(y - math.sin(angle) * 5)
+    for surface in (target, light):
+        pygame.draw.line(surface, rgb("power.magnet"), (x, y), (bx, by), 1)
+        surface.fill(rgb("power.spark"), (x - 1, y - 1, 3, 3))
+
+
+def gravity_well(
+    target: pygame.Surface, light: pygame.Surface, pos: Point, radius: float, left: float, tick: int
+) -> None:
+    """An indigo well with an eclipsed core and rotating magenta arcs."""
+    magnet_field(target, light, pos, radius, left, tick)
+    x, y = round(pos[0]), round(pos[1])
+    core = 4 + round(3 * (1 - left))
+    for surface in (target, light):
+        pygame.draw.circle(surface, rgb("power.burst"), (x, y), core + 1, 1)
+    pygame.draw.circle(target, rgb("ui.dim"), (x, y), core)
+    for i in range(3):
+        r = 12 + i * 7
+        a = tick * 0.075 + i * 2.09
+        pygame.draw.arc(target, rgb("power.burst"), (x - r, y - r, r * 2, r * 2), a, a + 1.4)

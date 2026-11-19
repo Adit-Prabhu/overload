@@ -43,6 +43,12 @@ INHERITS = {
     frozenset(("spark", "blink")): ("blink",),
     frozenset(("spark", "burst")): ("spark", "burst"),
     frozenset(("blink", "burst")): ("blink",),
+    # The pairs Bulwark and Magnet join inherit nothing yet: their evolutions (REFLECT,
+    # CRUSH) do not carry into fused powers (DECISIONS, Nov 19).
+    frozenset(("spark", "bulwark")): (),
+    frozenset(("spark", "magnet")): (),
+    frozenset(("burst", "bulwark")): (),
+    frozenset(("burst", "magnet")): (),
 }
 
 

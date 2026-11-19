@@ -43,6 +43,7 @@ REJECTED = {
     "chain_jump": "NO ROBOT IN REACH",
     "displacer": "NO ROBOT TO SWAP WITH",
     "meteor": "NO ROOM TO LAND",
+    "tesla_coil": "NO ROOM FOR A COIL",
 }
 SURGE_FEET = 8  # sprite feet sit this many pixels below the body center
 # The glow on the Surge's pack for an equipped power: a fused power shows the ingredient
@@ -52,6 +53,18 @@ SOCKET_TOKENS = {
     "blink": "blink",
     "bulwark": "bulwark",
     "magnet": "magnet",
+    "static_guard": "bulwark",
+    "tesla_coil": "spark",
+    "capacitor_armor": "bulwark",
+    "lodestone": "magnet",
+    "ion_hook": "spark",
+    "magrail": "magnet",
+    "bastion": "bulwark",
+    "reflector_wave": "burst",
+    "fortress": "bulwark",
+    "vortex_cone": "burst",
+    "implosion": "magnet",
+    "gravity_well": "magnet",
     "burst": "burst",
     "arc_trail": "spark",
     "bolt_lance": "spark",
@@ -68,6 +81,18 @@ DESCRIPTIONS = {
     "blink": "TELEPORT TOWARD THE CURSOR",
     "bulwark": "A SHIELD BUBBLE THAT EATS SHOTS",
     "magnet": "A FIELD AT THE AIM THAT DRAGS ROBOTS IN",
+    "static_guard": "A SHIELD. EACH SHOT IT EATS SPARKS BACK",
+    "tesla_coil": "PLANT A COIL THAT STRIKES AND SOAKS SHOTS",
+    "capacitor_armor": "EAT THE NEXT 3 HITS, THEN A RING OF SPARKS",
+    "lodestone": "A SLOW HEAVY SPARK THAT DRAGS ROBOTS",
+    "ion_hook": "HOOK A ROBOT TO YOU AND STUN IT",
+    "magrail": "A RAIL THAT PIERCES AND DRAGS. WALLS HURT",
+    "bastion": "A SHIELD THAT ENDS IN A BLAST",
+    "reflector_wave": "A ROLLING WALL. SHOVES ROBOTS, TURNS SHOTS",
+    "fortress": "A DOME NO SHOT ENTERS. IT BLASTS INTRUDERS",
+    "vortex_cone": "A CONE THAT PULLS ROBOTS IN, THEN POPS",
+    "implosion": "A FIELD THAT DRAWS ROBOTS IN, THEN BLASTS",
+    "gravity_well": "A LONG WELL. PULLS EVERYTHING, BIG BLAST",
     "burst": "KNOCKBACK CONE THAT WIPES SHOTS",
     "arc_trail": "A BLINK THAT LEAVES A SHOCK LINE",
     "bolt_lance": "DASH AS A BOLT, STRIKING ALL YOU PASS",
@@ -124,6 +149,8 @@ STRIDE = {
 WALKING = 0.05  # moved at least this far on the last tick: walking, not standing
 SCAN = (0, 1, 2, 3, 3, 2, 1, 0)  # the Sentry's eye sweeping its visor
 RECOIL_TICKS = 12
+# A fused shield's bubble shows the power it was fused with (art direction rule 5).
+BUBBLE_ACCENTS = {"static_guard": "power.spark", "bastion": "power.burst"}
 BOOM_TICKS = 14
 WRECK_TICKS = 90  # 1.5 s of explosions over the sinking wreck
 DOWNED_TICKS = 180
@@ -594,6 +621,18 @@ class PixelView:
             elif event.kind == "blink_to":
                 self.blinks.append((event.x, event.y, 10))
                 self._burst(event.x, event.y, 8, "px.blink.light", 1.4)
+            elif event.kind == "rail":  # Magrail: a bolt from the Surge to where it stopped
+                player = run.world.player
+                self.chains.append(((player.x, player.y), (event.x, event.y), 8))
+                self.shake = max(self.shake, 3)
+            elif event.kind in ("hooked", "slammed"):
+                self._burst(event.x, event.y, 8, "power.magnet", 1.4)
+            elif event.kind in ("armor_absorb", "armor_up"):
+                self._burst(event.x, event.y, 6, "power.bulwark", 1.2)
+            elif event.kind == "armor_release":
+                self._burst(event.x, event.y, 16, "power.spark", 2.0)
+            elif event.kind in ("coil_planted", "fortress_up", "wave_out", "well_open"):
+                self._burst(event.x, event.y, 8, "px.bulwark.light", 1.0)
             elif event.kind == "bulwark_up":
                 self._burst(event.x, event.y, 10, "power.bulwark", 1.2)
             elif event.kind == "shield_absorb":
@@ -621,9 +660,7 @@ class PixelView:
             elif event.kind == "burst":
                 player = run.world.player
                 angle = math.atan2(player.aim_y, player.aim_x)
-                self.bursts.append(
-                    (event.x, event.y, angle, bool(event.ref), event.power == "shock_cone", 10)
-                )
+                self.bursts.append((event.x, event.y, angle, bool(event.ref), event.power, 10))
             elif event.kind == "blast":
                 self.blasts.append((event.x, event.y, event.ref, BLAST_TICKS))
                 self._burst(event.x, event.y, 14, "power.burst", 1.8)
@@ -929,15 +966,8 @@ class PixelView:
                 v(trail.x2, trail.y2),
                 trail.ttl / tuning.trail_ttl,
             )
-        for field in world.fields:  # Magnet fields
-            effects.magnet_field(
-                screen,
-                self.glow.layer,
-                v(field.x, field.y),
-                tuning.magnet_radius,
-                field.timer / tuning.magnet_ticks,
-                tick,
-            )
+        for field in world.fields:  # Magnet fields and what the fused powers place
+            self._draw_field(screen, field, tuning, v, tick)
         for device in world.devices:  # Shock Mines
             fuse = device.timer / tuning.shock_mine_fuse if device.timer >= 0 else -1.0
             effects.mine(screen, self.glow.layer, v(device.x, device.y), fuse)
@@ -1087,6 +1117,11 @@ class PixelView:
                     tuning.bulwark_radius,
                     player.shield / tuning.bulwark_ticks,
                     tick,
+                    BUBBLE_ACCENTS.get(player.shield_kind, ""),
+                )
+            if player.armor > 0:
+                effects.armor_pips(
+                    screen, self.glow.layer, v(player.x, player.y), player.armor, tick
                 )
             hand = v(*aiming.hand(player, tuning))
             hand = (hand[0], hand[1] - lift)  # the caster rises with a Meteor
@@ -1163,6 +1198,12 @@ class PixelView:
                     surface.blit(image, image.get_rect(center=center))
             elif shot.hostile:
                 effects.bolt(screen, self.glow.layer, v(shot.x, shot.y))
+            elif shot.kind == "lodestone":
+                effects.heavy_spark(screen, self.glow.layer, v(shot.x, shot.y), tick)
+            elif shot.kind == "hook":
+                effects.hook_shot(
+                    screen, self.glow.layer, v(shot.x, shot.y), math.atan2(shot.vy, shot.vx)
+                )
             elif shot.kind in ("spark", "reflect"):
                 effects.spark_shot(
                     screen, self.glow.layer, v(shot.x, shot.y), math.atan2(shot.vy, shot.vx)
@@ -1172,11 +1213,20 @@ class PixelView:
                     screen, self.glow.layer, v(shot.x, shot.y), math.atan2(shot.vy, shot.vx)
                 )
 
-        for x, y, angle, wide, shock, life in self.bursts:
+        for x, y, angle, wide, power, life in self.bursts:
             reach = tuning.burst_wide_range if wide else tuning.burst_range
             cone = tuning.burst_wide_cos if wide else tuning.burst_cos
+            vortex = power == "vortex_cone"
             effects.burst_cone(
-                screen, self.glow.layer, v(x, y), angle, reach, cone, life / 10, shock
+                screen,
+                self.glow.layer,
+                v(x, y),
+                angle,
+                tuning.vortex_range if vortex else reach,
+                cone,
+                life / 10,
+                power == "shock_cone",
+                vortex,
             )
         for a, b, _life in self.chains:
             effects.chain_bolt(screen, self.glow.layer, v(*a), v(*b))
@@ -1294,6 +1344,31 @@ class PixelView:
     def advance_defeat(self) -> None:
         """Finish a replay's visual coda after its last recorded input."""
         self._tick_cosmetics()
+
+    def _draw_field(self, screen: pygame.Surface, field, tuning, v, tick: int) -> None:
+        glow = self.glow.layer
+        at = v(field.x, field.y)
+        if field.kind == "magnet":
+            left = field.timer / tuning.magnet_ticks
+            effects.magnet_field(screen, glow, at, tuning.magnet_radius, left, tick)
+        elif field.kind == "coil":
+            effects.coil(screen, glow, at, tick)
+        elif field.kind == "wave":
+            half = tuning.reflector_width / 2
+            px, py = -field.ty * half, field.tx * half
+            effects.wall_of_force(
+                screen, glow, v(field.x + px, field.y + py), v(field.x - px, field.y - py)
+            )
+        elif field.kind == "fortress":
+            effects.dome(screen, glow, at, tuning.fortress_radius, tick)
+        elif field.kind == "implosion":
+            left = field.timer / tuning.implosion_ticks
+            effects.magnet_field(
+                screen, glow, at, tuning.implosion_radius, left, tick, "power.burst"
+            )
+        elif field.kind == "well":
+            left = field.timer / tuning.well_ticks
+            effects.gravity_well(screen, glow, at, tuning.well_radius, left, tick)
 
     def _intro_card(self, screen: pygame.Surface, rival, tuning) -> None:
         """Bring in the chassis name during boot, in the space above the power slots."""
