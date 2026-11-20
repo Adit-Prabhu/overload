@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+from tools.audio.approvals import approval
 from tools.audio.cues import MUSIC, SFX, STINGS, one_shot
 from tools.audio.synth import normalize
 from tools.audio.theory import LOOP_SAMPLES, SR
@@ -116,7 +117,7 @@ def update_manifest(written: dict[str, Path]) -> None:
                 "license_file": LICENSE,
                 "sha256": digest,
                 "added": added(relative, digest),
-                "approval": "Pending Adit's listen-through",
+                "approval": approval(old.get(relative), digest),
             }
         )
     license_path = ROOT / LICENSE
