@@ -26,6 +26,7 @@ AUDIO = ROOT / "assets" / "audio"
 GAP = np.zeros(round(0.5 * SR))
 # Relative stem levels for the preview mix. The game sets its own levels at runtime.
 LAYERS = (
+    ("Title (MU-05)", {"music_title": 0.8}),
     ("Fuse Box (MU-02)", {"music_fuse_box": 0.8}),
     ("Encounter 1: HUM and PULSE", {"music_hum": 0.7, "music_pulse": 0.6}),
     ("Encounter 2: adds ARC", {"music_hum": 0.7, "music_pulse": 0.6, "music_arc": 0.35}),

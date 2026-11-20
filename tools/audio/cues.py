@@ -593,6 +593,155 @@ def _motif(notes: tuple[str, ...], step: float, length: float, octave_up: bool =
     return out
 
 
+# Fused powers (powers spec section 8: each result its own use cue). One recipe per result:
+# its two ingredients' voices, shaped by what it does, with a rarity layer on top. Every
+# voice sits on a chord tone of B minor, so the cues belong to the same piece.
+
+
+def _voice(power: str, n: int, f: float, tag: str) -> np.ndarray:
+    """An ingredient's sound DNA at pitch f over n samples."""
+    if power == "spark":  # a bright falling zap with crackle
+        zap = saw(sweep(f * 4, f * 2, n), n) * decay(n, n / SR * 0.7)
+        crackle = noise(n, f"{tag}-spark") * decay(n, n / SR * 0.5)
+        return crush(zap * 0.5 + svf(crackle, 5000, q=0.7, mode="high") * 0.4, bits=7)
+    if power == "blink":  # a rising glide through a sweeping band of air
+        glide = sine(sweep(f, f * 4, n), n) * envelope(n, 0.005, 0.1, 0.4, 0.05)
+        air = svf(noise(n, f"{tag}-blink"), sweep(900, 6000, n), q=1.4, mode="band")
+        return glide * 0.45 + air * envelope(n, 0.02, 0.1, 0.3, 0.05) * 0.5
+    if power == "burst":  # a low thump with a puff of grit
+        body = sine(sweep(f, f / 3, n), n) * decay(n, n / SR * 0.8)
+        grit = noise(n, f"{tag}-burst") * decay(n, 0.03)
+        return drive(body + grit * 0.5, 2.0) * 0.7
+    if power == "bulwark":  # a struck metal plate: inharmonic partials, ringing
+        ring = sine(f * 2, n) + 0.5 * sine(f * 2 * 2.76, n) + 0.25 * sine(f * 2 * 5.4, n)
+        return ring * decay(n, n / SR) * envelope(n, 0.003, 0.05, 1.0, 0.05) * 0.35
+    # magnet: a wobbling low hum that pulls inward
+    hum = saw(f / 2 * (1 + 0.05 * sine(10, n)), n)
+    return svf(hum, sweep(2200, 350, n), q=2.0) * envelope(n, 0.02, 0.1, 0.7, 0.1) * 0.45
+
+
+def _shape(verb: str, a: str, b: str, f: float, tag: str) -> np.ndarray:
+    """What the power does, in time: a bolt, a chain, a placed device, a blast, a dash, a
+    held field, a shield, a pull or a rewind."""
+    if verb == "bolt":
+        n = samples(0.28)
+        return _voice(a, n, f, tag) + _voice(b, n, f * 1.5, tag) * 0.6
+    if verb == "chain":
+        out = np.zeros(samples(0.5))
+        for i, step in enumerate((1.0, 1.26, 1.5)):  # up the chord, a hop each
+            n = samples(0.14)
+            place(
+                out,
+                (_voice(a, n, f * step, f"{tag}{i}") + _voice(b, n, f * step, tag)) * 0.6,
+                samples(i * 0.11),
+            )
+        return out
+    if verb == "place":
+        out = np.zeros(samples(0.7))
+        m = samples(0.05)
+        click = svf(noise(m, f"{tag}-click"), 3000, q=1.5, mode="band") * decay(m, 0.03)
+        place(out, click * 0.8, 0)
+        place(out, _voice(a, samples(0.18), f, tag) * 0.7, samples(0.04))
+        tail = _voice(b, samples(0.5), f, tag) * 0.4
+        place(out, tail * (1 + 0.5 * sine(14, len(tail))), samples(0.18))
+        return out
+    if verb == "blast":
+        out = np.zeros(samples(0.7))
+        rise = samples(0.18)
+        place(out, _voice(a, rise, f * 1.5, tag) * 0.5, 0)
+        place(out, _voice(b, samples(0.5), f, tag), rise)
+        place(out, _voice("burst", samples(0.4), f / 2, tag) * 0.8, rise)
+        return out
+    if verb == "dash":
+        out = np.zeros(samples(0.5))
+        place(out, _voice(a, samples(0.18), f, tag), 0)
+        place(out, _voice(b, samples(0.3), f * 2, tag) * 0.8, samples(0.12))
+        return out
+    if verb == "field":
+        n = samples(0.8)
+        swell = envelope(n, 0.15, 0.2, 0.7, 0.3)
+        held = _voice(a, n, f, tag) * 0.5 + _voice(b, n, f * 0.75, tag) * 0.6
+        return held * swell * (1 + 0.35 * sine(7, n))
+    if verb == "shield":
+        out = np.zeros(samples(0.7))
+        place(out, _bulwark_up() * 0.6, 0)
+        other = a if a != "bulwark" else b
+        place(out, _voice(other, samples(0.4), f, tag) * 0.6, samples(0.05))
+        place(out, _voice("bulwark", samples(0.6), f, tag) * 0.5, samples(0.1))
+        return out
+    if verb == "pull":
+        n = samples(0.6)
+        inward = _voice(a, n, f, tag) * 0.6 + _voice(b, n, f, tag) * 0.6
+        return svf(inward, sweep(600, 4000, n), q=1.6) * envelope(n, 0.15, 0.1, 0.8, 0.1)
+    # rewind: the ingredients played backwards, a tape spun back
+    out = _shape("dash", a, b, f, tag)
+    return out[::-1] * envelope(len(out), 0.05, 0.1, 0.9, 0.02)
+
+
+def _rarity(out: np.ndarray, rarity: str, f: float) -> np.ndarray:
+    """An epic adds a shimmer a fifth up. A legendary also ends on the motif, quick and
+    high, so the best results sound like a payoff."""
+    if rarity == "rare":
+        return out
+    n = len(out)
+    shimmer = (sine(f * 3, n) + 0.4 * sine(f * 6, n)) * decay(n, n / SR * 0.6) * 0.12
+    out = out + shimmer
+    if rarity == "legendary":
+        tail = _motif(MOTIF, 0.05, 0.18) * 0.6
+        longer = np.zeros(max(n, samples(0.12) + len(tail)))
+        place(longer, out, 0)
+        place(longer, tail, samples(0.12))
+        out = longer
+    return out
+
+
+# Each result: its pair (first ingredient leads), its verb and its pitch on a chord tone.
+FUSED_RECIPES = {
+    "arc_trail": ("blink", "spark", "dash", "B3"),
+    "bolt_lance": ("spark", "blink", "bolt", "D4"),
+    "chain_jump": ("spark", "blink", "chain", "F#3"),
+    "shock_cone": ("spark", "burst", "blast", "B3"),
+    "shock_mine": ("spark", "burst", "place", "D4"),
+    "storm_aura": ("spark", "burst", "field", "F#3"),
+    "impact_blink": ("blink", "burst", "dash", "A3"),
+    "displacer": ("blink", "burst", "rewind", "E4"),
+    "meteor": ("blink", "burst", "blast", "B2"),
+    "static_guard": ("spark", "bulwark", "shield", "D4"),
+    "tesla_coil": ("spark", "bulwark", "place", "F#3"),
+    "capacitor_armor": ("bulwark", "spark", "shield", "B3"),
+    "lodestone": ("magnet", "spark", "bolt", "B3"),
+    "ion_hook": ("spark", "magnet", "bolt", "F#4"),
+    "magrail": ("spark", "magnet", "pull", "D4"),
+    "bastion": ("burst", "bulwark", "shield", "A3"),
+    "reflector_wave": ("bulwark", "burst", "blast", "E4"),
+    "fortress": ("burst", "bulwark", "field", "B2"),
+    "vortex_cone": ("magnet", "burst", "pull", "F#3"),
+    "implosion": ("magnet", "burst", "blast", "D3"),
+    "gravity_well": ("magnet", "burst", "field", "B2"),
+    "phase_guard": ("blink", "bulwark", "shield", "F#4"),
+    "afterimage": ("blink", "bulwark", "dash", "D4"),
+    "rewind": ("blink", "bulwark", "rewind", "B3"),
+    "undertow": ("magnet", "blink", "pull", "A3"),
+    "grapple": ("magnet", "blink", "dash", "E4"),
+    "riptide": ("magnet", "blink", "blast", "F#3"),
+    "lightning_rod": ("bulwark", "magnet", "place", "D4"),
+    "shield_toss": ("bulwark", "magnet", "bolt", "B3"),
+    "mirror_field": ("bulwark", "magnet", "field", "F#4"),
+}
+
+
+def fused_cue(power: str, rarity: str) -> Callable[[], np.ndarray]:
+    a, b, verb, note = FUSED_RECIPES[power]
+
+    def render() -> np.ndarray:
+        f = hz(note)
+        out = _shape(verb, a, b, f, power)
+        return _rarity(out, rarity, f)
+
+    render.__name__ = f"_fused_{power}"
+    return render
+
+
 def _pickup() -> np.ndarray:
     return _motif(MOTIF[:2], 0.06, 0.14)
 
@@ -716,3 +865,12 @@ SFX: dict[str, Callable[[], np.ndarray]] = {
 
 def one_shot(render: Callable[[], np.ndarray]) -> np.ndarray:
     return fade_edges(render())
+
+
+def _fused_cues() -> dict[str, Callable[[], np.ndarray]]:
+    from overload.sim.powers import FUSED
+
+    return {f"sfx_fused_{power}": fused_cue(power, rarity) for power, (_, rarity) in FUSED.items()}
+
+
+SFX.update(_fused_cues())
