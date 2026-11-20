@@ -21,6 +21,7 @@ from overload.art.pixel import robots as robots_art
 from overload.art.pixel.light import Glow
 from overload.art.pixel.lighting import Lighting, pool, quantize
 from overload.floor import CELL, GRID, TILE
+from overload.game.keybinds import Keybinds
 from overload.sim import aiming, bosskit, floorplay
 from overload.sim import world as rules
 from overload.sim.arena import arena_id
@@ -417,6 +418,7 @@ class PixelView:
         self.shake = 0
         self.walking = 0
         self.last_player = (run.world.player.x, run.world.player.y)
+        self.binds = Keybinds()  # the player's keys, for labels (app.py sets the loaded ones)
         player = run.world.player
         self.camera = [player.x - VIEW[0] / 2, player.y - VIEW[1] / 2]
         self._clamp_camera()
@@ -773,7 +775,7 @@ class PixelView:
             # A power that found no empty slot waits in the loadout (powers spec section 3).
             slots = run.world.player.slots
             waiting = "" not in slots and any(power not in slots for power in stolen_ids)
-            hint = ". TAB TO EQUIP" if waiting else ""
+            hint = f". {self.binds.label('menu')} TO EQUIP" if waiting else ""
             self.toast(" AND ".join(stolen) + " STOLEN" + hint, 150 if waiting else 120)
         player = run.world.player
         moved = math.dist(self.last_player, (player.x, player.y)) > 0.1
@@ -1377,6 +1379,7 @@ class PixelView:
                 rival_changing=bool(rival and rival.change > 0),
                 rival_venting=bool(rival and rival.vent > 0),
                 tick=tick,
+                keys=(self.binds.short("power_q"), self.binds.short("power_e")),
             ),
         )
         self._minimap(screen, run)
@@ -1581,10 +1584,11 @@ class PixelView:
 
     def _banner(self, screen: pygame.Surface, outcome: str) -> None:
         w, h = screen.get_size()
+        key = self.binds.label("retry")
         title, hint = (
-            ("SHORT CIRCUIT", "R TO RETRY")
+            ("SHORT CIRCUIT", f"{key} TO RETRY")
             if outcome == "down"
-            else ("SECTOR CLEAR", "R TO RUN IT AGAIN")
+            else ("SECTOR CLEAR", f"{key} TO RUN IT AGAIN")
         )
         screen.blit(_banner_panel(w), (0, h // 2 - 17))
         hud.text(screen, title, (w // 2, h // 2 - 12), "ui.text", "midtop")

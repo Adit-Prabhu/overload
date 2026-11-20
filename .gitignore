@@ -31,3 +31,6 @@ node_modules/
 # Runtime output
 logs/
 dist/
+
+# Local player settings (rebound keys)
+settings/

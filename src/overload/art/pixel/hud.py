@@ -62,17 +62,55 @@ def rarity_marks(target: pygame.Surface, rarity: str, x: int, y: int) -> None:
 
 # 3 x 5 key letters drawn inside a slot's corner (the 8 px font is too big for that).
 _KEYS = {
-    "Q": (".#.", "#.#", "#.#", ".#.", "..#"),
+    "A": (".#.", "#.#", "###", "#.#", "#.#"),
+    "B": ("##.", "#.#", "##.", "#.#", "##."),
+    "C": (".##", "#..", "#..", "#..", ".##"),
+    "D": ("##.", "#.#", "#.#", "#.#", "##."),
     "E": ("###", "#..", "##.", "#..", "###"),
+    "F": ("###", "#..", "##.", "#..", "#.."),
+    "G": (".##", "#..", "#.#", "#.#", ".##"),
+    "H": ("#.#", "#.#", "###", "#.#", "#.#"),
+    "I": ("###", ".#.", ".#.", ".#.", "###"),
+    "J": ("..#", "..#", "..#", "#.#", ".#."),
+    "K": ("#.#", "#.#", "##.", "#.#", "#.#"),
+    "L": ("#..", "#..", "#..", "#..", "###"),
+    "M": ("#.#", "###", "###", "#.#", "#.#"),
+    "N": ("##.", "#.#", "#.#", "#.#", "#.#"),
+    "O": (".#.", "#.#", "#.#", "#.#", ".#."),
+    "P": ("##.", "#.#", "##.", "#..", "#.."),
+    "Q": (".#.", "#.#", "#.#", ".#.", "..#"),
+    "R": ("##.", "#.#", "##.", "#.#", "#.#"),
+    "S": (".##", "#..", ".#.", "..#", "##."),
+    "T": ("###", ".#.", ".#.", ".#.", ".#."),
+    "U": ("#.#", "#.#", "#.#", "#.#", "###"),
+    "V": ("#.#", "#.#", "#.#", "#.#", ".#."),
+    "W": ("#.#", "#.#", "###", "###", "#.#"),
+    "X": ("#.#", "#.#", ".#.", "#.#", "#.#"),
+    "Y": ("#.#", "#.#", ".#.", ".#.", ".#."),
+    "Z": ("###", "..#", ".#.", "#..", "###"),
+    "0": ("###", "#.#", "#.#", "#.#", "###"),
+    "1": (".#.", "##.", ".#.", ".#.", "###"),
+    "2": ("##.", "..#", ".#.", "#..", "###"),
+    "3": ("##.", "..#", ".#.", "..#", "##."),
+    "4": ("#.#", "#.#", "###", "..#", "..#"),
+    "5": ("###", "#..", "##.", "..#", "##."),
+    "6": (".##", "#..", "###", "#.#", "###"),
+    "7": ("###", "..#", ".#.", ".#.", ".#."),
+    "8": ("###", "#.#", "###", "#.#", "###"),
+    "9": ("###", "#.#", "###", "..#", "##."),
+    "?": ("##.", "..#", ".#.", "...", ".#."),
 }
 
 
 def key_glyph(target: pygame.Surface, key: str, x: int, y: int, token: str) -> None:
-    target.fill(rgb("px.outline"), (x - 1, y - 1, 5, 7))
-    for dy, row in enumerate(_KEYS[key]):
-        for dx, char in enumerate(row):
-            if char == "#":
-                target.fill(rgb(token), (x + dx, y + dy, 1, 1))
+    """A key's short label (one to three letters or digits) from (x, y) on a dark tab."""
+    key = key[:3] or "?"
+    target.fill(rgb("px.outline"), (x - 1, y - 1, 4 * len(key) + 1, 7))
+    for i, letter in enumerate(key):
+        for dy, row in enumerate(_KEYS.get(letter, _KEYS["?"])):
+            for dx, char in enumerate(row):
+                if char == "#":
+                    target.fill(rgb(token), (x + i * 4 + dx, y + dy, 1, 1))
 
 
 def _outlined_rect(target: pygame.Surface, rect: tuple[int, int, int, int], token: str) -> None:
@@ -97,6 +135,7 @@ class Hud:
     rival_venting: bool = False  # its punish window: the bar flashes
     stamp: str = ""
     tick: int = 0
+    keys: tuple[str, str] = ("Q", "E")  # the power keys' short labels (game/keybinds.py)
 
 
 def draw(target: pygame.Surface, hud: Hud) -> None:
@@ -137,7 +176,9 @@ def draw(target: pygame.Surface, hud: Hud) -> None:
             if hud.cooldowns[i] > 0:
                 shade = _cooldown_shade(round(18 * hud.cooldowns[i]))
                 target.blit(shade, (x, y))
-        key_glyph(target, "QE"[i], x + 7, y - 7, "ui.text" if ready else "ui.dim")  # a tab above
+        label = hud.keys[i]
+        tab_x = x + 8 - (4 * len(label[:3]) - 1) // 2  # centered over the slot
+        key_glyph(target, label, tab_x, y - 7, "ui.text" if ready else "ui.dim")  # a tab above
 
     # The boss: name and a thin bar, top center, only while it fights.
     if hud.rival_health is not None:

@@ -7,7 +7,8 @@ import os
 import pygame
 import pytest
 
-from overload.game.title import CONTROLS, ITEMS, TitleScreen
+from overload.game.keybinds import Keybinds
+from overload.game.title import CONTROLS, ITEMS, TitleScreen, controls
 
 
 @pytest.fixture(autouse=True)
@@ -37,8 +38,8 @@ def test_the_controls_page_opens_and_closes() -> None:
     title.press(pygame.K_s)
     title.press(pygame.K_RETURN)
     assert title.page == "controls" and title.choice is None
-    title.press(pygame.K_RETURN)
-    assert title.page == "menu"
+    title.press(pygame.K_ESCAPE)
+    assert title.page == "menu" and title.choice is None, "Esc leaves the page, never quits"
 
 
 def test_quit_and_escape_quit() -> None:
@@ -119,3 +120,28 @@ def test_closing_the_window_in_the_same_batch_as_start_quits(display) -> None:
     pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
     pygame.event.post(pygame.event.Event(pygame.QUIT))
     assert run_title(display, pygame.time.Clock()) is None
+
+
+def test_the_controls_page_rebinds_a_key_and_saves_it(tmp_path) -> None:
+    path = tmp_path / "keys.json"
+    title = TitleScreen(binds=Keybinds(path=path))
+    title.press(pygame.K_s)
+    title.press(pygame.K_RETURN)  # CONTROLS
+    for _ in range(4):
+        title.press(pygame.K_s)  # down to DODGE
+    title.press(pygame.K_RETURN)
+    assert title.keys.capturing
+    title.press(pygame.K_LSHIFT)
+    assert not title.keys.capturing and title.keys.binds.keys["dodge"] == "left shift"
+    assert Keybinds.load(path).keys["dodge"] == "left shift", "saved for the next run"
+    assert ("DODGE", "LEFT SHIFT") in controls(title.keys.binds)
+    title.press(pygame.K_RETURN)
+    title.press(pygame.K_ESCAPE)  # Esc cancels the wait, the key stays
+    assert title.keys.binds.keys["dodge"] == "left shift" and title.page == "controls"
+
+
+def test_the_rebind_page_draws_while_waiting(display) -> None:
+    title = TitleScreen()
+    title.page = "controls"
+    title.keys.capturing = True
+    title.draw(display)
