@@ -18,28 +18,38 @@ function json(body: unknown, status = 200): Response {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-    if (request.method === "GET" && url.pathname === "/health") {
-      return json({ ok: true, service: "overload-rival", provider: env.PROVIDER ?? "fixture" });
+    try {
+      return await route(request, env);
+    } catch {
+      // A session object that could not start or answer. Labelled, so the trace says the
+      // service failed, and the game falls back to the neutral tactic (http_503).
+      return json({ error: "internal_error" }, 503);
     }
-    if (request.method === "POST" && url.pathname === "/sessions") {
-      const sessionId = crypto.randomUUID();
-      const session = await getAgentByName(env.RIVAL_SESSION, sessionId);
-      await session.begin();
-      return json({ session_id: sessionId }, 201);
-    }
-    const match = TACTIC_PATH.exec(url.pathname);
-    if (request.method === "POST" && match) {
-      const body = await request.json().catch(() => null);
-      const parsed = TacticRequest.safeParse(body);
-      if (!parsed.success) {
-        const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`);
-        return json({ error: "invalid_request", issues }, 400);
-      }
-      const session = await getAgentByName(env.RIVAL_SESSION, match[1]);
-      if (!(await session.isStarted())) return json({ error: "unknown_session" }, 404);
-      return json(await session.propose(parsed.data, match[1]));
-    }
-    return json({ error: "not_found" }, 404);
   },
 } satisfies ExportedHandler<Env>;
+
+async function route(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  if (request.method === "GET" && url.pathname === "/health") {
+    return json({ ok: true, service: "overload-rival", provider: env.PROVIDER ?? "fixture" });
+  }
+  if (request.method === "POST" && url.pathname === "/sessions") {
+    const sessionId = crypto.randomUUID();
+    const session = await getAgentByName(env.RIVAL_SESSION, sessionId);
+    await session.begin();
+    return json({ session_id: sessionId }, 201);
+  }
+  const match = TACTIC_PATH.exec(url.pathname);
+  if (request.method === "POST" && match) {
+    const body = await request.json().catch(() => null);
+    const parsed = TacticRequest.safeParse(body);
+    if (!parsed.success) {
+      const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`);
+      return json({ error: "invalid_request", issues }, 400);
+    }
+    const session = await getAgentByName(env.RIVAL_SESSION, match[1]);
+    if (!(await session.isStarted())) return json({ error: "unknown_session" }, 404);
+    return json(await session.propose(parsed.data, match[1]));
+  }
+  return json({ error: "not_found" }, 404);
+}
