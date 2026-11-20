@@ -404,7 +404,7 @@ def tick_object(world: World, field: Device, tuning: Tuning, arena: Arena) -> bo
             if target is not None:
                 world.events.append(Event("chain_from", field.x, field.y))
                 world.events.append(Event("chain", target.x, target.y, _id(target)))
-                _strike(world, target, tuning.coil_damage)
+                _strike(world, target, tuning.coil_damage, tuning=tuning, field=True)
     elif field.kind == "wave":
         _roll_wave(world, field, tuning, arena)
     elif field.kind == "fortress":
@@ -823,7 +823,7 @@ def _tick_blink_and_guard_field(world: World, field: Device, tuning: Tuning, are
             if not line_clear(world, arena, (field.x, field.y), (body.x, body.y)):
                 continue
             field.hit.append(body_id)
-            _strike(world, body, tuning.toss_damage)
+            _strike(world, body, tuning.toss_damage, tuning=tuning, field=True)
             if body is not world.rival:
                 knock(world, body, dx, dy, tuning.toss_knock, arena)
         if returning and length(player.x - field.x, player.y - field.y) <= 6.0:

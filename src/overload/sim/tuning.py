@@ -269,7 +269,7 @@ class Tuning:
     lodestone_ttl: int = 80
     lodestone_reach: float = 30.0
     lodestone_pull: float = 1.0
-    ion_hook_cooldown: int = 88
+    ion_hook_cooldown: int = 92
     hook_speed: float = 4.0
     hook_damage: int = 8
     hook_ttl: int = 40
@@ -339,6 +339,7 @@ class Tuning:
     toss_speed: float = 4.0
     toss_radius: float = 13.0
     toss_damage: int = 3
+    chassis_field_damage: int = 1  # what a coil, Fortress or Shield Toss deals a chassis
     toss_knock: float = 12.0
     mirror_field_cooldown: int = 405
     mirror_ticks: int = 180
@@ -475,7 +476,8 @@ class Tuning:
             "capacitor_ticks",
             "reflector_ticks",
         )
-        if any(getattr(self, name) < 1 for name in timers + ("fortress_interval", "hook_stun")):
+        positive = timers + ("fortress_interval", "hook_stun", "chassis_field_damage")
+        if any(getattr(self, name) < 1 for name in positive):
             raise ValueError("Fused power timers and counts must be positive")
         steps = (self.undertow_pull, self.rod_pull, self.toss_speed)
         if not all(0 < step < THINNEST_OBSTACLE for step in steps):
