@@ -187,3 +187,15 @@ def test_every_difficulty_has_a_line_and_the_standoff_draws(display) -> None:
         if tick % 50 == 0:
             title.arc = title.zap = 3
             title.draw(display)
+
+
+def test_the_menu_text_stays_clear_of_the_surge(display) -> None:
+    """Every difficulty line ends left of the Surge (the PR #56 review found two that ran
+    under its feet)."""
+    from overload.art.pixel import actors, hud
+    from overload.game.title import ABOUT, SURGE_FROM_RIGHT
+
+    surge = actors.surge("idle", 0, False)
+    surge_left = display.get_width() - SURGE_FROM_RIGHT - surge.get_width() // 2
+    for line in (*ABOUT.values(), "< NIGHTMARE >", "DIFFICULTY", *ITEMS):
+        assert 20 + hud.pixel_font().size(line)[0] < surge_left - 2, line

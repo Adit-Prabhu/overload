@@ -23,11 +23,12 @@ from overload.sim.difficulty import DIFFICULTIES
 ITEMS = ("START", "CONTROLS", "QUIT")
 # One line on what each preset changes (sim/difficulty.py). Medium is the formal playtest's.
 ABOUT = {
-    "easy": "MORE BATTERY, SOFTER ROBOTS",
+    "easy": "MORE CELLS, SOFTER BOTS",
     "medium": "RECOMMENDED FIRST RUN",
-    "hard": "LESS BATTERY, TOUGHER ROBOTS",
+    "hard": "FEWER CELLS, TOUGHER BOTS",
     "nightmare": "FOUR CELLS, FAST BOLTS",
 }
+SURGE_FROM_RIGHT = 88  # the Surge's feet, from the right edge, clear of the menu text
 BEAT_TICKS = 60 * 60 / 124  # the title music's beat (124 BPM) in 60 Hz ticks
 
 
@@ -286,7 +287,7 @@ class TitleScreen:
         crect = chassis.get_rect(midbottom=(w - 36, h + 14 + sway))
         screen.blit(chassis, crect)
         surge = actors.surge("idle", self.tick, False)
-        srect = surge.get_rect(midbottom=(w - 104, floor))
+        srect = surge.get_rect(midbottom=(w - SURGE_FROM_RIGHT, floor))
         screen.fill(rgb("px.outline"), (srect.x + 2, floor - 1, srect.width - 4, 2))
         screen.blit(surge, srect)
         if self.arc:
