@@ -5,7 +5,7 @@
 | Item | Value |
 | --- | --- |
 | Date | 2026-11-19 |
-| Worker version ID | Not recorded (the deploy output was not saved). `npx wrangler deployments list` in `worker/` shows it |
+| Worker version ID | `8739211e-286f-421d-a76e-1b1400f28527` (deployed 2026-11-20 01:59 UTC, the evening of Nov 19 locally, read from `npx wrangler deployments list`) |
 | Provider and model | Vertex AI, `gemini-3.5-flash-lite` (as reported in each reply) |
 | Service URL | Kept out of the repository (`OVERLOAD_RIVAL_URL`) |
 | Command | `uv run python tools/rival/smoke.py "$OVERLOAD_RIVAL_URL"`, and with `--expect-timeout --deadline 0.05` |
