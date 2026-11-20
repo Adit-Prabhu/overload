@@ -5,9 +5,10 @@ tick reads exactly one InputFrame, either from the devices or from a replay. The
 256 x 144 pixels, scaled up by whole numbers to fit the window, with a camera that follows
 the Surge. Rendering and cosmetic effects never feed back into the simulation.
 
-Controls: WASD or arrows move, mouse aims, hold left click to fire, Space dodges,
-Q and E use powers, R retries after going down. Tab or Esc opens the menu (game/menu.py),
-where Space or Enter picks and Esc goes back. Esc quits only when no menu can open.
+Controls (defaults, rebindable in CONTROLS, game/keybinds.py): WASD or arrows move, mouse
+aims, hold left click to fire, Space dodges, Q and E use powers, R retries after going down.
+Tab or Esc opens the menu (game/menu.py), where Space or Enter picks and Esc goes back. Esc
+quits only when no menu can open.
 """
 
 from __future__ import annotations
@@ -25,10 +26,11 @@ from overload.agent.selector import FixedSchedule, LiveSelector, NeutralSelector
 from overload.art.palette import rgb
 from overload.art.pixel import hud, tiles
 from overload.game import dev as devmode
-from overload.game import menu_view
+from overload.game import keybinds, menu_view
 from overload.game import title as title_screen
 from overload.game.audio import Audio
 from overload.game.flow import Session
+from overload.game.keybinds import Keybinds
 from overload.game.menu import Menu
 from overload.game.title import run_title
 from overload.game.view import VIEW, PixelView
@@ -70,13 +72,14 @@ class Options:
 
 
 class InputReader:
-    """Turns pygame events and device state into one InputFrame per tick.
+    """Turns pygame events and device state into one InputFrame per tick, through the
+    player's key bindings (game/keybinds.py).
 
     Dodge and retry are presses, so they are latched until the next tick consumes them.
     The mouse is read in view pixels and converted to room pixels with the camera.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, binds: Keybinds | None = None) -> None:
         self.quit = False
         self._dodge = False
         self._restart = False
@@ -84,56 +87,74 @@ class InputReader:
         self._power_q = False
         self._power_e = False
         self._escape = False
-        self._menu: list[str] = []
+        self._menu: list[tuple[str | None, str]] = []  # (menu key, raw key name), in order
+        self.binds = binds or Keybinds()
+        self.rebind()
+
+    def rebind(self) -> None:
+        """Read the bindings again (after the CONTROLS page changes one). A damaged
+        binding falls back to the defaults."""
+        try:
+            self._codes = {action: keybinds.code(key) for action, key in self.binds.keys.items()}
+        except ValueError:
+            self.binds.reset()
+            self._codes = {action: keybinds.code(key) for action, key in self.binds.keys.items()}
+        self._arrows = {a: keybinds.code(k) for a, k in self.binds.arrows().items()}
+        self._menu_keys = menu_keys(self._codes, self._arrows)
 
     def handle(self, event: pygame.event.Event) -> None:
         if event.type == pygame.QUIT:
             self.quit = True
         elif event.type == pygame.KEYDOWN:
+            codes = self._codes
             if event.key == pygame.K_ESCAPE:
                 self._escape = True  # back in a menu, quit outside one (the caller decides)
-            elif event.key == pygame.K_SPACE:
+            elif event.key == codes["dodge"]:
                 self._dodge = True
-            elif event.key == pygame.K_r:
+            elif event.key == codes["retry"]:
                 self._restart = True
-            elif event.key == pygame.K_TAB:
+            elif event.key == codes["menu"]:
                 self._toggle = True
-            if event.key == pygame.K_q:
+            if event.key == codes["power_q"]:
                 self._power_q = True
-            elif event.key == pygame.K_e:
+            elif event.key == codes["power_e"]:
                 self._power_e = True
-            key = MENU_KEYS.get(event.key)
-            if key:
-                self._menu.append(key)
+            self._menu.append((self._menu_keys.get(event.key), keybinds.key_name(event.key)))
 
     def take_escape(self) -> bool:
         pressed, self._escape = self._escape, False
         return pressed
 
     def take_toggle(self) -> bool:
-        """Tab: open or close the menu."""
+        """The menu key: open or close the menu."""
         pressed, self._toggle = self._toggle, False
         return pressed
 
     def drop_power_latches(self) -> None:
-        """Forget presses made in a menu (Q, E, Space, R), so none of them acts on the first
-        tick after it closes."""
+        """Forget presses made in a menu (powers, dodge, retry), so none of them acts on the
+        first tick after it closes."""
         self._power_q = self._power_e = self._dodge = self._restart = False
 
     def take_menu(self) -> list[str]:
         """Menu keys pressed since the last call. Read every frame, used while a menu is
         open, dropped otherwise."""
+        return [key for key, _ in self.take_menu_raw() if key]
+
+    def take_menu_raw(self) -> list[tuple[str | None, str]]:
+        """Every key pressed since the last call, as (menu key or None, raw key name), so
+        the CONTROLS page can catch any key for a rebind."""
         keys, self._menu = self._menu, []
         return keys
 
     def frame(self, camera: tuple[int, int]) -> InputFrame:
         keys = pygame.key.get_pressed()
-        move_x = int(keys[pygame.K_d] or keys[pygame.K_RIGHT]) - int(
-            keys[pygame.K_a] or keys[pygame.K_LEFT]
-        )
-        move_y = int(keys[pygame.K_s] or keys[pygame.K_DOWN]) - int(
-            keys[pygame.K_w] or keys[pygame.K_UP]
-        )
+        codes, arrows = self._codes, self._arrows
+
+        def held(action: str) -> bool:
+            return bool(keys[codes[action]] or (action in arrows and keys[arrows[action]]))
+
+        move_x = int(held("right")) - int(held("left"))
+        move_y = int(held("down")) - int(held("up"))
         mouse_x, mouse_y = pygame.mouse.get_pos()
         frame = InputFrame(
             move_x=move_x,
@@ -150,25 +171,33 @@ class InputReader:
         return frame
 
 
-MENU_KEYS = {
-    pygame.K_w: "up",
-    pygame.K_UP: "up",
-    pygame.K_s: "down",
-    pygame.K_DOWN: "down",
-    pygame.K_a: "left",
-    pygame.K_LEFT: "left",
-    pygame.K_d: "right",
-    pygame.K_RIGHT: "right",
+# Menu keys that never move. Select and back always win, so no binding can take away the
+# way to pick CONTINUE or leave a page. Roll and help give way to a bound key.
+MENU_ALWAYS = {
     pygame.K_SPACE: "select",
     pygame.K_RETURN: "select",
     pygame.K_KP_ENTER: "select",
-    pygame.K_f: "roll",
     pygame.K_ESCAPE: "back",
     pygame.K_BACKSPACE: "back",
-    pygame.K_q: "q",
-    pygame.K_e: "e",
-    pygame.K_h: "help",
 }
+MENU_EXTRAS = {pygame.K_f: "roll", pygame.K_h: "help"}
+
+
+def menu_keys(codes: dict[str, int], arrows: dict[str, int]) -> dict[int, str]:
+    """Key code to menu key: the bound move keys and the free arrows navigate, the bound
+    power keys equip, F rolls and H opens help unless bound, and Space, Enter, Esc and
+    Backspace always select or go back."""
+    keys = dict(MENU_EXTRAS)
+    for action, code in arrows.items():
+        keys[code] = action
+    keys[codes["power_q"]] = "q"
+    keys[codes["power_e"]] = "e"
+    for action in ("up", "down", "left", "right"):
+        keys[codes[action]] = action
+    keys.update(MENU_ALWAYS)
+    return keys
+
+
 # Menu sounds to the cue that plays them (game/menu.py names them by what happened).
 MENU_SOUNDS = {"move": "menu_move", "roll_tick": "roll_tick"}
 
@@ -184,12 +213,21 @@ def menu_frame(
     Fuse Box keeps the menu open. CONTINUE starts the next sector once the hold is over,
     RESUME closes the paused menu, and leaving either drops any power press still latched so
     it cannot fire on the next tick. Returns the cues to play."""
-    keys = reader.take_menu()
+    keys = reader.take_menu_raw()
     if not menu.open:
         return []
     cues: list[str] = []
-    for key in keys:
+    for key, raw in keys:
+        if menu.capturing:  # CONTROLS waits for a key: any key but Esc binds
+            cues.append(menu.keys_page.capture(raw if keybinds.known(raw) else "escape"))
+            reader.rebind()
+            continue
+        if key is None:
+            continue
+        on_controls = menu.screen == "controls"
         action, sounds = menu.press(session, key)
+        if on_controls:
+            reader.rebind()  # RESET DEFAULTS may have changed every key
         if action is not None:
             recording.fuse_box(*action)
         for sound in sounds:
@@ -314,6 +352,8 @@ def play(options: Options) -> int:
 
     screen = None
     difficulty = options.difficulty
+    # A replay or a headless run never reads or writes the player's saved keys.
+    binds = Keybinds() if options.replay or options.headless else Keybinds.load()
     if not (options.headless or options.replay or options.skip_title):
         # The title comes first: no rival session or trace exists until the player starts.
         pygame.init()
@@ -321,7 +361,7 @@ def play(options: Options) -> int:
         try:
             screen = _open_window(False)
             pygame.display.set_caption("Overload")
-            selected = run_title(screen, pygame.time.Clock(), difficulty)
+            selected = run_title(screen, pygame.time.Clock(), difficulty, binds)
         finally:
             if selected is None:
                 pygame.quit()
@@ -393,10 +433,12 @@ def play(options: Options) -> int:
             screen = _open_window(options.headless)
             pygame.display.set_caption("Overload")
         view = PixelView(run)
+        view.binds = binds
         if options.dev:
             view.stamp = f"DEV {view.stamp}"  # the build stamp on banners and the ending
-        reader = InputReader()
+        reader = InputReader(binds)
         menu = Menu()
+        menu.keys_page.binds = binds
         dev_tools = devmode.DevTools() if options.dev else None
         menu.dev = dev_tools
         audio = Audio(enabled=not (options.mute or options.headless))
@@ -419,7 +461,7 @@ def play(options: Options) -> int:
             if scripted is None and not options.headless:
                 cursor = pygame.mouse.get_pos()
             elapsed = clock.tick(240) / 1000.0
-            if reader.take_toggle() and session is not None:
+            if reader.take_toggle() and session is not None and not menu.capturing:
                 was_open = menu.open
                 toggle_menu(menu, run)
                 if was_open and not menu.open:

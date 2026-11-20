@@ -1,6 +1,7 @@
 """The title screen: the wordmark over a slowly drifting, darkened view of the substation, a
 three-item menu (Start, Controls, Quit) and a controls page in the same framed-panel style as
-the loadout screen. Pure presentation: nothing here touches the simulation."""
+the loadout screen, where every key can be rebound (game/keybinds.py). Pure presentation:
+nothing here touches the simulation."""
 
 from __future__ import annotations
 
@@ -14,20 +15,58 @@ from overload import __version__
 from overload.art.palette import rgb, rgba
 from overload.art.pixel import actors, hud, tiles
 from overload.floor import FLOOR
+from overload.game import keybinds
+from overload.game.keybinds import ACTIONS, Keybinds, RebindPage
 from overload.sim.difficulty import DIFFICULTIES
 
 ITEMS = ("START", "CONTROLS", "QUIT")
-CONTROLS = (
-    ("MOVE", "WASD OR ARROWS"),
-    ("AIM", "MOUSE"),
-    ("FIRE", "HOLD LEFT CLICK"),
-    ("DODGE", "SPACE"),
-    ("POWERS", "Q AND E"),
-    ("MENU: LOADOUT AND FUSE", "TAB OR ESC (PAUSES)"),
-    ("IN MENUS: PICK, BACK", "SPACE, ESC"),
-    ("RETRY AFTER A SHORT CIRCUIT", "R"),
-    ("QUIT", "MENU, THEN QUIT"),
-)
+
+
+def controls(binds: Keybinds) -> tuple[tuple[str, str], ...]:
+    """Every control with its current key, for the help pages."""
+    return (
+        ("MOVE", f"{binds.move_label()} OR ARROWS"),
+        ("AIM", "MOUSE"),
+        ("FIRE", "HOLD LEFT CLICK"),
+        ("DODGE", binds.label("dodge")),
+        ("POWERS", f"{binds.label('power_q')} AND {binds.label('power_e')}"),
+        ("MENU: LOADOUT AND FUSE", f"{binds.label('menu')} OR ESC (PAUSES)"),
+        ("IN MENUS: PICK, BACK", "SPACE OR ENTER, ESC"),
+        ("RETRY AFTER A SHORT CIRCUIT", binds.label("retry")),
+        ("QUIT", "MENU, THEN QUIT"),
+    )
+
+
+CONTROLS = controls(Keybinds())  # the defaults
+
+
+def draw_rebind(screen: pygame.Surface, page: RebindPage, left: int, right: int, top: int):
+    """The rebind rows from `top`: each action and its key, then RESET DEFAULTS, the
+    chosen row marked, PRESS A KEY while it waits. Returns the y under the last row."""
+    for i, (action, title) in enumerate(ACTIONS):
+        y = top + i * 9
+        chosen = i == page.row
+        if chosen:
+            screen.fill(rgb("px.wall.1"), (left - 2, y + 2, right - left + 4, 9))
+        hud.text(screen, title, (left, y), "ui.text" if chosen else "ui.dim")
+        if chosen and page.capturing:
+            key, token = "PRESS A KEY", "px.hazard.1"
+        else:
+            key, token = page.binds.label(action), "ui.text"
+        hud.text(screen, key, (right, y), token, "topright")
+    y = top + len(ACTIONS) * 9
+    chosen = page.row == len(ACTIONS)
+    if chosen:
+        screen.fill(rgb("px.wall.1"), (left - 2, y + 2, right - left + 4, 9))
+    hud.text(screen, "RESET DEFAULTS", (left, y), "ui.text" if chosen else "ui.dim")
+    return y + 10
+
+
+def rebind_footer(page: RebindPage, nav: str = "W/S") -> str:
+    """`nav` names the keys that move the rows: fixed on the title, bound in the game."""
+    if page.capturing:
+        return "ESC CANCELS"
+    return page.notice or f"{nav} MOVE  ENTER CHANGE  ESC BACK"
 
 
 @cache
@@ -59,7 +98,8 @@ def forget() -> None:
 class TitleScreen:
     """Feed it key presses with `press`. `choice` becomes "start" or "quit"."""
 
-    def __init__(self, difficulty: str = "medium") -> None:
+    def __init__(self, difficulty: str = "medium", binds: Keybinds | None = None) -> None:
+        self.keys = RebindPage(binds or Keybinds())
         self.selected = 0
         self.difficulty = difficulty
         self.page = "menu"
@@ -70,7 +110,10 @@ class TitleScreen:
 
     def press(self, key: int) -> None:
         if self.page == "controls":
-            if key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_ESCAPE, pygame.K_BACKSPACE):
+            if self.keys.capturing:
+                name = keybinds.key_name(key)
+                self.keys.capture(name if keybinds.known(name) else "escape")
+            elif self.keys.nav(TITLE_KEYS.get(key, "")) == "back":
                 self.page = "menu"
             return
         if key in (pygame.K_w, pygame.K_UP):
@@ -87,6 +130,7 @@ class TitleScreen:
                 self.choice = "start"
             elif item == "CONTROLS":
                 self.page = "controls"
+                self.keys.row, self.keys.notice = 0, ""
             else:
                 self.choice = "quit"
         elif key == pygame.K_ESCAPE:
@@ -155,19 +199,35 @@ class TitleScreen:
         pygame.draw.rect(screen, rgb("px.wall.2"), panel, 1)
         left, right = panel.x + 6, panel.right - 6
         hud.text(screen, "CONTROLS", (left, panel.y + 4), "ui.text")
-        screen.fill(rgb("px.wall.1"), (left, panel.y + 15, right - left, 1))
-        for i, (action, keys) in enumerate(CONTROLS):
-            y = panel.y + 20 + i * 10
-            hud.text(screen, action, (left, y), "ui.dim")
-            hud.text(screen, keys, (right, y), "ui.text", "topright")
-        hud.text(screen, "ENTER BACK", (right, panel.bottom - 11), "px.hazard.1", "topright")
+        hud.text(screen, "MOUSE AIMS AND FIRES", (right, panel.y + 4), "ui.dim", "topright")
+        screen.fill(rgb("px.wall.1"), (left, panel.y + 14, right - left, 1))
+        draw_rebind(screen, self.keys, left, right, panel.y + 18)
+        token = "px.hazard.1" if self.keys.capturing or not self.keys.notice else "px.lamp"
+        hud.text(screen, rebind_footer(self.keys), (right, panel.bottom - 11), token, "topright")
+
+
+TITLE_KEYS = {
+    pygame.K_w: "up",
+    pygame.K_UP: "up",
+    pygame.K_s: "down",
+    pygame.K_DOWN: "down",
+    pygame.K_RETURN: "select",
+    pygame.K_KP_ENTER: "select",
+    pygame.K_SPACE: "select",
+    pygame.K_ESCAPE: "back",
+    pygame.K_BACKSPACE: "back",
+}
 
 
 def run_title(
-    screen: pygame.Surface, clock: pygame.time.Clock, difficulty: str = "medium"
+    screen: pygame.Surface,
+    clock: pygame.time.Clock,
+    difficulty: str = "medium",
+    binds: Keybinds | None = None,
 ) -> str | None:
-    """Return the selected difficulty on Start, or None on quit."""
-    title = TitleScreen(difficulty)
+    """Return the selected difficulty on Start, or None on quit. Keys rebound on the
+    controls page change `binds` (and are saved, if it has a path)."""
+    title = TitleScreen(difficulty, binds)
     while title.choice is None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:

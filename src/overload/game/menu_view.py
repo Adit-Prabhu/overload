@@ -15,7 +15,7 @@ from overload.game.menu import (
     percentages,
     roll_terms,
 )
-from overload.game.title import CONTROLS
+from overload.game.title import draw_rebind, rebind_footer
 from overload.sim.powers import (
     BASE_POWERS,
     FUSED,
@@ -116,6 +116,14 @@ def _icon(power: str, scale: int = 1, hidden: bool = False) -> pygame.Surface:
     return pygame.transform.scale_by(image, scale) if scale > 1 else image
 
 
+def _slot_key(screen, menu: Menu, slot: int, card: pygame.Rect) -> int:
+    """The slot's bound key in its corner. Returns how far a longer label pushes the icon
+    and name right."""
+    label = menu.keys_page.binds.short(("power_q", "power_e")[slot])
+    hud.key_glyph(screen, label, card.x + 2, card.y + 2, "ui.text")
+    return 4 * (len(label) - 1)
+
+
 def rarity_frame(screen: pygame.Surface, rect: pygame.Rect, rarity: str, token: str) -> None:
     """The card frame: plain for rare, notched corners for epic, four rays for legendary."""
     color = rgb(token)
@@ -174,23 +182,25 @@ def draw_hub(screen, menu: Menu, session, ready: bool, message: str | None, sect
         y = top + 32 + i * 18
         card = pygame.Rect(rx, y, right - rx, 16)
         pygame.draw.rect(screen, rgb("px.wall.2"), card, 1)
-        hud.key_glyph(screen, "QE"[i], card.x + 2, card.y + 2, "ui.text")
+        shift = _slot_key(screen, menu, i, card)
         if ability:
-            screen.blit(_icon(ability), (card.x + 9, card.y + 5))
+            screen.blit(_icon(ability), (card.x + 9 + shift, card.y + 5))
             fused = ability in FUSED
-            width = card.width - 19 - (16 if fused else 2)
+            width = card.width - 19 - shift - (16 if fused else 2)
             label = _power_label(ability, width)
-            hud.text(screen, label, (card.x + 19, card.y + 4), "ui.text")
+            hud.text(screen, label, (card.x + 19 + shift, card.y + 4), "ui.text")
             if fused:
                 hud.rarity_marks(screen, rarity_of(ability), card.right - 14, card.y + 7)
         else:
-            hud.text(screen, "EMPTY", (card.x + 19, card.y + 4), "px.floor.3")
+            hud.text(screen, "EMPTY", (card.x + 19 + shift, card.y + 4), "px.floor.3")
     if menu.in_fuse_box and not ready:  # its own line, under the equipped slots
         hud.text(screen, "ROUTING POWER...", (rx, top + 70), "px.floor.3")
     if menu.in_fuse_box and message:
         for i, line in enumerate(_wrap(message.upper(), 38)[:2]):
             hud.text(screen, line, (left, PANEL.bottom - 31 + i * 9), "px.lamp")
-    _footer(screen, "W/S MOVE  SPACE PICK" + ("" if menu.in_fuse_box else "  TAB RESUME"), left)
+    keys = menu.keys_page.binds
+    resume = "" if menu.in_fuse_box else f"  {keys.short('menu')} RESUME"
+    _footer(screen, f"{keys.pair('up', 'down')} MOVE  SPACE PICK{resume}", left)
 
 
 # Loadout ---------------------------------------------------------------------------------------
@@ -234,11 +244,11 @@ def draw_loadout(screen, menu: Menu, session, tuning) -> None:
     for i, ability in enumerate(world.player.slots):
         card = pygame.Rect(rx + i * 57, top + 15, 54, 16)
         pygame.draw.rect(screen, rgb("px.wall.2"), card, 1)
-        hud.key_glyph(screen, "QE"[i], card.x + 2, card.y + 2, "ui.text")
+        shift = _slot_key(screen, menu, i, card)
         if ability:
-            screen.blit(_icon(ability), (card.x + 9, card.y + 5))
-            label = _power_label(ability, card.width - 20)
-            hud.text(screen, label, (card.x + 18, card.y + 4), "ui.text")
+            screen.blit(_icon(ability), (card.x + 9 + shift, card.y + 5))
+            label = _power_label(ability, card.width - 20 - shift)
+            hud.text(screen, label, (card.x + 18 + shift, card.y + 4), "ui.text")
     if pick >= 0:
         ability = rows[pick]
         y = top + 36
@@ -257,7 +267,9 @@ def draw_loadout(screen, menu: Menu, session, tuning) -> None:
         if ability in INGREDIENTS:
             a, b = INGREDIENTS[ability]
             hud.text(screen, f"{a.upper()} + {b.upper()}", (rx, y + 58), "px.floor.3")
-    _footer(screen, "W/S PICK  Q/E EQUIP  ESC BACK", left)
+    keys = menu.keys_page.binds
+    equip = keys.pair("power_q", "power_e")
+    _footer(screen, f"{keys.pair('up', 'down')} PICK  {equip} EQUIP  ESC BACK", left)
 
 
 # Fuse ------------------------------------------------------------------------------------------
@@ -319,11 +331,14 @@ def draw_fuse(screen, menu: Menu, session) -> None:
             hud.text(screen, menu.notice, (left, top + 104), "px.lamp")
     if menu.roll is not None and menu.roll.phase == "reveal":
         _reveal(screen, menu)
-        _footer(screen, "Q / E EQUIP   SPACE DONE", left)
+        _footer(
+            screen, f"{menu.keys_page.binds.pair('power_q', 'power_e')} EQUIP  SPACE DONE", left
+        )
     elif menu.roll is not None:
         _footer(screen, "ROLLING...   SPACE SKIP", left)
     else:
-        _footer(screen, "A/D MOVE  SPACE PICK  F ROLL  ESC BACK", left)
+        side = menu.keys_page.binds.pair("left", "right")
+        _footer(screen, f"{side} MOVE  SPACE PICK  F ROLL  ESC BACK", left)
     if menu.help:
         _help(screen, session)
 
@@ -436,12 +451,10 @@ def _help(screen, session) -> None:
 
 def draw_controls(screen, menu: Menu) -> None:
     left, right, top = _frame(screen)
-    _header(screen, "CONTROLS", "ESC BACK", left, right, top)
-    for i, (action, key) in enumerate(CONTROLS):
-        y = top + 16 + i * 10
-        hud.text(screen, action, (left, y), "ui.dim")
-        hud.text(screen, key, (right, y), "ui.text", "topright")
-    _footer(screen, "ESC BACK", left)
+    _header(screen, "CONTROLS", "MOUSE AIMS AND FIRES", left, right, top)
+    page = menu.keys_page
+    draw_rebind(screen, page, left, right, top + 14)
+    _footer(screen, rebind_footer(page, page.binds.pair("up", "down")), left)
 
 
 def draw_dev(screen, menu: Menu) -> None:
@@ -459,7 +472,9 @@ def draw_dev(screen, menu: Menu) -> None:
             hud.text(screen, text, (right, y), "px.hazard.1", "topright")
     if menu.dev.notice:
         hud.text(screen, menu.dev.notice, (left, PANEL.bottom - 21), "px.lamp")
-    _footer(screen, "W/S MOVE  A/D CHANGE  SPACE DO  ESC BACK", left)
+    keys = menu.keys_page.binds
+    nav, side = keys.pair("up", "down"), keys.pair("left", "right")
+    _footer(screen, f"{nav} MOVE  {side} CHANGE  SPACE DO  ESC BACK", left)
 
 
 def draw_menu(screen, menu: Menu, session, tuning, ready: bool, message, sector: int) -> None:

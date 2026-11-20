@@ -3,7 +3,9 @@ Box), LOADOUT, FUSE and CONTROLS, each a screen with one job. No pygame: menu_vi
 it, app.py feeds it keys and time.
 
 Keys arrive as names: up, down, left, right, select (Space or Enter), back (Esc or
-Backspace), q, e, help (H), roll (F). Tab is handled by the caller (it closes the menu).
+Backspace), q, e, help (H), roll (F). The menu key (Tab by default) is handled by the
+caller (it closes the menu). CONTROLS rebinds keys (game/keybinds.py): while it waits for a
+key, the caller feeds the raw key to `keys_page.capture` instead.
 
 FUSE is the crafting bench:
 1. Pick two base powers into the sockets. Left and right move along the powers and the
@@ -24,6 +26,7 @@ from dataclasses import dataclass, field
 
 from overload.game.dev import DevTools
 from overload.game.flow import Session
+from overload.game.keybinds import RebindPage
 from overload.sim.powers import (
     BASE_POWERS,
     FUSED,
@@ -91,6 +94,7 @@ class Menu:
     discovered: set[str] = field(default_factory=set)  # powers seen this session
     dev: DevTools | None = None  # dev mode only (game/dev.py): adds the DEV page
     dev_row: int = 0
+    keys_page: RebindPage = field(default_factory=RebindPage)  # CONTROLS, the rebind editor
 
     # Opening and closing ---------------------------------------------------------------
 
@@ -157,6 +161,7 @@ class Menu:
             return None, ["resume"]
         self.screen = item.lower()
         self.row, self.cursor, self.notice = 0, 0, ""
+        self.keys_page.row, self.keys_page.capturing, self.keys_page.notice = 0, False, ""
         self._reset_fuse()
         return None, ["confirm"]
 
@@ -166,9 +171,15 @@ class Menu:
         return None, ["move"]
 
     def _controls(self, session: Session, key: str):
-        if key in ("back", "select"):
+        sound = self.keys_page.nav(key)
+        if sound == "back":
             return self._back()
-        return None, []
+        return None, [sound] if sound else []
+
+    @property
+    def capturing(self) -> bool:
+        """CONTROLS is waiting for the key to bind."""
+        return self.open and self.screen == "controls" and self.keys_page.capturing
 
     def _dev(self, session: Session, key: str):
         if key == "back":
