@@ -10,6 +10,7 @@ import pytest
 
 from overload.game.audio import (
     EVENT_SOUNDS,
+    STEMS,
     STINGS,
     VISUAL_TWINS,
     Audio,
@@ -58,6 +59,7 @@ def test_every_bound_sound_exists() -> None:
 
 
 def test_music_layers_follow_the_campaign() -> None:
+    assert stems_for("title", 1, "playing") == {"title"}
     assert stems_for("fuse_box", 1, "clear") == {"fuse_box"}
     assert stems_for("encounter", 1, "playing") == {"hum", "pulse"}
     assert stems_for("encounter", 2, "playing") == {"hum", "pulse", "arc"}
@@ -107,7 +109,7 @@ def live_audio():
     os.environ["SDL_AUDIODRIVER"] = "dummy"
     pygame.mixer.quit()
     audio = Audio(enabled=True)
-    assert audio.enabled and len(audio.music) == 5
+    assert audio.enabled and len(audio.music) == len(STEMS)
     yield audio
     pygame.mixer.quit()
 

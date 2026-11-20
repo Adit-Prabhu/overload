@@ -34,6 +34,7 @@ IDS = {
     "music_arc": "MU-01.arc",
     "music_lead": "MU-01.lead",
     "music_fuse_box": "MU-02",
+    "music_title": "MU-05",
     "sting_clamp": "MU-03.clamp",
     "sting_insulate": "MU-03.insulate",
     "sting_oscillate": "MU-03.oscillate",

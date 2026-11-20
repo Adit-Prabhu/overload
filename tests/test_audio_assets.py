@@ -16,7 +16,7 @@ AUDIO = ASSETS / "audio"
 RATE = 44_100
 LOOP_SAMPLES = 682_839  # 8 bars at 124 BPM (tools/audio/theory.py)
 CEILING = round(32767 * 10 ** (-1 / 20))
-MUSIC = ("music_hum", "music_pulse", "music_arc", "music_lead", "music_fuse_box")
+MUSIC = ("music_hum", "music_pulse", "music_arc", "music_lead", "music_fuse_box", "music_title")
 STINGS = ("sting_clamp", "sting_insulate", "sting_oscillate")
 SFX = (
     "shot", "player_hit", "dodge", "death", "low_health",

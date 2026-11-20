@@ -351,6 +351,7 @@ def play(options: Options) -> int:
         os.environ["SDL_AUDIODRIVER"] = "dummy"
 
     screen = None
+    audio: Audio | None = None
     difficulty = options.difficulty
     # A replay or a headless run never reads or writes the player's saved keys.
     binds = Keybinds() if options.replay or options.headless else Keybinds.load()
@@ -361,7 +362,10 @@ def play(options: Options) -> int:
         try:
             screen = _open_window(False)
             pygame.display.set_caption("Overload")
-            selected = run_title(screen, pygame.time.Clock(), difficulty, binds)
+            # The same Audio carries on into play, so the title music hands over to the
+            # first sector on a bar line instead of cutting out.
+            audio = Audio(enabled=not options.mute)
+            selected = run_title(screen, pygame.time.Clock(), difficulty, binds, audio)
         finally:
             if selected is None:
                 pygame.quit()
@@ -441,7 +445,8 @@ def play(options: Options) -> int:
         menu.keys_page.binds = binds
         dev_tools = devmode.DevTools() if options.dev else None
         menu.dev = dev_tools
-        audio = Audio(enabled=not (options.mute or options.headless))
+        if audio is None:
+            audio = Audio(enabled=not (options.mute or options.headless))
         clock = pygame.time.Clock()
         accumulated = 0.0
         frames = 0

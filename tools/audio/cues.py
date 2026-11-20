@@ -159,6 +159,56 @@ def fuse_box() -> np.ndarray:
     return out
 
 
+def _bell(f: float, seconds: float = 1.6) -> np.ndarray:
+    """A soft struck bell: a sine with two inharmonic partials, the upper ones fading first."""
+    n = samples(seconds)
+    tone = sine(f, n) * decay(n, seconds)
+    tone += 0.35 * sine(f * 2.01, n) * decay(n, seconds * 0.5)
+    tone += 0.12 * sine(f * 3.98, n) * decay(n, seconds * 0.25)
+    return tone * envelope(n, 0.004, 0.05, 1.0, 0.05)
+
+
+def title() -> np.ndarray:
+    """MU-05: the title. The HUM's mains drone without its bass, a slow pad on the theme's
+    chords opening and closing, the motif sparse on a bell with a dotted-eighth echo, a
+    quiet two-beat heartbeat, and now and then a crackle on the line. Moody and patient,
+    in the same key and tempo as the rest, so the first sector's music follows on."""
+    n = LOOP_SAMPLES
+    t = np.arange(n) / SR
+    mains = loop_hz(MAINS_HZ)
+    swell = 0.8 + 0.2 * np.sin(2 * np.pi * t / (LOOP_BARS * BAR))
+    out = (sine(mains, n) + 0.3 * sine(2 * mains, n)) * 0.38 * swell
+    buzz = loop_svf(saw(mains, n), 200 + 80 * np.sin(2 * np.pi * t / (4 * BAR)), q=1.0)
+    out += buzz * 0.08
+    pad_len = samples(2 * BAR + 1.5)
+    for index in range(len(CHORDS)):
+        pad = np.zeros(pad_len)
+        for f in chord_notes(index, 3):
+            for detune in (0.996, 1.0, 1.005):
+                pad += saw(f * detune, pad_len)
+        cutoff = 600 + 700 * (0.5 - 0.5 * np.cos(np.linspace(0, 2 * np.pi, pad_len)))
+        shaped = svf(pad, cutoff, q=1.1)
+        place(out, shaped * envelope(pad_len, 1.4, 0.5, 0.8, 1.6) * 0.045, at(index * 2), wrap=True)
+    # The motif, then its answer up a third over the D chord, each ringing with an echo.
+    phrases = ((0, MOTIF), (4, ("D5", "F#5", "A5", "F#5")))
+    for bar, notes in phrases:
+        for i, note in enumerate(notes):
+            bell = _bell(hz(note)) * 0.2
+            start = at(bar, i)
+            place(out, bell, start, wrap=True)
+            place(out, bell * 0.4, start + samples(0.75 * BEAT), wrap=True)
+            place(out, bell * 0.16, start + samples(1.5 * BEAT), wrap=True)
+    beat = svf(kick(0.5), 220, q=0.8) * 0.32
+    for bar in range(LOOP_BARS):
+        place(out, beat, at(bar, 0), wrap=True)
+        place(out, beat * 0.6, at(bar, 0.5), wrap=True)
+    for i, (bar, beat_at) in enumerate(((1, 2.5), (3, 1.25), (5, 3.0), (6, 0.75), (7, 2.25))):
+        m = samples(0.06)
+        tick = svf(noise(m, f"title-crackle-{i}"), 4200, q=1.2, mode="band") * decay(m, 0.05)
+        place(out, tick * 0.25, at(bar, beat_at), wrap=True)
+    return out
+
+
 # Protocol stings (MU-03) --------------------------------------------------------------------
 
 
@@ -602,6 +652,7 @@ MUSIC: dict[str, Callable[[], np.ndarray]] = {
     "music_arc": arc,
     "music_lead": lead,
     "music_fuse_box": fuse_box,
+    "music_title": title,
 }
 STINGS: dict[str, Callable[[], np.ndarray]] = {
     "sting_clamp": sting_clamp,
