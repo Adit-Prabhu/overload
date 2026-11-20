@@ -431,7 +431,7 @@ def play(options: Options) -> int:
             screen = _open_window(options.headless)
             pygame.display.set_caption("Overload")
         view = PixelView(run)
-        view.binds = binds
+        view.binds = view.coach.binds = binds
         if options.dev:
             view.stamp = f"DEV {view.stamp}"  # the build stamp on banners and the ending
         reader = InputReader(binds)
