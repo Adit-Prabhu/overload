@@ -68,7 +68,7 @@ The study needs these, and the rework stays inside them:
 ### 4.1 What every chassis gets
 - **Three phases**, starting at two thirds and at one third of its health. The health bar shows two notches (presentation step).
 - **Phase change** (1.2 s):
-  - The chassis is shielded and nothing fires. Every hostile shot in the room is wiped. Hazard tiles, shockwaves already running, pending warps and summoned drones stay.
+  - The chassis is shielded and nothing new fires. What it already fired stays: hostile shots, hazard tiles, running shockwaves, pending warps and summoned drones. A kit attack already striking (Live Wire, a charge, a spiral, both halves of a pair) finishes first, then the change starts. A tell that has not struck is called off. Phases change one at a time, so a long attack that soaks up two thresholds still shows both changes. Until Nov 19 every hostile shot was wiped, which the pilot playtest read as the attack vanishing.
   - There is no knockback, so nothing can push the Surge onto a tile.
   - The rotation restarts for the new phase, and the protocol's rest shortens.
   - Wiping shots helps Insulate a little more than Clamp, since Insulate's orbs linger. The protocol check covers it.
