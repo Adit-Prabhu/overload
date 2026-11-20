@@ -86,8 +86,23 @@ def _id(body) -> int:
     return getattr(body, "id", RIVAL_ID)
 
 
-def _strike(world: World, body, damage: int, power: str = "", tuning: Tuning | None = None):
+# Fused powers that keep striking a body in reach: the Tesla Coil, the Fortress and the
+# Shield Toss. A chassis is big and stays close under Clamp and Oscillate, so they strike it
+# for `chassis_field_damage` (balance pass, Nov 19: the protocol check).
+CHASSIS_FIELDS = ("fortress",)
+
+
+def _strike(
+    world: World,
+    body,
+    damage: int,
+    power: str = "",
+    tuning: Tuning | None = None,
+    field: bool = False,
+):
     if _id(body) == RIVAL_ID:
+        if tuning is not None and (field or power in CHASSIS_FIELDS):
+            damage = min(damage, tuning.chassis_field_damage)
         damage_rival(world, damage, body.x, body.y)
         return
     body.health -= damage
