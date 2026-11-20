@@ -379,6 +379,12 @@ def flickering(tick: int, phase: int) -> bool:
     return (tick // 3 + phase * 13) % 97 in (0, 1, 3, 7, 8, 30)
 
 
+# The Surge stays at least this far (x, y) from the view's edges, clear of the HUD's top
+# and bottom rows and of its own sprite height.
+SURGE_MARGIN = (40, 34)
+LEAD_LIMIT = (VIEW[0] / 2 - SURGE_MARGIN[0], VIEW[1] / 2 - SURGE_MARGIN[1])
+
+
 class PixelView:
     def __init__(self, run: Run | Campaign) -> None:
         self.room = tiles.render_room(run.arena.room, tiles.floor_sectors(run.arena.floor))
@@ -593,14 +599,26 @@ class PixelView:
         if rival is not None and rival.health > 0:
             lead_x = (rival.x - player.x) * 0.5
             lead_y = (rival.y - player.y) * 0.5
+        # Far from the Regulator, the midpoint would push the Surge off screen: the lead
+        # never takes the Surge closer than SURGE_MARGIN to an edge.
+        lead_x = max(-LEAD_LIMIT[0], min(LEAD_LIMIT[0], lead_x))
+        lead_y = max(-LEAD_LIMIT[1], min(LEAD_LIMIT[1], lead_y))
         target = (player.x + lead_x - VIEW[0] / 2, player.y + lead_y - VIEW[1] / 2)
         if getattr(run, "stage", None) == "ending" and self.boss_banner is not None:
             if self.wreck is None:
                 return  # hold the framing through the victory banner
             _, _, wreck_x, wreck_y, _ = self.wreck
             target = (wreck_x - VIEW[0] / 2, wreck_y - VIEW[1] / 2)
+            self.camera[0] += (target[0] - self.camera[0]) * 0.18
+            self.camera[1] += (target[1] - self.camera[1]) * 0.18
+            self._clamp_camera()
+            return
         self.camera[0] += (target[0] - self.camera[0]) * 0.18
         self.camera[1] += (target[1] - self.camera[1]) * 0.18
+        # The easing lags a dodge or a blink: never let it lag the Surge out of view.
+        for axis, at in ((0, player.x), (1, player.y)):
+            low, high = at - VIEW[axis] + SURGE_MARGIN[axis], at - SURGE_MARGIN[axis]
+            self.camera[axis] = min(max(self.camera[axis], low), high)
         self._clamp_camera()
 
     # Events ---------------------------------------------------------------------------
