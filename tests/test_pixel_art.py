@@ -1019,3 +1019,32 @@ def test_tab_to_equip_shows_only_when_the_new_power_found_no_slot(headless_pygam
     world.player.slots = ["spark", "magnet"]  # Bulwark found both slots full
     view.consume(campaign, [Event("unlock", 10, 10, 2, "bulwark")])
     assert view.notice[0] == "BULWARK STOLEN. TAB TO EQUIP"
+
+
+@pytest.mark.parametrize("sector", [1, 2, 3])
+def test_the_camera_keeps_the_surge_on_screen_in_a_boss_fight(headless_pygame, sector) -> None:
+    """Framing the Surge and a far Regulator together once pushed the Surge off screen at the
+    edge of a chamber (Adit, Nov 19). Every corner of the chamber, and after a jump."""
+    from floorbot import enter
+
+    from overload.floor import FLOOR
+    from overload.game.view import SURGE_MARGIN, VIEW, PixelView
+    from overload.sim.campaign import Campaign
+
+    campaign = Campaign(1)
+    enter(campaign, f"s{sector}_chamber")
+    world = campaign.world
+    room = next(r for r in FLOOR.rooms if r.id == f"s{sector}_chamber")
+    x, y, w, h = room.rect
+    view = PixelView(campaign)
+    corners = [(x + 2, y + 2), (x + w - 3, y + 2), (x + 2, y + h - 3), (x + w - 3, y + h - 3)]
+    for (px, py), (rx, ry) in itertools.permutations(corners, 2):
+        world.player.x, world.player.y = px * 16 + 8.0, py * 16 + 8.0
+        world.rival.x, world.rival.y = rx * 16 + 8.0, ry * 16 + 8.0
+        view.follow(campaign, (128, 72))  # one eased step straight after the jump
+        for _ in range(60):
+            cam = view.camera_offset()
+            sx, sy = world.player.x - cam[0], world.player.y - cam[1]
+            assert SURGE_MARGIN[0] - 1 <= sx <= VIEW[0] - SURGE_MARGIN[0] + 1
+            assert SURGE_MARGIN[1] - 1 <= sy <= VIEW[1] - SURGE_MARGIN[1] + 1
+            view.follow(campaign, (128, 72))
