@@ -88,7 +88,9 @@ def _id(body) -> int:
 
 # Fused powers that keep striking a body in reach: the Tesla Coil, the Fortress and the
 # Shield Toss. A chassis is big and stays close under Clamp and Oscillate, so they strike it
-# for `chassis_field_damage` (balance pass, Nov 19: the protocol check).
+# for `chassis_field_damage` (balance pass, Nov 19: the protocol check). The coil and the
+# toss call `_strike` themselves and pass `field=True`. The Fortress pulses through `blast`,
+# which names its power, so it is listed here. tests/test_balance.py ticks all three.
 CHASSIS_FIELDS = ("fortress",)
 
 

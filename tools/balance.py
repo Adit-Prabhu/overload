@@ -146,7 +146,10 @@ def main() -> int:
                     spread.setdefault((sector, power), []).append(ratios[power])
                 low = sorted(ratios.items(), key=lambda kv: kv[1])[:3]
                 text = ", ".join(f"{p} {r:.2f}" for p, r in low)
-                print(f"  s{sector} {protocol:8} gun only {gun / 60:5.1f}s, lowest: {text}")
+                print(
+                    f"  s{sector} {protocol:8} (gun only {gun / 60:4.1f}s for reference) "
+                    f"lowest with/without: {text}"
+                )
                 for power, ratio in ratios.items():
                     if ratio < worst[0]:
                         worst = (ratio, f"{power} in s{sector} {protocol}")

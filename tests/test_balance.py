@@ -39,6 +39,31 @@ def test_field_powers_strike_a_chassis_for_the_chassis_damage(kind) -> None:
     assert before - rival.health == DEFAULT.chassis_field_damage
 
 
+@pytest.mark.parametrize("kind", ["coil", "fortress", "toss"])
+def test_a_real_coil_fortress_or_toss_strikes_a_chassis_for_one(kind) -> None:
+    """Through the real field ticks (pairs.py), not a direct call: removing the cap from
+    any of the three call sites fails here."""
+    from overload.sim.inputs import IDLE
+    from overload.sim.state import Device
+
+    campaign = chamber()
+    world = campaign.world
+    rival = world.rival
+    timer = {
+        "coil": DEFAULT.coil_interval + 1,
+        "fortress": DEFAULT.fortress_interval + 1,
+        "toss": DEFAULT.toss_out + DEFAULT.toss_back,
+    }[kind]
+    world.fields.append(Device(world.new_id(), kind, rival.x, rival.y, 1.0, 0.0, timer))
+    hits = []
+    for _ in range(3):
+        world.player.invulnerable = 10**9
+        rival.vent = 0
+        campaign.step(IDLE)
+        hits += [e.ref for e in world.events if e.kind == "rival_hit"]
+    assert hits and set(hits) == {DEFAULT.chassis_field_damage}
+
+
 def test_other_strikes_on_a_chassis_take_full_damage() -> None:
     campaign = chamber()
     world = campaign.world
