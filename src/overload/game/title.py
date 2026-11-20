@@ -15,6 +15,7 @@ from overload import __version__
 from overload.art.palette import rgb, rgba
 from overload.art.pixel import actors, hud, tiles
 from overload.floor import FLOOR
+from overload.game import keybinds
 from overload.game.keybinds import ACTIONS, Keybinds, RebindPage
 from overload.sim.difficulty import DIFFICULTIES
 
@@ -61,10 +62,11 @@ def draw_rebind(screen: pygame.Surface, page: RebindPage, left: int, right: int,
     return y + 10
 
 
-def rebind_footer(page: RebindPage) -> str:
+def rebind_footer(page: RebindPage, nav: str = "W/S") -> str:
+    """`nav` names the keys that move the rows: fixed on the title, bound in the game."""
     if page.capturing:
         return "ESC CANCELS"
-    return page.notice or "W/S MOVE  ENTER CHANGE  ESC BACK"
+    return page.notice or f"{nav} MOVE  ENTER CHANGE  ESC BACK"
 
 
 @cache
@@ -109,7 +111,8 @@ class TitleScreen:
     def press(self, key: int) -> None:
         if self.page == "controls":
             if self.keys.capturing:
-                self.keys.capture(pygame.key.name(key))
+                name = keybinds.key_name(key)
+                self.keys.capture(name if keybinds.known(name) else "escape")
             elif self.keys.nav(TITLE_KEYS.get(key, "")) == "back":
                 self.page = "menu"
             return

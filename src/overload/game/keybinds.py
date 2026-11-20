@@ -188,7 +188,9 @@ class RebindPage:
             self.notice = ""
             return "move"
         action, title = ACTIONS[self.row]
-        self.binds.bind(action, name)
+        if not self.binds.bind(action, name):
+            self.notice = ""
+            return "move"
         self.notice = f"{title}: {key_label(name)}"
         return "confirm"
 
@@ -202,6 +204,18 @@ def code(name: str) -> int:
         # only because some of its key functions do.
         warnings.simplefilter("ignore")
         return pygame.key.key_code(name)
+
+
+def known(name: str) -> bool:
+    """True if pygame can turn this key name back into a key (a key with no name, or a
+    name that does not round trip, is never bound)."""
+    if not name:
+        return False
+    try:
+        code(name)
+    except ValueError:
+        return False
+    return True
 
 
 def key_name(key: int) -> str:
