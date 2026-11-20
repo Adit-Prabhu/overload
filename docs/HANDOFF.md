@@ -24,7 +24,7 @@ Snapshot of November 19, 2026. For any agent or chat picking up the work. The st
 - Bulwark and Magnet landed in #45.
 - #48 brings evidence version 4 to main. Adit then redeploys the Worker and runs the smoke test in [DEPLOY.md](DEPLOY.md).
 - #47 has the first twelve new fusion results. The final nine are on its stacked `feat/fusion-pairs-b` branch. Together they give all ten pairs and thirty results.
-- The dedicated cue pass is still open. Each result currently has a fitting existing cue and a visual twin.
+- The dedicated cue pass is done (Nov 19): every fused power has its own use cue, built from its pair's voices, its verb and its rarity in `tools/audio/cues.py` (`FUSED_RECIPES`).
 
 ## Pilot playtest fixes (Nov 19)
 Adit's informal pilot with a friend ([notes](evidence/PILOT_PLAYTEST_2026-11-19.md), pilot only, not study data) led to four PRs. Merge order: #52, then #54, then #55 (stacked). #53 is independent.

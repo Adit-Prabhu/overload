@@ -16,6 +16,7 @@ from __future__ import annotations
 import pygame
 
 from overload.paths import ASSETS
+from overload.sim.powers import FUSED, NAMES
 from overload.sim.state import Event
 from overload.sim.tuning import DEFAULT
 
@@ -35,10 +36,7 @@ EVENT_SOUNDS = {
     "blink_from": "blink_depart",
     "blink_to": "blink_arrive",
     "blink_rejected": "blink_deny",
-    "power_arc_trail": "arc_trail",
     "lance": "arc_trail",  # Bolt Lance
-    "power_shock_mine": "orb_fire",
-    "power_storm_aura": "spark",
     "blast": "lunge",  # the ring blasts of Shock Mine, Impact Blink, Displacer and Meteor
     "leap": "blink_depart",  # Meteor takes off
     "tell": "mite_tell",
@@ -82,31 +80,9 @@ EVENT_SOUNDS = {
     "power_magnet": "magnet_field",
     "magnet_crush": "magnet_crush",
     "magnet_rejected": "blink_deny",
-    # The first half of the Bulwark and Magnet pairs reuse fitting cues, like the first
-    # nine fused powers (their own cues are a later pass, spec section 8).
-    "power_static_guard": "bulwark_up",
-    "power_tesla_coil": "summon",
-    "power_capacitor_armor": "bulwark_up",
+    # Fused powers' own events (their use cues are added below from FUSED).
     "armor_release": "ring_burst",
-    "power_lodestone": "orb_fire",
-    "power_ion_hook": "spark",
     "hooked": "magnet_crush",
-    "power_magrail": "live_wire",
-    "power_bastion": "bulwark_up",
-    "power_reflector_wave": "lunge",
-    "power_fortress": "lattice",
-    "power_vortex_cone": "magnet_field",
-    "power_implosion": "magnet_field",
-    "power_gravity_well": "magnet_field",
-    "power_phase_guard": "bulwark_up",
-    "power_afterimage": "relay_blink",
-    "power_rewind": "fuse_rare",
-    "power_undertow": "magnet_field",
-    "power_grapple": "lunge",
-    "power_riptide": "magnet_crush",
-    "power_lightning_rod": "summon",
-    "power_shield_toss": "lunge",
-    "power_mirror_field": "magnet_field",
     "mirror_release": "bulwark_reflect",
     # The boss kits (docs/BOSS_DESIGN.md): each attack its own sound.
     "phase_change": "phase_change",
@@ -119,6 +95,14 @@ EVENT_SOUNDS = {
     "vent": "vent",
     "boss_reward": "unlock",
 }
+# Every fused power has its own use cue (powers spec section 8, rendered by
+# tools/audio/cues.py from its pair, its verb and its rarity). The cue sounds when the power
+# fires, and the generic cast sounds of the same tick give way to it (CAST_SOUNDS).
+EVENT_SOUNDS.update({f"power_{power}": f"fused_{power}" for power in FUSED})
+# Sounds a fused power's cast also emits on its first tick (a Blink departure, a Meteor
+# leap, a Bolt Lance, a Burst cone). Dropped in a tick where a fused cue plays, so the cast
+# is one clear sound. Follow-through (an arrival, a blast, a hit) still plays.
+CAST_SOUNDS = {"blink_from", "leap", "lance", "burst"}
 # Each sound's visual twin: the game is fully playable muted.
 VISUAL_TWINS = {
     "shot": "muzzle flash and the shot streak",
@@ -219,6 +203,13 @@ VISUAL_TWINS = {
     "fuse_legendary": "the legendary card lifts into the reveal with rays and an outline pulse",
     "low_health": "two or fewer battery cells left in the HUD",
 }
+# A fused power's cue has the power itself as its twin: its own effect, and its name and
+# icon in the slot that just went on cooldown.
+for _power in FUSED:
+    VISUAL_TWINS.setdefault(
+        f"power_{_power}",
+        f"{NAMES[_power]}'s own effect, and its slot starting its cooldown",
+    )
 STINGS = {"pressure": "sting_clamp", "spacing": "sting_insulate", "lateral": "sting_oscillate"}
 # Hostile tells duck the music: aim tells, hazard arming and a Breaker raising its fists
 # (hazard_fill), warp markers (relay_click) and a boss winding up its signature (boss_charge).
@@ -315,8 +306,11 @@ class Audio:
         sting = boot_sting(world)
         if sting:
             self.play(sting, 0.9)
+        fused = any(e.kind.removeprefix("power_") in FUSED for e in events)
         for event in events:
             if event.kind == "rival_destroyed" and world.outcome == "down":
+                continue
+            if fused and event.kind in CAST_SOUNDS:
                 continue
             name = EVENT_SOUNDS.get(event.kind)
             if name is None:
