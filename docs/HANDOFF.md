@@ -35,7 +35,7 @@ Adit's informal pilot with a friend ([notes](evidence/PILOT_PLAYTEST_2026-11-19.
 
 ## Next step (spec section 9)
 
-Balance the full roster against the bosses with the floor bot over eight seeds and freeze the Tuning by Nov 23. The boss protocol guard runs three seeds that cover every protocol.
+The balance pass is done (`tools/balance.py`, numbers in DECISIONS, Nov 19). Medium's `tuning_id` is 624e3a96, the freeze candidate. Once Adit merges it, that is the build for the playtest, the live suite and the recording. Any later Tuning change makes a new build, labelled by its `tuning_id`.
 
 ## Decided Nov 19
 - The playtest seed rule: one seed per participant for both conditions, different seeds across participants.
