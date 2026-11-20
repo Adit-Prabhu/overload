@@ -60,7 +60,7 @@ smoke passed
 At most 12 model calls across the four runs (three per run, counting calls the service likely finished after the game stopped waiting, and the run 2 request that failed, which may not have reached the model), at $0.00158 reserved each: under $0.02 in the ledger, far below the $1.00 daily cap.
 
 ## Follow-up
-- A cold first request can miss the 5 s deadline, and one transient server error was seen. Both fall back safely but lose a live data point. Proposed: retry the budget reservation once and label any other error instead of returning a raw 500, and optionally warm the session before the Fuse Box. Awaiting Adit's decision, since it changes the deployed service.
+- A cold first request can miss the 5 s deadline, and one transient server error was seen. Both fall back safely but lose a live data point. Adit chose the hardening (a retried budget reservation and labelled errors instead of a raw 500, see DECISIONS, Nov 19). The cold-start warm-up was not built.
 
 ## Not covered here
 These summaries are synthetic (fixed distances and shot counts from `tools/rival/smoke.py`), not from play. Evidence from real play sessions, and the comparison against the fixed-schedule baseline, come later and will be recorded separately.
