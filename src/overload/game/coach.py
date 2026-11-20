@@ -53,12 +53,14 @@ class Coach:
             self.learned.add("fuse")
         self.target = _fuse_box(run)
 
-    def hint(self, run) -> str | None:
-        """The one hint to show now, or None."""
+    def hint(self, run, short: bool = False) -> str | None:
+        """The one hint to show now, or None. `short` writes keys as three letters at
+        most (LSH, RCT), for a hint that would not fit beside the power slots."""
         world = run.world
         if world.outcome != "playing" or getattr(run, "stage", None) not in (None, "encounter"):
             return None
         keys = self.binds
+        name = keys.short if short else keys.label
         if self.target is not None:
             return "FOLLOW THE ARROW TO THE FUSE BOX"
         if "move" not in self.learned:
@@ -66,13 +68,13 @@ class Coach:
         if "fire" not in self.learned:
             return "HOLD LEFT CLICK TO FIRE"
         if "dodge" not in self.learned and self.fight:
-            return f"{keys.label('dodge')} TO DODGE THROUGH SHOTS"
+            return f"{name('dodge')} TO DODGE THROUGH SHOTS"
         if "power" not in self.learned and any(world.player.slots):
-            q, e = keys.label("power_q"), keys.label("power_e")
+            q, e = name("power_q"), name("power_e")
             return f"{q} OR {e} USES A STOLEN POWER"
         stolen = [p for p in BASE_POWERS if p in world.unlocked]
         if "fuse" not in self.learned and len(stolen) >= 2:
-            return f"{keys.label('menu')} THEN FUSE: MIX TWO POWERS"
+            return f"{name('menu')} THEN FUSE: MIX TWO POWERS"
         return None
 
 

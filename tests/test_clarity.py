@@ -165,3 +165,68 @@ def test_the_fuse_box_hub_shows_ready_and_the_spares(display) -> None:
         assert "ROUTING POWER..." in texts and "CONTINUE" in texts
     finally:
         menu_view.hud.text = original
+
+
+@pytest.mark.parametrize("stage", ["power", "dodge", "fuse", "fuse_box"])
+def test_hints_fit_left_of_the_power_slots_with_long_keys(display, stage) -> None:
+    from overload.art.pixel import hud
+    from overload.game.view import HINT_RIGHT, PixelView
+
+    binds = Keybinds()
+    for action, key in (
+        ("power_q", "right shift"),
+        ("power_e", "right ctrl"),
+        ("dodge", "left shift"),
+        ("menu", "caps lock"),
+    ):
+        binds.bind(action, key)
+    campaign = Campaign(1)
+    view = PixelView(campaign)
+    view.binds = view.coach.binds = binds
+    world = campaign.world
+    view.coach.learned |= {"move", "fire"}
+    view.coach.fight = True
+    if stage != "dodge":
+        view.coach.learned.add("dodge")
+    world.unlocked.extend(["spark", "blink"])
+    world.player.slots = ["spark", "blink"]
+    if stage in ("fuse", "fuse_box"):
+        view.coach.learned.add("power")
+    if stage == "fuse_box":
+        view.coach.target = (0.0, 0.0)
+    drawn = []
+    original = hud.text
+
+    def record(target, message, pos, *args, **kwargs):
+        rect = original(target, message, pos, *args, **kwargs)
+        drawn.append((message, rect))
+        return rect
+
+    hud.text = record
+    try:
+        view._coach(display, campaign, view.camera_offset())
+    finally:
+        hud.text = original
+    ((message, rect),) = drawn
+    assert rect.left >= 2 and rect.right <= HINT_RIGHT, message
+
+
+def test_practice_mode_has_hints_but_no_fuse_box(display) -> None:
+    from overload.game.view import PixelView
+    from overload.sim.run import Run
+
+    run = Run(1)
+    view = PixelView(run)
+    for _ in range(3):
+        run.step(IDLE)
+        view.after_tick(run)
+    assert view.coach.target is None and view.coach.hint(run).endswith("MOUSE TO AIM")
+    view.draw(display, run, (128, 72))
+
+
+def test_the_arrow_points_from_the_edge_or_over_the_room(display) -> None:
+    from overload.game.view import PixelView
+
+    view = PixelView(Campaign(1))
+    for point in ((128.0, 72.0), (900.0, 72.0), (-400.0, -400.0), (128.0, 999.0)):
+        view._arrow(display, point)

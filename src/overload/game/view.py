@@ -182,6 +182,7 @@ BOOM_TICKS = 14
 WRECK_TICKS = 90  # 1.5 s of explosions over the sinking wreck
 FLY_NEAR = 10.0  # a charge absorbed farther than this from the Surge flies into it
 FLY_TICKS = 60  # a flyer always lands within a second
+HINT_RIGHT = 206  # the hint strip ends left of the power slots (x = 210 at 256 wide)
 DOWNED_TICKS = 180
 INTRO_SLIDE = 18  # ticks the name card takes to slide in during the boot
 BEAM_TICKS = 10
@@ -919,10 +920,11 @@ class PixelView:
         """Each flyer waits out its stagger, then homes in, quicker as it goes, and lands
         in a small burst."""
         player = run.world.player
-        landed = []
+        flying = []
         for flyer in self.flyers:
             flyer[3] += 1
             if flyer[3] <= 0:
+                flying.append(flyer)
                 continue
             pull = min(0.5, 0.04 + flyer[3] * 0.012)
             flyer[0] += (player.x - flyer[0]) * pull
@@ -930,9 +932,10 @@ class PixelView:
             if self.cosmetic.random() < 0.5:
                 self.sparks.append(Spark(flyer[0], flyer[1], 0.0, 0.0, 8, f"power.{flyer[2]}"))
             if math.dist((flyer[0], flyer[1]), (player.x, player.y)) < 4 or flyer[3] > FLY_TICKS:
-                landed.append(flyer)
                 self._burst(player.x, player.y, 6, f"power.{flyer[2]}", 1.0)
-        self.flyers = [f for f in self.flyers if f not in landed]
+            else:
+                flying.append(flyer)
+        self.flyers = flying
 
     def _burst(self, x: float, y: float, count: int, token: str, speed: float) -> None:
         for _ in range(count):
@@ -1569,9 +1572,15 @@ class PixelView:
         if message is None or self.boss_banner is not None:
             return
         w, h = screen.get_size()
+        room = HINT_RIGHT - 2  # from x = 2 to the power slots
         width = hud.pixel_font().size(message)[0] + 8
-        panel = pygame.Rect(0, h - 16, width, 12)
-        panel.centerx = w // 2 - 12  # clear of the power slots
+        if width > room:  # long bound key names: write them short
+            message = self.coach.hint(run, short=True) or message
+            width = hud.pixel_font().size(message)[0] + 8
+        panel = pygame.Rect(0, h - 16, min(width, room), 12)
+        panel.centerx = w // 2 - 12
+        panel.right = min(panel.right, HINT_RIGHT)
+        panel.left = max(panel.left, 2)
         screen.blit(_dim(panel.size, 200), panel)
         token = "px.hazard.1" if (self.frames // 30) % 2 else "ui.text"
         hud.text(screen, message, (panel.centerx, panel.y - 2), token, "midtop")
