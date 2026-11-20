@@ -215,7 +215,7 @@ class Tuning:
 
     # The boss kits (docs/BOSS_DESIGN.md): the phase change, the vent window and the
     # attacks no robot uses.
-    phase_change: int = 72  # shielded, every hostile shot wiped
+    phase_change: int = 72  # shielded, nothing new fires
     vent_ticks: int = 90  # the punish window after a chassis' biggest attack
     core_vent_ticks: int = 105  # after the Grid Core's core spiral
     wire_tell: int = 54

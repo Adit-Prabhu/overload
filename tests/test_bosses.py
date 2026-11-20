@@ -85,10 +85,11 @@ def set_phase(campaign: Campaign, phase: int) -> None:
     rival = campaign.world.rival
     rival.boot = 0
     rival.health = rival.max_health * (3 - (phase - 1)) // 3 - (1 if phase > 1 else 0)
-    campaign.world.player.invulnerable = 10**9
-    campaign.step(IDLE)
+    for _ in range(phase):  # one change per phase crossed
+        campaign.world.player.invulnerable = 10**9
+        campaign.step(IDLE)
+        rival.change = 0
     assert rival.phase == phase
-    rival.change = 0
 
 
 def test_phases_change_at_two_thirds_and_one_third() -> None:
@@ -101,15 +102,17 @@ def test_phases_change_at_two_thirds_and_one_third() -> None:
         assert len(BOSSES[sector].phases) == 3
 
 
-def test_a_phase_change_shields_wipes_shots_and_restarts_the_rotation() -> None:
+def test_a_phase_change_shields_keeps_shots_and_restarts_the_rotation() -> None:
     campaign = chamber(1)
     rival = campaign.world.rival
     run_until(campaign, "boss_ring")
-    assert hostile_shots(campaign) > 0
+    shots = {p.id for p in campaign.world.projectiles if p.hostile}
+    assert shots
     rival.health = 30
     campaign.step(IDLE)
     assert rival.phase == 2 and rival.change > 0
-    assert hostile_shots(campaign) == 0, "every hostile shot is wiped"
+    still = {p.id for p in campaign.world.projectiles if p.hostile}
+    assert still and still <= shots, "shots fired in phase 1 keep flying (Adit, Nov 19)"
     assert "phase_change" in [e.kind for e in campaign.world.events]
     health = rival.health
     from overload.sim.damage import damage_rival
@@ -122,6 +125,51 @@ def test_a_phase_change_shields_wipes_shots_and_restarts_the_rotation() -> None:
         campaign.step(IDLE)
         seen += [e.kind for e in campaign.world.events]
     assert not set(seen) & (HOSTILE_ATTACKS | {"boss_tell"}), "nothing fires during it"
+
+
+def test_an_attack_already_striking_finishes_before_the_phase_changes() -> None:
+    campaign = chamber(1)
+    rival = start(campaign, "live_wire")
+    for _ in range(DEFAULT.wire_tell + 1):
+        campaign.world.player.invulnerable = 10**9
+        campaign.step(IDLE)
+    assert rival.sig_action == "active" and rival.wires
+    rival.health = 30
+    campaign.world.player.invulnerable = 10**9
+    campaign.step(IDLE)
+    assert rival.phase == 1 and rival.wires, "the live lines stay until they end"
+    run_until(campaign, "phase_change", DEFAULT.wire_active + 5)
+    assert rival.phase == 2 and not rival.wires and rival.vent == 0
+
+
+def test_a_pair_finishes_its_second_half_before_the_phase_changes() -> None:
+    campaign = chamber(1)
+    set_phase(campaign, 3)
+    rival = start(campaign, "live_wire_twice")
+    for _ in range(400):
+        campaign.world.player.invulnerable = 10**9
+        campaign.step(IDLE)
+        if rival.sig_action == "tell" and rival.sig_step == 1:
+            break
+    assert rival.sig_step == 1 and rival.wires, "the second set is waiting to strike"
+    second = list(rival.wires)
+    rival.phase = 2  # pretend the third phase is still ahead, so a change is due
+    campaign.world.player.invulnerable = 10**9
+    campaign.step(IDLE)
+    assert rival.phase == 2 and rival.wires == second, "the second half is not called off"
+    seen = run_until(campaign, "phase_change", 400)
+    assert seen.count("live_wire") >= 1 and rival.phase == 3
+
+
+def test_phases_change_one_at_a_time() -> None:
+    campaign = chamber(1)
+    rival = campaign.world.rival
+    rival.boot, rival.health = 0, 1  # past both thresholds at once
+    campaign.world.player.invulnerable = 10**9
+    campaign.step(IDLE)
+    assert rival.phase == 2
+    run_until(campaign, "phase_change", DEFAULT.phase_change + 5)
+    assert rival.phase == 3
 
 
 def test_the_linesman_rings_then_doubles_them() -> None:

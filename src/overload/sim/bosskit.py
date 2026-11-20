@@ -103,9 +103,15 @@ def _from_rival(world: World, rival: Rival, dx: float, dy: float, tuning: Tuning
 
 def phase_change(world: World, rival: Rival, boss: Boss, tuning: Tuning) -> bool:
     """Start the next phase if its health has crossed a threshold: shielded for a moment,
-    every hostile shot wiped, the rotation back to its start. True while the change runs."""
-    target = phase_for(boss, rival.health, rival.max_health)
-    if target > rival.phase and rival.health > 0:
+    the rotation back to its start. True while the change runs.
+
+    What the chassis already fired stays (Adit, Nov 19): shots keep flying, and a kit attack
+    already striking (a Live Wire, a charge, a spiral, both halves of a pair) finishes before
+    the change starts. Only a tell that has not struck yet is called off. Phases change one
+    at a time, so each change shows even if one long attack soaks up two thresholds."""
+    target = min(phase_for(boss, rival.health, rival.max_health), rival.phase + 1)
+    striking = rival.sig_action == "active" or (rival.sig_action == "tell" and rival.sig_step)
+    if target > rival.phase and rival.health > 0 and not striking:
         rival.phase = target
         rival.change = tuning.phase_change
         if rival.vent:
@@ -115,7 +121,6 @@ def phase_change(world: World, rival: Rival, boss: Boss, tuning: Tuning) -> bool
         rival.sig_timer = boss.phases[target - 1].every // 2
         rival.wires, rival.marks = [], []
         rival.action, rival.timer, rival.cooldown = "move", 30, 30
-        world.projectiles = [shot for shot in world.projectiles if not shot.hostile]
         world.events.append(Event("phase_change", rival.x, rival.y, target))
         if boss.kind == "grid_core" and target == 2:
             world.events.append(Event("overload", rival.x, rival.y))
