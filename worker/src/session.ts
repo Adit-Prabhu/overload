@@ -25,6 +25,7 @@ export interface SessionState {
   requestIds: string[];
   history: Summary[];
   expiryId: string | null;
+  expiryToken: string | null; // the live expiry's token: an older scheduled expiry is stale
 }
 
 export class RivalSession extends Agent<Env, SessionState> {
@@ -35,6 +36,7 @@ export class RivalSession extends Agent<Env, SessionState> {
     requestIds: [],
     history: [],
     expiryId: null,
+    expiryToken: null,
   };
 
   async begin(): Promise<void> {
@@ -52,15 +54,26 @@ export class RivalSession extends Agent<Env, SessionState> {
 
   /** Scheduled after 30 minutes without a request. Wipes history, counters and request IDs,
    *  so nothing from this session can reach a later one. */
-  async expire(): Promise<void> {
-    if (this.state.expiryId) await this.cancelSchedule(this.state.expiryId);
+  async expire(payload?: { token?: string }): Promise<void> {
+    // A scheduled expiry carries its token. One whose token is not the live one was
+    // replaced by a later request (and could not be cancelled), so it must not wipe the
+    // session early. A direct call (no payload) always expires.
+    if (payload?.token && payload.token !== this.state.expiryToken) return;
+    if (this.state.expiryId) {
+      await this.cancelSchedule(this.state.expiryId).catch(() => undefined);
+    }
     this.setState({ ...this.initialState });
   }
 
+  /** Push the expiry 30 minutes past now. The new one is scheduled before the old one is
+   *  cancelled, so a failure at either step never leaves the session without an expiry, and
+   *  an old one that survives a failed cancel is stale (its token no longer matches). */
   private async refreshExpiry(): Promise<void> {
-    if (this.state.expiryId) await this.cancelSchedule(this.state.expiryId);
-    const schedule = await this.schedule(SESSION_TTL_SECONDS, "expire");
-    this.setState({ ...this.state, expiryId: schedule.id });
+    const previous = this.state.expiryId;
+    const token = crypto.randomUUID();
+    const schedule = await this.schedule(SESSION_TTL_SECONDS, "expire", { token });
+    this.setState({ ...this.state, expiryId: schedule.id, expiryToken: token });
+    if (previous) await this.cancelSchedule(previous).catch(() => undefined);
   }
 
   async propose(request: TacticRequest, sessionId: string): Promise<TacticResponse> {
@@ -113,7 +126,8 @@ export class RivalSession extends Agent<Env, SessionState> {
     try {
       await this.refreshExpiry();
     } catch {
-      // Housekeeping: a failed reschedule keeps the old expiry and never costs the answer.
+      // Housekeeping: if the new expiry could not be scheduled, the old one still stands
+      // (it is cancelled only after its replacement exists), so the answer goes ahead.
     }
     const counted = { ...base, attempts_used: attempts };
 

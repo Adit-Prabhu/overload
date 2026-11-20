@@ -251,4 +251,36 @@ describe("hardening (Nov 19 smoke test)", () => {
     expect(reply.status).toBe("ok");
     expect(reply.tactic_id).toBe("pressure");
   });
+
+  it("keeps the old expiry when the new one cannot be scheduled", async () => {
+    const id = await startSession();
+    const stub = env.RIVAL_SESSION.get(env.RIVAL_SESSION.idFromName(id));
+    const result = await runInDurableObject(stub, async (instance) => {
+      const session = instance as unknown as {
+        state: { expiryId: string | null; expiryToken: string | null };
+        schedule: (...args: unknown[]) => Promise<unknown>;
+        propose: (r: unknown, id: string) => Promise<Record<string, unknown>>;
+        getSchedules: () => { id: string }[];
+      };
+      const before = { ...session.state };
+      session.schedule = async () => {
+        throw new Error("alarm storage unavailable");
+      };
+      const reply = await session.propose(request(2, summary(0.8, 0.1)), id);
+      const live = session.getSchedules().map((s) => s.id);
+      return { reply, before, after: { ...session.state }, live };
+    });
+    expect(result.reply.status).toBe("ok");
+    expect(result.after.expiryId).toBe(result.before.expiryId);
+    expect(result.live).toContain(result.before.expiryId);
+  });
+
+  it("ignores a stale scheduled expiry", async () => {
+    const id = await startSession();
+    await ask(id, request(2, summary(0.8, 0.1)));
+    const session = await getAgentByName(env.RIVAL_SESSION, id);
+    await session.expire({ token: "an-old-expiry" });
+    expect(await session.isStarted()).toBe(true);
+    expect(await session.history()).toHaveLength(1);
+  });
 });
