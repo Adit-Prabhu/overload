@@ -229,12 +229,13 @@ One original theme, "Overload", carries the whole game. Every cue is an arrangem
 | MU-02 | Fuse Box | HUM with a low-pass filter, plus a slow pad on the same chords | P0 |
 | MU-03 | Protocol stings | 1-bar sting per protocol, matching CH-02a to CH-02c | P0 |
 | MU-04 | Victory and defeat | Victory: the motif resolved to B major with a rising sweep. Defeat: a tape-stop "power cut", silence, then the hum returns | P1 |
-| MU-05 | Title | HUM with a sparse LEAD | P1 |
+| MU-05 | Title | Built Nov 19: the HUM's mains drone without its bass, a slow pad on the theme's chords, the motif and an answer on a soft bell with a dotted-eighth echo, a quiet heartbeat and a few line crackles. Same key and tempo, so it hands over to encounter 1 on a bar line | P1 |
 
 How the music layers:
 
 | Moment | Stems |
 | --- | --- |
+| Title screen | MU-05 |
 | Fuse Box | MU-02 |
 | Encounter 1 | HUM and PULSE |
 | Encounter 2 | Adds ARC |

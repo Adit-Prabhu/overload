@@ -14,12 +14,21 @@ import pygame
 from overload import __version__
 from overload.art.palette import rgb, rgba
 from overload.art.pixel import actors, hud, tiles
+from overload.art.pixel import regulators as regulators_art
 from overload.floor import FLOOR
 from overload.game import keybinds
 from overload.game.keybinds import ACTIONS, Keybinds, RebindPage
 from overload.sim.difficulty import DIFFICULTIES
 
 ITEMS = ("START", "CONTROLS", "QUIT")
+# One line on what each preset changes (sim/difficulty.py). Medium is the formal playtest's.
+ABOUT = {
+    "easy": "MORE BATTERY, SOFTER ROBOTS",
+    "medium": "RECOMMENDED FIRST RUN",
+    "hard": "LESS BATTERY, TOUGHER ROBOTS",
+    "nightmare": "FOUR CELLS, FAST BOLTS",
+}
+BEAT_TICKS = 60 * 60 / 124  # the title music's beat (124 BPM) in 60 Hz ticks
 
 
 def controls(binds: Keybinds) -> tuple[tuple[str, str], ...]:
@@ -89,10 +98,55 @@ def _wordmark() -> pygame.Surface:
     return canvas
 
 
+@cache
+def _chassis() -> pygame.Surface:
+    """The Grid Core in its last phase, facing the Surge, darkened to a looming shape."""
+    image = regulators_art.regulator("clamp", True, kind="grid_core", phase=3, charged=True)
+    image = image.copy()
+    shade = pygame.Surface(image.get_size(), pygame.SRCALPHA)
+    shade.fill(rgba("px.floor.3", 255))  # multiplied in: the chassis in shadow
+    image.blit(shade, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+    return image
+
+
+@cache
+def _vignette(size: tuple[int, int]) -> pygame.Surface:
+    """Darker toward the edges, so the eye lands on the wordmark and the standoff."""
+    w, h = size
+    veil = pygame.Surface(size, pygame.SRCALPHA)
+    for ring in range(12):
+        alpha = 10 + ring * 4
+        inset = 12 - ring
+        pygame.draw.rect(
+            veil,
+            (*rgb("px.outline"), alpha),
+            (inset - 12, inset - 12, w + 2 * (12 - inset), h + 2 * (12 - inset)),
+            2,
+        )
+    return veil
+
+
+@cache
+def _glow() -> pygame.Surface:
+    """The wordmark's halo: the letters in spark yellow, spread a few pixels."""
+    mark = _wordmark()
+    halo = pygame.Surface((mark.get_width() + 8, mark.get_height() + 8), pygame.SRCALPHA)
+    letters = pygame.transform.scale_by(
+        hud.pixel_font().render("OVERLOAD", False, rgb("power.spark")), 3
+    )
+    for dx in (-2, 0, 2):
+        for dy in (-2, 0, 2):
+            halo.blit(letters, (5 + dx, 5 + dy))
+    return halo
+
+
 def forget() -> None:
     """Drop cached surfaces after pygame.quit()."""
     _backdrop.cache_clear()
     _wordmark.cache_clear()
+    _chassis.cache_clear()
+    _vignette.cache_clear()
+    _glow.cache_clear()
 
 
 class TitleScreen:
@@ -107,6 +161,9 @@ class TitleScreen:
         self.tick = 0
         self.cosmetic = random.Random(7)
         self.sparks: list[list[float]] = []
+        self.arc = 0  # ticks left on the arc between the Surge and the chassis
+        self.zap = 0  # ticks left on the arc across the wordmark
+        self.sounds: list[str] = []  # interface cues for the caller to play
 
     def press(self, key: int) -> None:
         if self.page == "controls":
@@ -118,13 +175,17 @@ class TitleScreen:
             return
         if key in (pygame.K_w, pygame.K_UP):
             self.selected = (self.selected - 1) % len(ITEMS)
+            self.sounds.append("menu_move")
         elif key in (pygame.K_s, pygame.K_DOWN):
             self.selected = (self.selected + 1) % len(ITEMS)
+            self.sounds.append("menu_move")
         elif key in (pygame.K_a, pygame.K_d, pygame.K_LEFT, pygame.K_RIGHT):
             direction = -1 if key in (pygame.K_a, pygame.K_LEFT) else 1
             index = DIFFICULTIES.index(self.difficulty)
             self.difficulty = DIFFICULTIES[(index + direction) % len(DIFFICULTIES)]
+            self.sounds.append("menu_move")
         elif key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+            self.sounds.append("confirm")
             item = ITEMS[self.selected]
             if item == "START":
                 self.choice = "start"
@@ -151,6 +212,12 @@ class TitleScreen:
             spark[0] += spark[2]
             spark[1] += spark[3]
         self.sparks = [s for s in self.sparks if s[1] > -4]
+        self.arc = max(0, self.arc - 1)
+        self.zap = max(0, self.zap - 1)
+        if self.arc == 0 and self.cosmetic.random() < 1 / 150:
+            self.arc = 10
+        if self.zap == 0 and self.cosmetic.random() < 1 / 260:
+            self.zap = 8
 
     def draw(self, screen: pygame.Surface) -> None:
         w, h = screen.get_size()
@@ -161,6 +228,7 @@ class TitleScreen:
         veil = pygame.Surface((w, h), pygame.SRCALPHA)
         veil.fill(rgba("px.outline", 200))
         screen.blit(veil, (0, 0))
+        screen.blit(_vignette((w, h)), (0, 0))
         for sx, sy, _, _ in self.sparks:
             screen.fill(
                 rgb("px.spark.light" if int(sx) % 3 else "power.spark"),
@@ -172,25 +240,74 @@ class TitleScreen:
             self._menu(screen)
         hud.text(screen, f"OVERLOAD {__version__}", (4, h - 3), "px.floor.3", "bottomleft")
 
+    def _beat(self) -> float:
+        """1 on the music's beat, falling to 0 before the next."""
+        return 1.0 - (self.tick % BEAT_TICKS) / BEAT_TICKS
+
     def _menu(self, screen: pygame.Surface) -> None:
         w, h = screen.get_size()
+        self._standoff(screen)
         mark = _wordmark()
+        top = mark.get_rect(midtop=(w // 2, 8))
         flicker = self.tick % 240 in (100, 103)  # the sign stutters now and then
         if not flicker:
-            screen.blit(mark, mark.get_rect(midtop=(w // 2, 22)))
-        hud.text(screen, "SURGE VERSUS THE REGULATOR", (w // 2, 52), "ui.dim", "midtop")
-        hud.text(screen, f"< {self.difficulty.upper()} >", (w // 2, 86), "ui.text", "midtop")
-        surge = actors.surge("idle", self.tick, False)
-        screen.blit(surge, surge.get_rect(midbottom=(w // 2, 83)))
+            glow = _glow()
+            glow.set_alpha(round(30 + 50 * self._beat() ** 2))
+            screen.blit(glow, glow.get_rect(center=top.center))
+            screen.blit(mark, top)
+        if self.zap:
+            self._bolt(screen, (top.left + 4, top.centery), (top.right - 4, top.centery), 5)
+        hud.text(screen, "SURGE VERSUS THE REGULATOR", (w // 2, top.bottom - 1), "ui.dim", "midtop")
+
+        left = 22
         for i, item in enumerate(ITEMS):
-            y = 98 + i * 11
+            y = 58 + i * 12
             chosen = i == self.selected
-            rect = hud.text(
-                screen, item, (w // 2, y), "px.hazard.1" if chosen else "ui.dim", "midtop"
-            )
             if chosen:
-                hud.text(screen, ">", (rect.left - 4, y), "px.hazard.1", "topright")
+                screen.fill(rgb("px.wall.1"), (left - 4, y + 2, 92, 10))
+                screen.fill(rgb("px.hazard.1"), (left - 4, y + 2, 2, 10))
+            token = "px.hazard.1" if chosen else "ui.dim"
+            hud.text(screen, item, (left + 2, y), token)
+        y = 98
+        hud.text(screen, "DIFFICULTY", (left - 2, y), "ui.dim")
+        name = self.difficulty.upper()
+        hud.text(screen, f"< {name} >", (left - 2, y + 10), "ui.text")
+        hud.text(screen, ABOUT[self.difficulty], (left - 2, y + 20), "px.floor.3")
         hud.text(screen, "A/D DIFFICULTY  W/S ENTER", (w - 4, h - 3), "px.floor.3", "bottomright")
+
+    def _standoff(self, screen: pygame.Surface) -> None:
+        """Right of the menu: the Surge squares up to a looming chassis, red eyes lit on
+        the beat, and now and then an arc jumps between them."""
+        w, h = screen.get_size()
+        floor = h - 16
+        chassis = _chassis()
+        sway = round(math.sin(self.tick / 50))
+        # Its legs run off the bottom edge, so it looms without crowding the wordmark.
+        crect = chassis.get_rect(midbottom=(w - 36, h + 14 + sway))
+        screen.blit(chassis, crect)
+        surge = actors.surge("idle", self.tick, False)
+        srect = surge.get_rect(midbottom=(w - 104, floor))
+        screen.fill(rgb("px.outline"), (srect.x + 2, floor - 1, srect.width - 4, 2))
+        screen.blit(surge, srect)
+        if self.arc:
+            target = (crect.centerx - 14, crect.centery + 6)
+            self._bolt(screen, (srect.right + 1, srect.centery), target, 4)
+
+    def _bolt(self, screen: pygame.Surface, a, b, jag: int) -> None:
+        """A jagged electric line from a to b, new each frame."""
+        steps = 7
+        points = [a]
+        for i in range(1, steps):
+            t = i / steps
+            points.append(
+                (
+                    a[0] + (b[0] - a[0]) * t,
+                    a[1] + (b[1] - a[1]) * t + self.cosmetic.uniform(-jag, jag),
+                )
+            )
+        points.append(b)
+        pygame.draw.lines(screen, rgb("px.spark.light"), False, points, 1)
+        pygame.draw.lines(screen, rgb("power.spark"), False, [(x, y + 1) for x, y in points], 1)
 
     def _controls(self, screen: pygame.Surface) -> None:
         w, h = screen.get_size()
@@ -224,9 +341,11 @@ def run_title(
     clock: pygame.time.Clock,
     difficulty: str = "medium",
     binds: Keybinds | None = None,
+    audio=None,
 ) -> str | None:
     """Return the selected difficulty on Start, or None on quit. Keys rebound on the
-    controls page change `binds` (and are saved, if it has a path)."""
+    controls page change `binds` (and are saved, if it has a path). With `audio`
+    (game/audio.py), the title music plays and the menu has its sounds."""
     title = TitleScreen(difficulty, binds)
     while title.choice is None:
         for event in pygame.event.get():
@@ -234,6 +353,11 @@ def run_title(
                 return None
             if event.type == pygame.KEYDOWN and title.choice is None:
                 title.press(event.key)
+        if audio is not None:
+            for sound in title.sounds:
+                audio.play(sound)
+            audio.update("title", 1, "playing")
+        title.sounds.clear()
         title.update()
         title.draw(screen)
         pygame.display.flip()

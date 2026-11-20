@@ -99,6 +99,18 @@
       "approval": "Pending Adit's listen-through"
     },
     {
+      "id": "MU-05",
+      "path": "assets/audio/music_title.ogg",
+      "kind": "audio",
+      "creator": "Overload project, composed in code",
+      "source": "tools/audio/cues.py (rendered by tools/audio/render.py)",
+      "license": "CC-BY-4.0",
+      "license_file": "assets/audio/LICENSE.txt",
+      "sha256": "4d0186ed0e7d7dcd8dbc3fbb3d7c65a8e04c52be06d4e7ec2b59afdd843cc46c",
+      "added": "2026-11-19",
+      "approval": "Pending Adit's listen-through"
+    },
+    {
       "id": "SFX.arc_trail",
       "path": "assets/audio/sfx_arc_trail.ogg",
       "kind": "audio",

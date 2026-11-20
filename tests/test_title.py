@@ -145,3 +145,45 @@ def test_the_rebind_page_draws_while_waiting(display) -> None:
     title.page = "controls"
     title.keys.capturing = True
     title.draw(display)
+
+
+def test_title_moves_and_picks_queue_their_sounds() -> None:
+    title = TitleScreen()
+    title.press(pygame.K_s)
+    title.press(pygame.K_d)
+    title.press(pygame.K_RETURN)
+    assert title.sounds == ["menu_move", "menu_move", "confirm"]
+
+
+def test_the_title_plays_its_music_and_menu_sounds(display) -> None:
+    from overload.game.title import run_title
+
+    class Recorder:
+        def __init__(self) -> None:
+            self.played, self.stages = [], []
+
+        def play(self, name):
+            self.played.append(name)
+
+        def update(self, stage, encounter, outcome):
+            self.stages.append(stage)
+
+    audio = Recorder()
+    for key in (pygame.K_s, pygame.K_w, pygame.K_RETURN):
+        pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=key))
+    assert run_title(display, pygame.time.Clock(), audio=audio) == "medium"
+    assert audio.played == ["menu_move", "menu_move", "confirm"]
+    assert set(audio.stages) == {"title"}
+
+
+def test_every_difficulty_has_a_line_and_the_standoff_draws(display) -> None:
+    from overload.game.title import ABOUT
+    from overload.sim.difficulty import DIFFICULTIES
+
+    assert set(ABOUT) == set(DIFFICULTIES)
+    title = TitleScreen()
+    for tick in range(400):
+        title.update()
+        if tick % 50 == 0:
+            title.arc = title.zap = 3
+            title.draw(display)

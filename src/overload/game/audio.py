@@ -223,9 +223,9 @@ STINGS = {"pressure": "sting_clamp", "spacing": "sting_insulate", "lateral": "st
 # Hostile tells duck the music: aim tells, hazard arming and a Breaker raising its fists
 # (hazard_fill), warp markers (relay_click) and a boss winding up its signature (boss_charge).
 TELLS = {"mite_tell", "hazard_fill", "relay_click", "boss_charge"}
-STEMS = ("hum", "pulse", "arc", "lead", "fuse_box")
+STEMS = ("hum", "pulse", "arc", "lead", "fuse_box", "title")
 # Stem levels leave headroom so a full battle mix plus an effect stays out of clipping.
-LEVELS = {"hum": 0.42, "pulse": 0.38, "arc": 0.22, "lead": 0.3, "fuse_box": 0.5}
+LEVELS = {"hum": 0.42, "pulse": 0.38, "arc": 0.22, "lead": 0.3, "fuse_box": 0.5, "title": 0.55}
 SFX_LEVEL = 0.7
 FADE_STEP = 0.08  # per frame, so ducking and layer changes ramp instead of clicking
 
@@ -243,7 +243,10 @@ def boot_sting(world) -> str | None:
 def stems_for(stage: str | None, encounter: int, outcome: str) -> set[str]:
     """Which stems play: the Fuse Box loop between encounters, HUM and PULSE in a fight,
     ARC from encounter 2 and LEAD in encounter 3. Practice plays like encounter 1. While
-    the Surge is down only the HUM is left, and the ending keeps the full theme."""
+    the Surge is down only the HUM is left, and the ending keeps the full theme. The title
+    screen plays its own loop (MU-05), which hands over to the first sector on a bar line."""
+    if stage == "title":
+        return {"title"}
     if stage == "fuse_box":
         return {"fuse_box"}
     if outcome == "down":
