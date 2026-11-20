@@ -132,3 +132,25 @@ def test_rebinding_in_the_game_menu(display, tmp_path) -> None:
     assert binds.keys["dodge"] == "tab" and binds.keys["menu"] == "space"
     press(reader, pygame.K_SPACE)
     assert reader.take_toggle(), "the reader picked up the new menu key"
+
+
+def test_no_binding_takes_away_select_or_back(display) -> None:
+    from overload.game.app import InputReader
+
+    binds = Keybinds()
+    binds.bind("up", "space")
+    binds.bind("down", "return")
+    binds.bind("left", "enter")
+    binds.bind("right", "backspace")
+    reader = InputReader(binds)
+    press(reader, pygame.K_SPACE, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_BACKSPACE)
+    assert reader.take_menu() == ["select", "select", "select", "back"]
+    press(reader, pygame.K_UP, pygame.K_DOWN)
+    assert reader.take_menu() == ["up", "down"], "the free arrows still move"
+
+
+def test_a_key_with_no_name_is_never_bound() -> None:
+    page = RebindPage(Keybinds())
+    page.nav("select")
+    assert page.capture("") == "move" and page.notice == ""
+    assert page.binds.keys == DEFAULTS

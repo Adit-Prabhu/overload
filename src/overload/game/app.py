@@ -171,29 +171,30 @@ class InputReader:
         return frame
 
 
-# Menu keys that never move: select, back, roll and help.
-FIXED_MENU_KEYS = {
+# Menu keys that never move. Select and back always win, so no binding can take away the
+# way to pick CONTINUE or leave a page. Roll and help give way to a bound key.
+MENU_ALWAYS = {
     pygame.K_SPACE: "select",
     pygame.K_RETURN: "select",
     pygame.K_KP_ENTER: "select",
-    pygame.K_f: "roll",
     pygame.K_ESCAPE: "back",
     pygame.K_BACKSPACE: "back",
-    pygame.K_h: "help",
 }
+MENU_EXTRAS = {pygame.K_f: "roll", pygame.K_h: "help"}
 
 
 def menu_keys(codes: dict[str, int], arrows: dict[str, int]) -> dict[int, str]:
     """Key code to menu key: the bound move keys and the free arrows navigate, the bound
-    power keys equip, and the fixed keys select, go back, roll and open help. A bound
-    move or power key wins over a fixed one."""
-    keys = dict(FIXED_MENU_KEYS)
+    power keys equip, F rolls and H opens help unless bound, and Space, Enter, Esc and
+    Backspace always select or go back."""
+    keys = dict(MENU_EXTRAS)
     for action, code in arrows.items():
         keys[code] = action
     keys[codes["power_q"]] = "q"
     keys[codes["power_e"]] = "e"
     for action in ("up", "down", "left", "right"):
         keys[codes[action]] = action
+    keys.update(MENU_ALWAYS)
     return keys
 
 
@@ -218,14 +219,15 @@ def menu_frame(
     cues: list[str] = []
     for key, raw in keys:
         if menu.capturing:  # CONTROLS waits for a key: any key but Esc binds
-            cues.append(menu.keys_page.capture(raw))
+            cues.append(menu.keys_page.capture(raw if keybinds.known(raw) else "escape"))
             reader.rebind()
             continue
         if key is None:
             continue
+        on_controls = menu.screen == "controls"
         action, sounds = menu.press(session, key)
-        if menu.screen == "controls" and key == "select":
-            reader.rebind()  # RESET DEFAULTS
+        if on_controls:
+            reader.rebind()  # RESET DEFAULTS may have changed every key
         if action is not None:
             recording.fuse_box(*action)
         for sound in sounds:

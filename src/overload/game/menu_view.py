@@ -484,7 +484,7 @@ def draw_controls(screen, menu: Menu) -> None:
     _header(screen, "CONTROLS", "MOUSE AIMS AND FIRES", left, right, top)
     page = menu.keys_page
     draw_rebind(screen, page, left, right, top + 14)
-    _footer(screen, rebind_footer(page), left)
+    _footer(screen, rebind_footer(page, page.binds.pair("up", "down")), left)
 
 
 def draw_dev(screen, menu: Menu) -> None:
