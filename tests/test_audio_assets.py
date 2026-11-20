@@ -69,3 +69,17 @@ def test_tonal_stems_loop_without_a_click(name: str) -> None:
     steps = sorted(abs(edge[i + 1] - edge[i]) for i in range(len(edge) - 1) if i != 1999)
     typical = steps[int(len(steps) * 0.99)]
     assert abs(data[0] - data[-1]) <= max(typical * 1.5, 64), name
+
+
+def test_a_render_keeps_an_approval_only_while_the_file_is_unchanged() -> None:
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from tools.audio.approvals import PENDING, approval
+
+    approved = {"sha256": "abc", "approval": "Approved by Adit"}
+    assert approval(approved, "abc") == "Approved by Adit"
+    assert approval(approved, "def") == PENDING, "a changed sound goes back to pending"
+    assert approval(None, "abc") == PENDING, "a new sound is pending"
+    assert approval({"sha256": "abc", "approval": ""}, "abc") == PENDING

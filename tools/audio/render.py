@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+from tools.audio.approvals import approval
 from tools.audio.cues import MUSIC, SFX, STINGS, one_shot
 from tools.audio.synth import normalize
 from tools.audio.theory import LOOP_SAMPLES, SR
@@ -28,7 +29,6 @@ OUT = ROOT / "assets" / "audio"
 MANIFEST = ROOT / "assets" / "ASSET_MANIFEST.json"
 LICENSE = "assets/audio/LICENSE.txt"
 CEILING = 10 ** (-1.2 / 20)  # 0.2 dB of headroom for other decoders, such as SDL_mixer
-PENDING = "Pending Adit's listen-through"
 IDS = {
     "music_hum": "MU-01.hum",
     "music_pulse": "MU-01.pulse",
@@ -102,14 +102,6 @@ def update_manifest(written: dict[str, Path]) -> None:
         entry = old.get(path)
         return entry["added"] if entry and entry["sha256"] == digest else today
 
-    def approval(path: str, digest: str) -> str:
-        """Keep Adit's approval while the file's bytes are unchanged. A changed sound goes
-        back to pending, since what he approved is no longer what ships."""
-        entry = old.get(path)
-        if entry and entry["sha256"] == digest and entry.get("approval"):
-            return entry["approval"]
-        return PENDING
-
     audio = []
     for name, path in sorted(written.items()):
         relative = path.relative_to(ROOT).as_posix()
@@ -125,7 +117,7 @@ def update_manifest(written: dict[str, Path]) -> None:
                 "license_file": LICENSE,
                 "sha256": digest,
                 "added": added(relative, digest),
-                "approval": approval(relative, digest),
+                "approval": approval(old.get(relative), digest),
             }
         )
     license_path = ROOT / LICENSE
