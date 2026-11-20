@@ -9,8 +9,8 @@ Snapshot of November 19, 2026. For any agent or chat picking up the work. The st
   - five robot types, and the three Regulator chassis (Linesman, Transformer, Grid Core)
   - sector identity and difficulty, with sector 3 hard on purpose
   - the HUD, the title screen, audio and pixel art
-  - the rival service: Cloudflare Worker, deployed, with both smoke tests passing (docs/evidence/LIVE_SMOKE_2026-11-17.md)
-  - evidence version 4 (power uses by family, once #46 merges; the Worker needs Adit's redeploy), and the MIT and CC BY 4.0 licenses
+  - the rival service: Cloudflare Worker, deployed, with both smoke tests passing on evidence version 4 (docs/evidence/LIVE_SMOKE_2026-11-19.md, which replaces LIVE_SMOKE_2026-11-17.md)
+  - evidence version 4 (power uses by family), live on the Worker since Adit's Nov 19 redeploy, and the MIT and CC BY 4.0 licenses
   - the chance-fusion spec, nine distinct fusion outcomes, the pause and Fuse menus, and dev mode from PRs #30 to #35
   - the polish pass and the boss rework from PRs #36 to #43:
     - robots walk on moving legs
@@ -22,7 +22,7 @@ Snapshot of November 19, 2026. For any agent or chat picking up the work. The st
 ## Powers and evidence integration
 
 - Bulwark and Magnet landed in #45.
-- #48 brings evidence version 4 to main. Adit then redeploys the Worker and runs the smoke test in [DEPLOY.md](DEPLOY.md).
+- Evidence version 4 is live: Adit redeployed the Worker on Nov 19 and the smoke test passed ([LIVE_SMOKE_2026-11-19.md](evidence/LIVE_SMOKE_2026-11-19.md)). A cold first request and one transient 500 were seen, both falling back safely. Hardening is proposed there.
 - #47 has the first twelve new fusion results. The final nine are on its stacked `feat/fusion-pairs-b` branch. Together they give all ten pairs and thirty results.
 - The dedicated cue pass is done (Nov 19): every fused power has its own use cue, built from its pair's voices, its verb and its rarity in `tools/audio/cues.py` (`FUSED_RECIPES`).
 
