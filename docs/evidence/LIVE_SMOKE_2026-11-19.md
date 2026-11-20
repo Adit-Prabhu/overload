@@ -1,6 +1,6 @@
 # Live smoke test, November 19, 2026 (evidence version 4)
 
-**Evidence type: live.** Real calls to the deployed rival service, run by Adit after redeploying the Worker from the merged `main` with evidence version 4 (power uses by family). This is not fixture, mock or replay evidence. Runs 5 and 6, on the hardened Worker (PR #60), are the November 23 checkpoint evidence: run 5 for live replies, isolation and the cap, run 6 for the forced timeout. They replace the November 17 runs, and runs 3 and 4 on the version before the hardening.
+**Evidence type: live.** Real calls to the deployed rival service, run by Adit after redeploying the Worker from the merged `main` with evidence version 4 (power uses by family). This is not fixture, mock or replay evidence. Runs 5 and 6, on the hardened Worker (PR #60), are the November 23 checkpoint evidence: run 5 for live replies, isolation and the cap, run 6 for the forced timeout. They replace the November 17 runs and runs 3 and 4, which were on the version before the hardening.
 
 | Item | Value |
 | --- | --- |
@@ -64,7 +64,9 @@ smoke passed
 {"case": "far_4", "encounter": 4, "tactic": "lateral", "source": "fallback", "reason": "request_cap", "request_id": null, "evidence_ids": [], "latency_ms": null, "model": null, "input_tokens": null, "output_tokens": null, "cost_usd": null}
 smoke passed
 ```
-- The first run after the redeploy passed: long range drew pressure, close range drew spacing, each citing the matching evidence, in 1.2 to 1.3 s. The cold start of run 1 did not recur here, so it is intermittent rather than certain after a deploy (the warm-up was not built).
+- Two sessions got their own answers: long range drew pressure, close range drew spacing, each citing the matching evidence, in 1.2 to 1.3 s. Every answer passed validation.
+- This was the first smoke run in Adit's terminal session after the redeploy (as pasted, deploy then smoke). The cold start of run 1 did not recur in this run, so a cold start does not happen after every deploy. One run says nothing about how often it happens (the warm-up was not built).
+- No `wrangler tail` log was captured for runs 5 and 6.
 - The third request in a session was refused (`request_cap`) and became the neutral tactic.
 
 ## Run 6, hardened Worker: forced timeout falls back to neutral, passed
@@ -75,13 +77,13 @@ smoke passed
 {"case": "far_4", "encounter": 4, "tactic": "lateral", "source": "fallback", "reason": "request_cap", "request_id": null, "evidence_ids": [], "latency_ms": null, "model": null, "input_tokens": null, "output_tokens": null, "cost_usd": null}
 smoke passed
 ```
-- With the game's deadline cut to 0.05 s, every request became the neutral tactic, labelled as fallback with reason `timeout`.
+- With the game's deadline cut to 0.05 s, every request became the neutral tactic, labelled as fallback with reason `timeout`. As in run 3, the game stops waiting at its deadline, so a later reply cannot change the tactic. The output shows the fallbacks, not the late replies.
 
 ## Cost
 At most 18 model calls across the six runs (three per run, counting calls the service likely finished after the game stopped waiting, and the run 2 request that failed, which may not have reached the model), at $0.00158 reserved each: under $0.03 in the ledger, far below the $1.00 daily cap.
 
 ## Follow-up
-- A cold first request can miss the 5 s deadline, and one transient server error was seen. Both fall back safely but lose a live data point. Adit chose the hardening (a retried budget reservation and labelled errors instead of a raw 500, see DECISIONS, Nov 19). The cold-start warm-up was not built.
+- A cold first request can miss the 5 s deadline, and one transient server error was seen (runs 1 and 2). Both fell back safely but lost a live data point. Adit chose the hardening (a retried budget reservation and labelled errors instead of a raw 500, PR #60, DECISIONS Nov 19), and it was deployed as `bf48e333` and passed runs 5 and 6. Those runs show no 500, but that is not proof the fix addresses run 2's cause, since that error was transient and its cause unconfirmed. The cold-start warm-up was not built.
 
 ## Not covered here
 These summaries are synthetic (fixed distances and shot counts from `tools/rival/smoke.py`), not from play. Evidence from real play sessions, and the comparison against the fixed-schedule baseline, come later and will be recorded separately.
