@@ -22,7 +22,7 @@ Snapshot of November 19, 2026. For any agent or chat picking up the work. The st
 ## Powers and evidence integration
 
 - Bulwark and Magnet landed in #45.
-- Evidence version 4 is live: Adit redeployed the Worker on Nov 19 and the smoke test passed ([LIVE_SMOKE_2026-11-19.md](evidence/LIVE_SMOKE_2026-11-19.md)). A cold first request and one transient 500 were seen, both falling back safely. Hardening is proposed there.
+- Evidence version 4 is live: Adit redeployed the Worker on Nov 19 and the smoke test passed ([LIVE_SMOKE_2026-11-19.md](evidence/LIVE_SMOKE_2026-11-19.md)). A cold first request and one transient 500 were seen, both falling back safely. The hardened Worker (PR #60, version bf48e333) was redeployed the same evening and both smoke tests passed on it (runs 5 and 6, the Nov 23 checkpoint).
 - #47 has the first twelve new fusion results. The final nine are on its stacked `feat/fusion-pairs-b` branch. Together they give all ten pairs and thirty results.
 - The dedicated cue pass is done (Nov 19): every fused power has its own use cue, built from its pair's voices, its verb and its rarity in `tools/audio/cues.py` (`FUSED_RECIPES`).
 
