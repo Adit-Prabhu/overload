@@ -106,10 +106,12 @@ def phase_change(world: World, rival: Rival, boss: Boss, tuning: Tuning) -> bool
     the rotation back to its start. True while the change runs.
 
     What the chassis already fired stays (Adit, Nov 19): shots keep flying, and a kit attack
-    already striking (a Live Wire, a charge, a spiral, a pair's second half) finishes before
-    the change starts. Only a tell that has not struck yet is called off."""
-    target = phase_for(boss, rival.health, rival.max_health)
-    if target > rival.phase and rival.health > 0 and rival.sig_action != "active":
+    already striking (a Live Wire, a charge, a spiral, both halves of a pair) finishes before
+    the change starts. Only a tell that has not struck yet is called off. Phases change one
+    at a time, so each change shows even if one long attack soaks up two thresholds."""
+    target = min(phase_for(boss, rival.health, rival.max_health), rival.phase + 1)
+    striking = rival.sig_action == "active" or (rival.sig_action == "tell" and rival.sig_step)
+    if target > rival.phase and rival.health > 0 and not striking:
         rival.phase = target
         rival.change = tuning.phase_change
         if rival.vent:
