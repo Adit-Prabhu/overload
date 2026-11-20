@@ -103,6 +103,21 @@ EVENT_SOUNDS.update({f"power_{power}": f"fused_{power}" for power in FUSED})
 # leap, a Bolt Lance, a Burst cone). Dropped in a tick where a fused cue plays, so the cast
 # is one clear sound. Follow-through (an arrival, a blast, a hit) still plays.
 CAST_SOUNDS = {"blink_from", "leap", "lance", "burst"}
+
+
+def _cast_by_fused(event: Event, used: set[str]) -> bool:
+    """True for a cast sound a fused power made, so its own cue replaces it. Both slots fire
+    in one tick, so a base power's cast in the same tick keeps its sound: a Burst cone names
+    its power, and a Blink departure is kept whenever a base Blink was used."""
+    if event.kind not in CAST_SOUNDS:
+        return False
+    if event.kind == "burst":
+        return event.power != "burst"
+    if event.kind == "blink_from":
+        return "blink" not in used
+    return True  # a leap or a lance only ever comes from a fused power
+
+
 # Each sound's visual twin: the game is fully playable muted.
 VISUAL_TWINS = {
     "shot": "muzzle flash and the shot streak",
@@ -306,11 +321,12 @@ class Audio:
         sting = boot_sting(world)
         if sting:
             self.play(sting, 0.9)
-        fused = any(e.kind.removeprefix("power_") in FUSED for e in events)
+        used = {e.kind.removeprefix("power_") for e in events if e.kind.startswith("power_")}
+        fused = bool(used & FUSED.keys())
         for event in events:
             if event.kind == "rival_destroyed" and world.outcome == "down":
                 continue
-            if fused and event.kind in CAST_SOUNDS:
+            if fused and _cast_by_fused(event, used):
                 continue
             name = EVENT_SOUNDS.get(event.kind)
             if name is None:

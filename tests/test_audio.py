@@ -211,3 +211,30 @@ def test_a_fused_cast_is_one_sound(live_audio, monkeypatch) -> None:
     played.clear()
     live_audio.events([Event("blink_from", 0, 0), Event("blink_to", 0, 0)], Quiet())
     assert played == ["blink_depart", "blink_arrive"], "a plain Blink keeps its departure"
+
+
+def test_a_base_power_in_the_other_slot_keeps_its_cast(live_audio, monkeypatch) -> None:
+    """Both slots fire in one tick: a plain Burst or Blink beside a fused power keeps its
+    own cast sound (the PR #58 review)."""
+    from overload.sim.state import Event
+
+    played = []
+    monkeypatch.setattr(live_audio, "play", lambda name, volume=0.7: played.append(name))
+
+    class Quiet:
+        rival = None
+        outcome = "playing"
+
+    tick = [
+        Event("burst", 0, 0, 0, "burst"),
+        Event("power_burst", 0, 0),
+        Event("lance", 0, 0),
+        Event("power_bolt_lance", 0, 0, 1),
+    ]
+    live_audio.events(tick, Quiet())
+    assert played == ["lunge", "fused_bolt_lance"]
+    played.clear()
+    tick = [Event("blink_from", 0, 0), Event("power_blink", 0, 0), Event("power_shock_cone", 0, 0)]
+    tick.append(Event("burst", 0, 0, 0, "shock_cone"))
+    live_audio.events(tick, Quiet())
+    assert played == ["blink_depart", "fused_shock_cone"]
