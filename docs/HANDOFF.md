@@ -26,6 +26,13 @@ Snapshot of November 19, 2026. For any agent or chat picking up the work. The st
 - #47 has the first twelve new fusion results. The final nine are on its stacked `feat/fusion-pairs-b` branch. Together they give all ten pairs and thirty results.
 - The dedicated cue pass is still open. Each result currently has a fitting existing cue and a visual twin.
 
+## Pilot playtest fixes (Nov 19)
+Adit's informal pilot with a friend ([notes](evidence/PILOT_PLAYTEST_2026-11-19.md), pilot only, not study data) led to four PRs. Merge order: #52, then #54, then #55 (stacked). #53 is independent.
+- #52: a chassis phase change keeps its shots and lets an attack already striking finish. Re-pinned the campaign and full loop hashes.
+- #53: the camera keeps the Surge on screen in boss fights.
+- #54: rebindable keys (`game/keybinds.py`, saved to the git-ignored `settings/keys.json`).
+- #55: first-run hints (`game/coach.py`), the Fuse Box arrow and an obvious CONTINUE, charges flying into the Surge, the boss reward shown, and the empty LOADOUT overlap.
+
 ## Next step (spec section 9)
 
 Balance the full roster against the bosses with the floor bot over eight seeds and freeze the Tuning by Nov 23. The boss protocol guard runs three seeds that cover every protocol.
