@@ -2,7 +2,7 @@
 // Each session sees only its own history. Sessions expire after 30 minutes of inactivity.
 
 import { Agent } from "agents";
-import { liveBudget } from "./budget";
+import { liveBudget, reserveWithRetry } from "./budget";
 import { buildPrompt } from "./prompt";
 import { ProviderNotConfigured, makeProvider } from "./providers";
 import {
@@ -68,11 +68,12 @@ export class RivalSession extends Agent<Env, SessionState> {
     const state = this.state;
     let provider: ReturnType<typeof makeProvider> | null = null;
     let configError = false;
+    let setupError = false;
     try {
       provider = makeProvider(this.env, TACTIC_IDS);
     } catch (error) {
-      if (!(error instanceof ProviderNotConfigured)) throw error;
-      configError = true;
+      configError = error instanceof ProviderNotConfigured;
+      setupError = !configError;
     }
     const base: TacticResponse = {
       session_id: sessionId,
@@ -95,6 +96,7 @@ export class RivalSession extends Agent<Env, SessionState> {
       latency_ms: Date.now() - started,
     });
 
+    if (setupError) return refuse("internal_error"); // not counted: nothing was attempted
     if (state.requestIds.includes(request.request_id)) return refuse("duplicate_request");
     if (state.attempts >= MAX_ATTEMPTS_PER_SESSION) return refuse("request_cap");
     if (request.encounter <= state.lastEncounter) return refuse("encounter_order");
@@ -108,23 +110,33 @@ export class RivalSession extends Agent<Env, SessionState> {
       requestIds: [...state.requestIds, request.request_id],
       history: [...state.history, request.summary].slice(-HISTORY_LIMIT),
     });
-    await this.refreshExpiry();
+    try {
+      await this.refreshExpiry();
+    } catch {
+      // Housekeeping: a failed reschedule keeps the old expiry and never costs the answer.
+    }
     const counted = { ...base, attempts_used: attempts };
 
     if (configError || !provider) {
       return { ...counted, status: "provider_not_configured", latency_ms: Date.now() - started };
     }
     let cost = 0;
-    if (provider.source === "live") {
-      const budget = liveBudget(this.env);
-      const ledger = this.env.BUDGET.get(this.env.BUDGET.idFromName("global"));
-      if (!budget || !(await ledger.reserve(budget.costUsd, budget.capUsd))) {
-        return { ...counted, status: "budget", latency_ms: Date.now() - started };
+    let prompt: ReturnType<typeof buildPrompt>;
+    try {
+      if (provider.source === "live") {
+        const budget = liveBudget(this.env);
+        const ledger = this.env.BUDGET.get(this.env.BUDGET.idFromName("global"));
+        if (!budget || !(await reserveWithRetry(ledger, budget.costUsd, budget.capUsd))) {
+          return { ...counted, status: "budget", latency_ms: Date.now() - started };
+        }
+        cost = budget.costUsd;
       }
-      cost = budget.costUsd;
+      prompt = buildPrompt(request.summary, state.history);
+    } catch {
+      // The ledger failed twice, or the prompt could not be built: no model call is made,
+      // and the game gets a labelled answer it turns into the neutral tactic.
+      return { ...counted, status: "internal_error", latency_ms: Date.now() - started };
     }
-
-    const prompt = buildPrompt(request.summary, state.history);
     try {
       const result = await provider.propose(
         prompt,

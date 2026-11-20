@@ -63,7 +63,8 @@ export type Status =
   | "request_cap"
   | "duplicate_request"
   | "encounter_order"
-  | "budget";
+  | "budget"
+  | "internal_error"; // the service itself failed (not the model): labelled, never a raw 500
 
 /** "none" means no provider answered (for example, none is configured). */
 export type Source = "fixture" | "live" | "none";

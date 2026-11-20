@@ -2,7 +2,7 @@ import { env, exports } from "cloudflare:workers";
 import { getAgentByName } from "agents";
 import { describe, expect, it } from "vitest";
 import { runInDurableObject } from "cloudflare:test";
-import { liveBudget } from "../src/budget";
+import { liveBudget, reserveWithRetry } from "../src/budget";
 import { buildPrompt } from "../src/prompt";
 import { FixtureProvider } from "../src/providers";
 import { type Summary, validateProposal } from "../src/schema";
@@ -199,5 +199,56 @@ describe("knowledge boundary and limits", () => {
       await state.storage.put("ledger", { day: "2000-01-01", reservedUsd: 0.99 });
     });
     expect(await stub.reserve(0.5, 1.0)).toBe(true);
+  });
+});
+
+describe("hardening (Nov 19 smoke test)", () => {
+  function flaky(failures: number, answer = true) {
+    let calls = 0;
+    return {
+      get calls() {
+        return calls;
+      },
+      async reserve(): Promise<boolean> {
+        calls += 1;
+        if (calls <= failures) throw new Error("Durable Object reset");
+        return answer;
+      },
+    };
+  }
+
+  it("retries a ledger call that throws once", async () => {
+    const ledger = flaky(1);
+    expect(await reserveWithRetry(ledger, 0.01, 1)).toBe(true);
+    expect(ledger.calls).toBe(2);
+  });
+
+  it("gives up after a second throw, so no model call follows", async () => {
+    const ledger = flaky(2);
+    await expect(reserveWithRetry(ledger, 0.01, 1)).rejects.toThrow();
+    expect(ledger.calls).toBe(2);
+  });
+
+  it("never retries a refusal", async () => {
+    const ledger = flaky(0, false);
+    expect(await reserveWithRetry(ledger, 0.01, 1)).toBe(false);
+    expect(ledger.calls).toBe(1);
+  });
+
+  it("still answers when rescheduling the session expiry fails", async () => {
+    const id = await startSession();
+    const stub = env.RIVAL_SESSION.get(env.RIVAL_SESSION.idFromName(id));
+    const reply = await runInDurableObject(stub, async (instance) => {
+      const session = instance as unknown as {
+        refreshExpiry: () => Promise<void>;
+        propose: (r: unknown, id: string) => Promise<Record<string, unknown>>;
+      };
+      session.refreshExpiry = async () => {
+        throw new Error("alarm storage unavailable");
+      };
+      return session.propose(request(2, summary(0.8, 0.1)), id);
+    });
+    expect(reply.status).toBe("ok");
+    expect(reply.tactic_id).toBe("pressure");
   });
 });

@@ -27,6 +27,22 @@ export class BudgetLedger extends DurableObject<Env> {
   }
 }
 
+/** Reserve through the ledger, retrying once if the call itself throws. A call to another
+ *  Durable Object can fail transiently (seen once on Nov 19, docs/evidence), and Cloudflare
+ *  advises a retry. A second throw propagates, so the caller refuses the attempt. A retry
+ *  after a write that did land can only over-reserve, which errs toward the cap. */
+export async function reserveWithRetry(
+  ledger: { reserve(amountUsd: number, capUsd: number): Promise<boolean> },
+  amountUsd: number,
+  capUsd: number,
+): Promise<boolean> {
+  try {
+    return await ledger.reserve(amountUsd, capUsd);
+  } catch {
+    return await ledger.reserve(amountUsd, capUsd);
+  }
+}
+
 /** Worst-case cost of one live attempt and the daily cap, or null when either is missing or
  *  malformed. A null result refuses the call: the budget fails closed, never open. */
 export function liveBudget(env: Env): { costUsd: number; capUsd: number } | null {
