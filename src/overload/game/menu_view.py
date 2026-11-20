@@ -103,8 +103,8 @@ def _header(screen, title: str, right_text: str, left: int, right: int, top: int
     screen.fill(rgb("px.wall.1"), (left, top + 11, right - left, 1))
 
 
-def _footer(screen, text: str, left: int) -> None:
-    hud.text(screen, text, (left, PANEL.bottom - 11), "ui.dim")
+def _footer(screen, text: str, left: int, token: str = "ui.dim") -> None:
+    hud.text(screen, text, (left, PANEL.bottom - 11), token)
 
 
 def _icon(power: str, scale: int = 1, hidden: bool = False) -> pygame.Surface:
@@ -163,15 +163,21 @@ def draw_hub(screen, menu: Menu, session, ready: bool, message: str | None, sect
         a in world.unlocked and b in world.unlocked and not owned_result(world.unlocked, a, b)
         for a, b in RECIPE_ORDER
     )
+    pulse = (pygame.time.get_ticks() // 400) % 2 == 0  # cosmetic only
     for i, item in enumerate(menu.hub_items):
         y = top + 20 + i * 13  # room for six items (dev mode adds DEV) above the message
         chosen = i == menu.hub
         waiting = item == "CONTINUE" and not ready
+        go = item == "CONTINUE" and ready  # pilot playtest: make the way on obvious
         if chosen:
             screen.fill(rgb("px.wall.1"), (left - 2, y - 2, 104, 12))
             hud.text(screen, ">", (left, y), "px.hazard.1")
         token = "px.floor.3" if waiting else ("ui.text" if chosen else "ui.dim")
+        if go:
+            token = "px.hazard.1" if pulse else "ui.text"
         label = "QUIT? SPACE AGAIN" if item == "QUIT" and menu.quitting else item
+        if go:
+            label = "CONTINUE >>"
         hud.text(screen, label, (left + 8, y), "px.lamp" if label != item else token)
         if item == "FUSE" and free:  # a free first roll is waiting
             screen.fill(rgb("px.rarity.legendary"), (left + 40, y + 2, 3, 3))
@@ -193,14 +199,37 @@ def draw_hub(screen, menu: Menu, session, ready: bool, message: str | None, sect
                 hud.rarity_marks(screen, rarity_of(ability), card.right - 14, card.y + 7)
         else:
             hud.text(screen, "EMPTY", (card.x + 19 + shift, card.y + 4), "px.floor.3")
-    if menu.in_fuse_box and not ready:  # its own line, under the equipped slots
-        hud.text(screen, "ROUTING POWER...", (rx, top + 70), "px.floor.3")
-    if menu.in_fuse_box and message:
-        for i, line in enumerate(_wrap(message.upper(), 38)[:2]):
-            hud.text(screen, line, (left, PANEL.bottom - 31 + i * 9), "px.lamp")
+    if menu.in_fuse_box:  # its own line, under the equipped slots
+        if ready:
+            hud.text(screen, "READY", (rx, top + 70), "px.hazard.1")
+        else:
+            hud.text(screen, "ROUTING POWER...", (rx, top + 70), "px.floor.3")
+        _spares(screen, world, rx, top + 82)
+    if menu.in_fuse_box and message:  # the live fallback line (never in dev mode)
+        for i, line in enumerate(_wrap(message.upper(), 22)[:3]):
+            hud.text(screen, line, (left, PANEL.bottom - 40 + i * 9), "px.lamp")
     keys = menu.keys_page.binds
+    if menu.in_fuse_box and ready:
+        prompt = f"SPACE ON CONTINUE: ENTER SECTOR {sector}"
+        _footer(screen, prompt, left, "px.hazard.1" if pulse else "ui.text")
+        return
     resume = "" if menu.in_fuse_box else f"  {keys.short('menu')} RESUME"
     _footer(screen, f"{keys.pair('up', 'down')} MOVE  SPACE PICK{resume}", left)
+
+
+def _spares(screen, world, x: int, y: int) -> None:
+    """Spare charges per stolen base power: what rerolls cost, and what each chassis pays
+    (one of each, sim/floorplay.py). Every Fuse Box follows a chassis, so the +1 is always
+    this visit's reward."""
+    stolen = [p for p in BASE_POWERS if p in world.unlocked]
+    if not stolen:
+        return
+    hud.text(screen, "SPARE CHARGES", (x, y), "ui.dim")
+    for i, power in enumerate(stolen):
+        cx = x + i * 22
+        screen.blit(_icon(power), (cx, y + 12))
+        hud.text(screen, str(world.bank.get(power, 0)), (cx + 9, y + 9), "ui.text")
+    hud.text(screen, "+1 EACH: BOSS REWARD", (x, y + 20), "px.hazard.1")
 
 
 # Loadout ---------------------------------------------------------------------------------------
@@ -212,8 +241,9 @@ def draw_loadout(screen, menu: Menu, session, tuning) -> None:
     world = session.campaign.world
     rows = loadout_rows(world.unlocked)
     if not rows:
-        hud.text(screen, "DESTROY ROBOTS TO STEAL", (left, top + 20), "ui.dim")
-        hud.text(screen, "THEIR POWERS", (left, top + 30), "ui.dim")
+        # The left column ends at the divider (left + 110), so this wraps short.
+        for i, line in enumerate(("DESTROY ROBOTS", "TO STEAL THEIR", "POWERS")):
+            hud.text(screen, line, (left, top + 20 + i * 10), "ui.dim")
     pick = min(menu.row, len(rows) - 1) if rows else -1
     first = max(0, min(pick - LOADOUT_ROWS + 1, len(rows) - LOADOUT_ROWS)) if rows else 0
     first = max(0, min(first, pick))

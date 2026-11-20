@@ -7,10 +7,11 @@
 ## Findings
 | # | Observation | Source | Change |
 | --- | --- | --- | --- |
-| 1 | When a chassis changes phase, the shots it already fired vanish. It reads as the attack being cancelled | Pilot | Shots and an attack already striking now carry over the phase change (fix/boss-phase-keeps-attacks) |
-| 2 | The player could not tell what to do: move, aim and shoot, dodge, Q and E powers, or that powers fuse | Pilot | First-time control hints and a fuse prompt (clarity PR) |
-| 3 | After a boss the run waits on CONTINUE in the Fuse Box, and the player did not realize it had to be pressed | Pilot | CONTINUE made obvious (clarity PR) |
-| 4 | When a room clears, the charges left on the floor disappear. The player kept asking "did all the stuff just go away?" | Pilot | Leftover charges visibly fly into the Surge (clarity PR) |
-| 5 | Beating a boss feels like it gives nothing | Pilot | The reward is shown and explained (clarity PR). The reward itself stays spare charges, as decided Nov 19 |
-| 6 | Keys cannot be changed | Pilot | Rebindable keys (keybinds PR) |
-| 7 | At the edge of a boss chamber the Surge can be off screen | Adit, own play | Camera fix (camera PR) |
+| 1 | When a chassis changes phase, the shots it already fired vanish. It reads as the attack being cancelled | Pilot | Shots and an attack already striking now carry over the phase change (#52) |
+| 2 | The player could not tell what to do: move, aim and shoot, dodge, Q and E powers, or that powers fuse | Pilot | First-time control hints and a fuse prompt (#55) |
+| 3 | After a boss the run waits on CONTINUE in the Fuse Box, and the player did not realize it had to be pressed | Pilot | CONTINUE made obvious (#55) |
+| 4 | When a room clears, the charges left on the floor disappear. The player kept asking "did all the stuff just go away?" | Pilot | Leftover charges visibly fly into the Surge (#55) |
+| 5 | Beating a boss feels like it gives nothing | Pilot | The reward is shown and explained (#55). The reward itself stays spare charges, as decided Nov 19 |
+| 6 | Keys cannot be changed | Pilot | Rebindable keys (#54) |
+| 8 | The empty LOADOUT page's text runs into the Q slot | Adit, own play | Wrapped inside its column (#55) |
+| 7 | At the edge of a boss chamber the Surge can be off screen | Adit, own play | Camera fix (#53) |

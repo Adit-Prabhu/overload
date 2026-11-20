@@ -21,6 +21,7 @@ from overload.art.pixel import robots as robots_art
 from overload.art.pixel.light import Glow
 from overload.art.pixel.lighting import Lighting, pool, quantize
 from overload.floor import CELL, GRID, TILE
+from overload.game.coach import Coach
 from overload.game.keybinds import Keybinds
 from overload.sim import aiming, bosskit, floorplay
 from overload.sim import world as rules
@@ -28,6 +29,7 @@ from overload.sim.arena import arena_id
 from overload.sim.bosses import BY_KIND
 from overload.sim.campaign import Campaign
 from overload.sim.powers import (
+    BASE_POWERS,
     COOLDOWN_KEYS,
     EVOLUTIONS,
     NAMES,
@@ -178,6 +180,9 @@ BUBBLE_ACCENTS = {
 }
 BOOM_TICKS = 14
 WRECK_TICKS = 90  # 1.5 s of explosions over the sinking wreck
+FLY_NEAR = 10.0  # a charge absorbed farther than this from the Surge flies into it
+FLY_TICKS = 60  # a flyer always lands within a second
+HINT_RIGHT = 206  # the hint strip ends left of the power slots (x = 210 at 256 wide)
 DOWNED_TICKS = 180
 INTRO_SLIDE = 18  # ticks the name card takes to slide in during the boot
 BEAM_TICKS = 10
@@ -425,6 +430,10 @@ class PixelView:
         self.walking = 0
         self.last_player = (run.world.player.x, run.world.player.y)
         self.binds = Keybinds()  # the player's keys, for labels (app.py sets the loaded ones)
+        self.coach = Coach(self.binds)  # first-run hints (game/coach.py)
+        # Charges absorbed from afar, flying into the Surge: x, y, power, age.
+        self.flyers: list[list] = []
+        self.reward: list[str] = []  # the base powers a beaten chassis paid a spare of
         player = run.world.player
         self.camera = [player.x - VIEW[0] / 2, player.y - VIEW[1] / 2]
         self._clamp_camera()
@@ -559,12 +568,15 @@ class PixelView:
         before the next input is read)."""
         self.consume(run, run.world.events)
         self._tick_cosmetics()
+        self._tick_flyers(run)
+        self.coach.update(run)
         self._walk(run.world)
         rival = run.world.rival
         self.rival_last = rival if rival and rival.health > 0 else None
         if run.world.outcome == "down":
             self.wreck = self.boss_banner = None
             self.booms.clear()
+            self.flyers.clear()
         for wave in run.world.shockwaves:  # dust kicked up along the running ring
             for _ in range(3):
                 a = self.cosmetic.uniform(0, math.tau)
@@ -712,11 +724,13 @@ class PixelView:
                 self._burst(event.x, event.y, 4, "ui.dim", 0.6)
                 self.toast(REJECTED.get(event.power, "NO ROOM TO BLINK"), 40)
             elif event.kind == "unlock":
+                self._fly(run, event)
                 self._burst(event.x, event.y, 24, f"power.{event.power}", 2.2)
                 self.unlock_flash = 12
                 stolen.append(NAMES.get(event.power, event.power.upper()))
                 stolen_ids.append(event.power)
             elif event.kind == "absorb":
+                self._fly(run, event)
                 self._burst(event.x, event.y, 10, f"power.{event.power}", 1.4)
             elif event.kind == "burst":
                 player = run.world.player
@@ -737,11 +751,13 @@ class PixelView:
             elif event.kind == "chain" and chain_start is not None:
                 self.chains.append((chain_start, (event.x, event.y), 8, False))
             elif event.kind == "evolve":
+                self._fly(run, event)
                 self.unlock_flash = 12
                 self._burst(event.x, event.y, 24, f"power.{event.power}", 2.2)
                 name = NAMES.get(event.power, event.power.upper())
                 self.toast(f"{name} EVOLVED: {EVOLUTIONS.get(event.power, '')}", 120)
             elif event.kind == "fully_evolved":
+                self._fly(run, event)
                 self._burst(event.x, event.y, 10, f"power.{event.power}", 1.4)
                 self.toast("FULLY EVOLVED", 60)
             elif event.kind == "quake":
@@ -759,8 +775,16 @@ class PixelView:
             elif event.kind == "vent":
                 self._burst(event.x, event.y - 6, 12, "px.wall.4", 1.4)
                 self.toast("VENTING. HIT IT NOW", 50)
-            elif event.kind == "boss_reward" and event.ref:
-                self.toast(f"+1 SPARE CHARGE OF {event.ref} POWERS", 120)
+            elif event.kind == "boss_reward":
+                # One spare of every stolen base power (sim/floorplay.py), flying from the
+                # wreck into the Surge, and named under the DOWN banner.
+                self.reward = [p for p in BASE_POWERS if p in run.world.unlocked]
+                wreck = self.wreck
+                at = (wreck[2], wreck[3]) if wreck else (event.x, event.y)
+                for i, power in enumerate(self.reward):
+                    # They leave once the explosions settle and the banner shows.
+                    stagger = -(WRECK_TICKS - 10) - i * 6
+                    self.flyers.append([at[0] + (i - 2) * 6, at[1], power, stagger])
             elif event.kind == "boss_ring":
                 self._burst(event.x, event.y, 10, "hostile.danger", 1.2)
             elif event.kind == "summon":
@@ -771,8 +795,9 @@ class PixelView:
                 self._burst(event.x, event.y + 6, 8, "px.dial.0", 1.2)
             elif event.kind == "room_lock":
                 self.toast("LOCKDOWN", 60)
-            elif event.kind == "room_clear":
-                self.toast("ROOM CLEAR", 60)
+            elif event.kind == "room_clear" and self.boss_banner is None:
+                pulled = any(f[3] <= 0 for f in self.flyers)
+                self.toast("ROOM CLEAR. CHARGES PULLED IN" if pulled else "ROOM CLEAR", 90)
             elif event.kind == "warp_in":
                 self._burst(event.x, event.y, 10, "hostile.danger", 1.4)
             elif event.kind == "secret_hit":
@@ -901,6 +926,34 @@ class PixelView:
 
     def toast(self, message: str, ticks: int) -> None:
         self.notice = (message, ticks)
+
+    def _fly(self, run, event) -> None:
+        """A charge absorbed away from the Surge (a room clear pulls in every charge left)
+        visibly flies into it, so nothing seems to vanish (pilot playtest, Nov 19)."""
+        player = run.world.player
+        if math.dist((event.x, event.y), (player.x, player.y)) > FLY_NEAR:
+            self.flyers.append([event.x, event.y, event.power, 0])
+
+    def _tick_flyers(self, run) -> None:
+        """Each flyer waits out its stagger, then homes in, quicker as it goes, and lands
+        in a small burst."""
+        player = run.world.player
+        flying = []
+        for flyer in self.flyers:
+            flyer[3] += 1
+            if flyer[3] <= 0:
+                flying.append(flyer)
+                continue
+            pull = min(0.5, 0.04 + flyer[3] * 0.012)
+            flyer[0] += (player.x - flyer[0]) * pull
+            flyer[1] += (player.y - flyer[1]) * pull
+            if self.cosmetic.random() < 0.5:
+                self.sparks.append(Spark(flyer[0], flyer[1], 0.0, 0.0, 8, f"power.{flyer[2]}"))
+            if math.dist((flyer[0], flyer[1]), (player.x, player.y)) < 4 or flyer[3] > FLY_TICKS:
+                self._burst(player.x, player.y, 6, f"power.{flyer[2]}", 1.0)
+            else:
+                flying.append(flyer)
+        self.flyers = flying
 
     def _burst(self, x: float, y: float, count: int, token: str, speed: float) -> None:
         for _ in range(count):
@@ -1096,6 +1149,9 @@ class PixelView:
 
         for charge in world.charges:
             effects.charge(screen, self.glow.layer, v(charge.x, charge.y), charge.kind, t)
+        for fx, fy, power, age in self.flyers:
+            if age > 0:
+                effects.charge(screen, self.glow.layer, v(fx, fy), power, t)
 
         rival = world.rival
         if rival is not None and rival.health > 0:
@@ -1407,6 +1463,7 @@ class PixelView:
             self._boss_banner(screen)
         if self.unlock_flash:
             screen.blit(_flash(VIEW, self.unlock_flash * 8), (0, 0))
+        self._coach(screen, run, cam)
         if self.notice:
             message, ticks = self.notice
             if ticks > 8 or ticks % 2:
@@ -1504,6 +1561,76 @@ class PixelView:
             "THE GRID IS BACK ONLINE" if name == "GRID CORE DOWN" else "THE GRID HOLDS. FOR NOW"
         )
         hud.text(screen, message, (w // 2, h // 2 + 7), "ui.dim", "midtop")
+        if self.reward and name != "GRID CORE DOWN":  # the last chassis ends the run
+            self._reward_panel(screen, h // 2 + 19)
+
+    def _reward_panel(self, screen: pygame.Surface, top: int) -> None:
+        """Under the DOWN banner: what the chassis paid, as icons with +1, and what it is
+        for (pilot playtest, Nov 19: the boss seemed to give nothing)."""
+        w = screen.get_width()
+        panel = pygame.Rect(0, top, w, 25)
+        screen.blit(_dim(panel.size, 200), panel)
+        label = "REWARD"
+        label_w = hud.pixel_font().size(label)[0] + 6
+        span = label_w + len(self.reward) * 22
+        x = w // 2 - span // 2
+        hud.text(screen, label, (x, top - 2), "px.hazard.1")
+        for i, power in enumerate(self.reward):
+            cx = x + label_w + i * 22
+            icon = effects.charge_icon(power)
+            screen.blit(icon, icon.get_rect(midleft=(cx, top + 6)))
+            hud.text(screen, "+1", (cx + 9, top - 2), "ui.text")
+        message = "SPARE CHARGES PAY FOR FUSE REROLLS"
+        hud.text(screen, message, (w // 2, top + 9), "ui.dim", "midtop")
+
+    def _coach(self, screen: pygame.Surface, run, cam: tuple[int, int]) -> None:
+        """The first-run hint, bottom center, and an arrow at the screen's edge toward the
+        Fuse Box while the hint points there."""
+        message = self.coach.hint(run)
+        if message is None or self.boss_banner is not None:
+            return
+        w, h = screen.get_size()
+        room = HINT_RIGHT - 2  # from x = 2 to the power slots
+        width = hud.pixel_font().size(message)[0] + 8
+        if width > room:  # long bound key names: write them short
+            message = self.coach.hint(run, short=True) or message
+            width = hud.pixel_font().size(message)[0] + 8
+        panel = pygame.Rect(0, h - 16, min(width, room), 12)
+        panel.centerx = w // 2 - 12
+        panel.right = min(panel.right, HINT_RIGHT)
+        panel.left = max(panel.left, 2)
+        screen.blit(_dim(panel.size, 200), panel)
+        token = "px.hazard.1" if (self.frames // 30) % 2 else "ui.text"
+        hud.text(screen, message, (panel.centerx, panel.y - 2), token, "midtop")
+        target = self.coach.target
+        if target is not None:
+            self._arrow(screen, (target[0] - cam[0], target[1] - cam[1]))
+
+    def _arrow(self, screen: pygame.Surface, point: tuple[float, float]) -> None:
+        """A chevron toward `point` (view pixels): over it when on screen, else at the
+        edge in its direction."""
+        w, h = screen.get_size()
+        cx, cy = w / 2, h / 2
+        dx, dy = point[0] - cx, point[1] - cy
+        dist = math.hypot(dx, dy) or 1.0
+        ux, uy = dx / dist, dy / dist
+        margin = 14
+        inside = margin <= point[0] <= w - margin and margin <= point[1] <= h - margin
+        if inside:
+            tip = (point[0], point[1] - 12 - 2 * math.sin(self.frames / 6))
+            ux, uy = 0.0, 1.0
+        else:
+            scale = min(
+                (w / 2 - margin) / abs(ux) if ux else math.inf,
+                (h / 2 - margin) / abs(uy) if uy else math.inf,
+            )
+            tip = (cx + ux * scale, cy + uy * scale)
+        nx, ny = -uy, ux
+        back = (tip[0] - ux * 7, tip[1] - uy * 7)
+        points = [tip, (back[0] + nx * 5, back[1] + ny * 5), (back[0] - nx * 5, back[1] - ny * 5)]
+        pygame.draw.polygon(screen, rgb("px.outline"), [(x + 1, y + 1) for x, y in points])
+        token = "power.blink" if (self.frames // 15) % 2 else "ui.text"
+        pygame.draw.polygon(screen, rgb(token), points)
 
     def _draw_kit(self, screen: pygame.Surface, run, rival, v) -> None:
         """The chassis kit on screen (sim/bosskit.py): each attack's own tell, Live Wire's
