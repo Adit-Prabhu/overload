@@ -180,7 +180,7 @@ BUBBLE_ACCENTS = {
 }
 BOOM_TICKS = 14
 WRECK_TICKS = 90  # 1.5 s of explosions over the sinking wreck
-FLY_NEAR = 10.0  # a charge absorbed farther than this from the Surge flies into it
+FLY_NEAR = 12.0  # above contact pickup reach (player_radius + charge_radius = 11 px)
 FLY_TICKS = 60  # a flyer always lands within a second
 HINT_RIGHT = 206  # the hint strip ends left of the power slots (x = 210 at 256 wide)
 DOWNED_TICKS = 180
@@ -931,7 +931,8 @@ class PixelView:
         """A charge absorbed away from the Surge (a room clear pulls in every charge left)
         visibly flies into it, so nothing seems to vanish (pilot playtest, Nov 19)."""
         player = run.world.player
-        if math.dist((event.x, event.y), (player.x, player.y)) > FLY_NEAR:
+        touch = run.tuning.player_radius + run.tuning.charge_radius + 0.5
+        if math.dist((event.x, event.y), (player.x, player.y)) > max(FLY_NEAR, touch):
             self.flyers.append([event.x, event.y, event.power, 0])
 
     def _tick_flyers(self, run) -> None:

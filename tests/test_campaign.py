@@ -283,16 +283,28 @@ def test_the_secret_wall_cracks_and_rewards_a_burst_charge() -> None:
             break
     assert "s2_entry>hidden" not in world.locked and "hidden>s2_entry" not in world.locked
     assert [c.kind for c in world.charges] == ["burst"]
-    # Clearing another room never pulls the hidden room's cache through the walls.
+    # More shots through the opened gap never spawn a second charge.
+    for _ in range(30):
+        campaign.step(InputFrame(aim_x=int(target[0]), aim_y=int(target[1]) + 20, fire=True))
+    assert [c.kind for c in world.charges] == ["burst"]
+    # Even if Magnet drags the orb into the secret corridor, clearing another room never
+    # absorbs it through walls, and hidden stays uncleared while the orb is unclaimed.
+    world.charges[0].y = target[1] + 24
     enter(campaign, "s2_yard")
     while world.active_room == "s2_yard":
         for hostile in world.hostiles:
             hostile.health = 0
         campaign.step(IDLE)
-    assert "burst" not in world.unlocked and any(c.kind == "burst" for c in world.charges)
+    assert "burst" not in world.unlocked and [c.kind for c in world.charges] == ["burst"]
     assert "hidden" not in world.cleared
-    # Walking into the hidden room steals Burst early and marks the room cleared.
-    enter(campaign, "hidden")
+    # Walking down the corridor onto the orb steals Burst and marks hidden cleared even
+    # when picked up in the passage outside hidden.interior.
+    orb = world.charges[0]
+    world.player.x, world.player.y = orb.x, orb.y - 16.0
+    for _ in range(10):
+        campaign.step(InputFrame(move_y=1))
+        if "burst" in world.unlocked:
+            break
     assert "burst" in world.unlocked and not world.charges
     assert "hidden" in world.cleared
     # A later Breaker drop in s2_tanks banks a spare Burst charge and advances evolution.

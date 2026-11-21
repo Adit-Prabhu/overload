@@ -536,18 +536,18 @@ def absorb_charges(
     world: World,
     tuning: Tuning,
     everything: bool = False,
-    exclude_rect: tuple[float, float, float, float] | None = None,
+    within_rect: tuple[float, float, float, float] | None = None,
 ) -> None:
-    """Absorb charges the Surge touches (or all of them when a room is won, leaving an
-    unclaimed secret room cache in place until the Surge walks in to take it)."""
+    """Absorb charges the Surge touches (or every charge inside `within_rect` when a room is
+    won, or all charges when `within_rect` is None)."""
     player = world.player
     left = []
     for charge in world.charges:
-        excluded = exclude_rect is not None and (
-            exclude_rect[0] <= charge.x < exclude_rect[0] + exclude_rect[2]
-            and exclude_rect[1] <= charge.y < exclude_rect[1] + exclude_rect[3]
+        in_room = within_rect is None or (
+            within_rect[0] <= charge.x < within_rect[0] + within_rect[2]
+            and within_rect[1] <= charge.y < within_rect[1] + within_rect[3]
         )
-        if (everything and not excluded) or circles_overlap(
+        if (everything and in_room) or circles_overlap(
             (player.x, player.y), tuning.player_radius, (charge.x, charge.y), tuning.charge_radius
         ):
             _absorb(world, charge, tuning)
