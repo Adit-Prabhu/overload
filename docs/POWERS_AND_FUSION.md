@@ -46,7 +46,7 @@ Inheriting both ingredients everywhere was measured and broke the power step gua
 | Bulwark | 5 sentries (3 in sector 2) | sector 2 | 2 |
 | Burst | 5 breakers (1 in sector 2) | sector 2 | 0 |
 
-So the first pair (Spark + Magnet) can be fused in the first Fuse Box, and all ten pairs before sector 3, where the build matters most. The Grid Core's summoned drones add a few Spark charges in sector 3's chamber. The hidden room's evolution charge is planned (IMPLEMENTATION_PLAN section 2b) but not built, so the table leaves it out.
+So the first pair (Spark + Magnet) can be fused in the first Fuse Box, and all ten pairs before sector 3, where the build matters most. The Grid Core's summoned drones add a few Spark charges in sector 3's chamber. The table counts combat waves alone. Cracking open sector 2's hidden room yields one extra Burst charge (unlocking Burst early if found in `s2_entry`, or adding a spare Burst charge for rerolls and evolution), and each beaten chassis rewards +1 spare charge of every stolen base power.
 
 **Slots.** A newly unlocked base power fills an empty slot, as now, and never replaces an equipped one. A fusion result is never equipped automatically. With Magnet in sector 1, the Surge usually enters sector 2 with Spark and Magnet equipped, so Blink no longer equips itself there. The unlock banner adds TAB TO EQUIP when both slots are full. This changes sector 2 for a player who never opens the menu. Step 3 measures it with the bot, which equips the newest base power to E in each Fuse Box.
 

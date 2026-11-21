@@ -109,6 +109,22 @@ def test_charges_left_on_the_floor_fly_into_the_surge_at_a_clear() -> None:
     assert before != campaign.state_hash()  # the sim moved on, untouched by the view
 
 
+def test_walking_onto_a_charge_never_spawns_a_distant_flyer() -> None:
+    from overload.game.view import PixelView
+
+    campaign = Campaign(1)
+    world = campaign.world
+    view = PixelView(campaign)
+    world.charges.append(Charge(world.new_id(), "burst", world.player.x, world.player.y + 16.0))
+    for _ in range(10):
+        campaign.step(InputFrame(move_y=1))
+        view.after_tick(campaign)
+        if "burst" in world.unlocked:
+            break
+    assert "burst" in world.unlocked
+    assert not view.flyers, "a contact pickup within 11 px never spawns a duplicate flyer"
+
+
 def test_a_beaten_chassis_shows_its_reward_and_not_room_clear() -> None:
     from overload.game.view import PixelView
 

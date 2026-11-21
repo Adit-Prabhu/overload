@@ -6,12 +6,14 @@ secret wall cracks open after a few shots. Deterministic, no pygame.
 
 from __future__ import annotations
 
-from overload.floor import TILE, WAVES, Floor, FloorRoom
+from overload.floor import TILE, WAVES, Floor, FloorRoom, tile_rect_px
 from overload.sim.geometry import circle_hits_rect
 from overload.sim.powers import BASE_POWERS, absorb_charges
 from overload.sim.spawns import spawn_rival, spawn_robot
-from overload.sim.state import Event, Warp, World
+from overload.sim.state import Charge, Event, Warp, World
 from overload.sim.tuning import Tuning
+
+HIDDEN_POWER = "burst"
 
 
 def tile_center(tile: tuple[int, int]) -> tuple[float, float]:
@@ -51,6 +53,7 @@ def tick(world: World, tuning: Tuning, arena) -> None:
     if floor is None or world.mode != "floor":
         return
     _warps(world, tuning, floor)
+    _check_hidden_cleared(world, floor)
     if world.active_room:
         _hold(world, tuning, floor)
         return
@@ -63,6 +66,27 @@ def tick(world: World, tuning: Tuning, arena) -> None:
     room = room_of(floor, player.x, player.y)
     if room is not None and room.kind in ("combat", "chamber") and room.id not in world.cleared:
         _activate(world, tuning, floor, room)
+
+
+def _check_hidden_cleared(world: World, floor: Floor) -> None:
+    """Mark a secret room cleared once its secret door is open and its cache has been picked
+    up, even if Magnet or a well pulled the orb into the doorway or corridor first."""
+    hidden = next((r for r in floor.rooms if r.kind == "hidden"), None)
+    if hidden is None or hidden.id in world.cleared:
+        return
+    if any(d.id in world.locked for d in floor.doors if d.secret):
+        return
+    active = tile_rect_px(floor.get(world.active_room).rect) if world.active_room else None
+    outside_fight = [
+        c
+        for c in world.charges
+        if active is None
+        or not (
+            active[0] <= c.x < active[0] + active[2] and active[1] <= c.y < active[1] + active[3]
+        )
+    ]
+    if not outside_fight:
+        world.cleared = [*world.cleared, hidden.id]
 
 
 def _activate(world: World, tuning: Tuning, floor: Floor, room: FloorRoom) -> None:
@@ -120,7 +144,9 @@ def _hold(world: World, tuning: Tuning, floor: Floor) -> None:
                 world.events.append(Event("hostile_destroyed", hostile.x, hostile.y, hostile.id))
         world.hostiles = []
         world.warps = []
-    absorb_charges(world, tuning, everything=True)  # nothing stolen is ever left behind
+    absorb_charges(
+        world, tuning, everything=True, within_rect=tile_rect_px(room.rect)
+    )  # nothing dropped inside the cleared room is ever left behind
     # The fight is over: hostile shots and hazard tiles still in the air go with it.
     world.projectiles = [shot for shot in world.projectiles if not shot.hostile]
     world.hazards = []
@@ -161,4 +187,8 @@ def shot_hits_wall(world: World, tuning: Tuning, arena, center, radius: float) -
                 ]
                 unlock(world, pair)
                 world.events.append(Event("secret_open", center[0], center[1]))
+                hidden = next((r for r in floor.rooms if r.kind == "hidden"), None)
+                if hidden is not None:
+                    hx, hy = tile_center(hidden.center)
+                    world.charges.append(Charge(world.new_id(), HIDDEN_POWER, hx, hy))
             return
