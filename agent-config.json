@@ -1,6 +1,6 @@
 {
   "schema_version": "course-1",
-  "status": "Rival service implemented and tested locally with a deterministic fixture provider (worker/src). Not deployed. No live model provider yet: decision D6 picks the provider and credential path. Game-side boundary, validation, deadline and fallback are in src/overload/agent/.",
+  "status": "Deployed and hardened Cloudflare Worker (version bf48e333 on Nov 19, 2026) running Vertex AI Gemini 3.5 Flash-Lite on Evidence Version 4, verified by live smoke tests (docs/evidence/LIVE_SMOKE_2026-11-19.md). Local runs default to the deterministic fixture provider. Game-side boundary, validation, deadline and fallback are in src/overload/agent/. Needs one Worker redeploy after merging config/tactics.json version 3.",
   "purpose": "Choose the Regulator's protocol for the next encounter from the player's observed habits.",
   "native_artifact": "worker/src/index.ts routes POST /sessions and POST /sessions/:id/tactic, worker/src/session.ts (RivalSession, a Cloudflare Agents SDK agent), structured JSON with strict schemas in worker/src/schema.ts",
   "tools_available": [
@@ -18,13 +18,14 @@
   "memory_policy": "Last two encounter summaries for the current session only, each at most 300 tokens. Reset on a new session. Server state expires after 30 minutes of inactivity. No cross-session retrieval or shared memory.",
   "context_sources": [
     "src/overload/agent/observations.py:ObservationLog.summary",
-    "config/tactics.json",
+    "config/evidence.json (version 4: ten visible observation kinds, five power families)",
+    "config/tactics.json (version 3: tactic catalogue and power-family counter guidance)",
     "previous accepted tactic and the last two summaries for this session only"
   ],
   "retrieval": "None. No RAG or external knowledge.",
   "model_choice": {
-    "provider": "Vertex AI, pending decision D6 on the Worker credential path",
-    "requested_model": "gemini-3.5-flash-lite (proposed, confirm availability and price before the first paid call)",
+    "provider": "Vertex AI via Cloudflare Worker secret service-account credentials (decision D6)",
+    "requested_model": "gemini-3.5-flash-lite (verified live in docs/evidence/LIVE_SMOKE_2026-11-19.md)",
     "settings": "temperature 0, structured JSON output, no automatic continuation, no retry",
     "resolved_model": "Logged per request when the API returns it"
   },
@@ -40,7 +41,7 @@
     "budget exhaustion",
     "leaked context"
   ],
-  "evaluation_cases": "Deterministic: boundary invariance, two-session isolation, invalid proposal rejection, timeout, stale reply, request cap, full win and loss paths. Live: six authored observation histories x three repeats, at most 18 attempts and $1 per suite.",
+  "evaluation_cases": "Deterministic: boundary invariance, two-session isolation, invalid proposal rejection, timeout, stale reply, request cap, ledger retry hardening, full win and loss paths. Live: six authored 10-kind Evidence Version 4 histories (eval/histories.json v2) x three repeats, at most 18 attempts and $1 per suite.",
   "logging_policy": "Anonymous session ID, encounter and request IDs, config and prompt hash, requested and resolved model, filtered-context hash, accepted proposal, fallback reason, latency, token and cost estimate. No credentials or participant identities.",
   "human_override_points": [
     "Adit approves model, config and spending",
@@ -62,7 +63,7 @@
   "fallback": "Any invalid, late, unavailable, disabled or over-budget proposal becomes lateral (Oscillate protocol), labeled as fallback in the trace. Combat never waits on the model.",
   "knowledge_boundary": "Only the observation-filter summary and the tactic catalogue cross to the model. Game code owns all state and validates every proposal.",
   "limitations": [
-    "The service is not deployed and has no live model provider yet (decision D6).",
+    "config/tactics.json and config/evidence.json are bundled into the Worker at build time, so updates require a redeploy by Adit before live runs.",
     "Fixture results are a deterministic rule and are labeled source fixture. They are never model evidence.",
     "A fixed-schedule baseline tests history dependence, not whether an LLM beats a simple adaptive rule.",
     "Valid JSON and real evidence IDs do not prove the chosen tactic was a good one."
