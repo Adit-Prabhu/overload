@@ -87,6 +87,36 @@ def _surge_rows(legs: str, raised: bool) -> list[str]:
 
 
 @cache
+def app_icon() -> pygame.Surface:
+    """32 x 32 window and app icon (MK-02): Surge hard hat with a glowing spark bolt."""
+    rows = [
+        "................",
+        "....hhhhhhhh....",
+        "..hhHWWWYWWWHh..",
+        ".hHWWWWYYWWWWWh.",
+        ".hHWWWYYWWWWWWh.",
+        ".hHWWYYYYYYWWWh.",
+        ".hHWWWWYYWWWWWh.",
+        ".hYYYYYYlYYYYYh.",
+        "hhhhhhhhhhhhhhhh",
+        ".hhhhhhhhhhhhhh.",
+        "..zSSSSSSSSSSz..",
+        "..zGGLLGGLLGGz..",
+        "..zGkLGGkLGGSz..",
+        "...zssssssssz...",
+        "....zzzzzzzz....",
+        "................",
+    ]
+    legend = {**SURGE_LEGEND, "Y": "power.spark", "l": "px.spark.light"}
+    canvas = pygame.Surface((16, 16), pygame.SRCALPHA)
+    canvas.fill(rgb("px.outline"))
+    pygame.draw.rect(canvas, rgb("px.wall.2"), (0, 0, 16, 16), 1)
+    art = render(rows, legend, outline=None)
+    canvas.blit(art, (0, 0))
+    return pygame.transform.scale_by(canvas, 2)
+
+
+@cache
 def surge_frames() -> dict[str, tuple[pygame.Surface, ...]]:
     """Idle (2 frames, a breathing bob) and walk (4 frames). All face right."""
 

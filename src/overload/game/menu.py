@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from overload.game.dev import DevTools
 from overload.game.flow import Session
 from overload.game.keybinds import RebindPage
+from overload.game.settings import SettingsPage
 from overload.sim.powers import (
     BASE_POWERS,
     FUSED,
@@ -36,8 +37,8 @@ from overload.sim.powers import (
     rarity_of,
 )
 
-HUB_FUSE_BOX = ("CONTINUE", "LOADOUT", "FUSE", "CONTROLS", "QUIT")
-HUB_PAUSED = ("RESUME", "LOADOUT", "FUSE", "CONTROLS", "QUIT")
+HUB_FUSE_BOX = ("CONTINUE", "LOADOUT", "FUSE", "SETTINGS", "CONTROLS", "QUIT")
+HUB_PAUSED = ("RESUME", "LOADOUT", "FUSE", "SETTINGS", "CONTROLS", "QUIT")
 LOADOUT_ROWS = 7  # rows visible at once in the loadout list
 # The spin: at least this many steps, each a little longer than the last.
 SPIN_MIN_STEPS = 10
@@ -95,6 +96,7 @@ class Menu:
     dev: DevTools | None = None  # dev mode only (game/dev.py): adds the DEV page
     dev_row: int = 0
     keys_page: RebindPage = field(default_factory=RebindPage)  # CONTROLS, the rebind editor
+    settings_page: SettingsPage = field(default_factory=SettingsPage)  # SETTINGS page
 
     # Opening and closing ---------------------------------------------------------------
 
@@ -131,6 +133,7 @@ class Menu:
             "hub": self._hub,
             "loadout": self._loadout,
             "fuse": self._fuse,
+            "settings": self._settings,
             "controls": self._controls,
             "dev": self._dev,
         }[self.screen]
@@ -162,6 +165,7 @@ class Menu:
         self.screen = item.lower()
         self.row, self.cursor, self.notice = 0, 0, ""
         self.keys_page.row, self.keys_page.capturing, self.keys_page.notice = 0, False, ""
+        self.settings_page.row, self.settings_page.notice = 0, ""
         self._reset_fuse()
         return None, ["confirm"]
 
@@ -169,6 +173,15 @@ class Menu:
         self.screen, self.notice = "hub", ""
         self._reset_fuse()
         return None, ["move"]
+
+    def _settings(self, session: Session, key: str):
+        sound, display_changed = self.settings_page.nav(key)
+        if sound == "back":
+            return self._back()
+        sounds = [sound] if sound else []
+        if display_changed:
+            sounds.append("display")
+        return None, sounds
 
     def _controls(self, session: Session, key: str):
         sound = self.keys_page.nav(key)

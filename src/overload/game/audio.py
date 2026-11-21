@@ -277,6 +277,8 @@ class Audio:
         self.bar = -1
         self.duck_until = 0
         self.volumes: dict[str, float] = {}
+        self.music_scale = 1.0
+        self.sfx_scale = 1.0
         if not enabled:
             return
         try:
@@ -300,8 +302,16 @@ class Audio:
             self.music[stem] = channel
             self.volumes[stem] = 0.0
 
+    def apply_settings(self, settings) -> None:
+        """Apply Music and SFX volume multipliers from player settings (presentation only)."""
+        self.music_scale = max(0.0, min(1.0, settings.music_scale()))
+        self.sfx_scale = max(0.0, min(1.0, settings.sfx_scale()))
+
     def play(self, name: str, volume: float = SFX_LEVEL) -> None:
         if not self.enabled:
+            return
+        scaled = volume * self.sfx_scale
+        if scaled <= 0.0:
             return
         sound = self.sounds.get(f"sfx_{name}") or self.sounds.get(name)
         if sound is None:
@@ -310,7 +320,7 @@ class Audio:
         # and returns None when every effect channel is busy: the effect is simply dropped.
         channel = sound.play()
         if channel is not None:
-            channel.set_volume(volume)
+            channel.set_volume(scaled)
         if name in TELLS:
             self.duck_until = pygame.time.get_ticks() + DUCK_MS
 
@@ -348,7 +358,7 @@ class Audio:
             self.bar = bar
         duck = DUCK if now < self.duck_until else 1.0
         for stem, channel in self.music.items():
-            target = LEVELS[stem] * duck if stem in self.targets else 0.0
+            target = LEVELS[stem] * self.music_scale * duck if stem in self.targets else 0.0
             current = self.volumes[stem]
             step = max(-FADE_STEP, min(FADE_STEP, target - current))
             self.volumes[stem] = current + step

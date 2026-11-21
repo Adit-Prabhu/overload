@@ -35,7 +35,8 @@ def test_start_is_selected_first_and_enter_starts() -> None:
 
 def test_the_controls_page_opens_and_closes() -> None:
     title = TitleScreen()
-    title.press(pygame.K_s)
+    for _ in range(ITEMS.index("CONTROLS")):
+        title.press(pygame.K_s)
     title.press(pygame.K_RETURN)
     assert title.page == "controls" and title.choice is None
     title.press(pygame.K_ESCAPE)
@@ -132,7 +133,7 @@ def test_ending_space_returns_to_title_reusing_the_window(monkeypatch, tmp_path)
     def fake_build_selector(options):
         return LiveSelector(FakeClient(), "sess-1"), "sess-1", "live"
 
-    def fake_run_title(screen, clock, difficulty, binds, audio):
+    def fake_run_title(screen, clock, difficulty, binds, audio, **_kwargs):
         assert screen.get_flags() & pygame.FULLSCREEN
         title_calls.append((screen, audio, difficulty))
         if len(title_calls) == 1:
@@ -239,7 +240,8 @@ def test_closing_the_window_in_the_same_batch_as_start_quits(display) -> None:
 def test_the_controls_page_rebinds_a_key_and_saves_it(tmp_path) -> None:
     path = tmp_path / "keys.json"
     title = TitleScreen(binds=Keybinds(path=path))
-    title.press(pygame.K_s)
+    for _ in range(ITEMS.index("CONTROLS")):
+        title.press(pygame.K_s)
     title.press(pygame.K_RETURN)  # CONTROLS
     for _ in range(4):
         title.press(pygame.K_s)  # down to DODGE

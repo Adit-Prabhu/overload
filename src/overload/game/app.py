@@ -24,7 +24,7 @@ import pygame
 from overload.agent.client import TacticClient
 from overload.agent.selector import FixedSchedule, LiveSelector, NeutralSelector, Selector
 from overload.art.palette import rgb
-from overload.art.pixel import hud, tiles
+from overload.art.pixel import actors, hud, tiles
 from overload.game import dev as devmode
 from overload.game import keybinds, menu_view
 from overload.game import title as title_screen
@@ -32,6 +32,7 @@ from overload.game.audio import Audio
 from overload.game.flow import Session
 from overload.game.keybinds import Keybinds
 from overload.game.menu import Menu
+from overload.game.settings import Settings
 from overload.game.title import run_title
 from overload.game.view import VIEW, PixelView
 from overload.paths import ROOT
@@ -278,8 +279,32 @@ def _open_window(headless: bool) -> pygame.Surface:
         screen = pygame.display.set_mode(VIEW, flags, vsync=1)
     except pygame.error:
         screen = pygame.display.set_mode(VIEW, flags)
+    pygame.display.set_icon(actors.app_icon())
     pygame.mouse.set_visible(False)
     return screen
+
+
+def _open_display(headless: bool, fullscreen: bool) -> pygame.Surface:
+    """Open the window, matching saved fullscreen state while preserving the 1-arg
+    `_open_window` helper for windowed startup."""
+    if headless or not fullscreen:
+        return _open_window(headless)
+    flags = pygame.SCALED | pygame.FULLSCREEN
+    try:
+        screen = pygame.display.set_mode(VIEW, flags, vsync=1)
+    except pygame.error:
+        screen = pygame.display.set_mode(VIEW, flags)
+    pygame.display.set_icon(actors.app_icon())
+    pygame.mouse.set_visible(False)
+    return screen
+
+
+def _apply_fullscreen(screen: pygame.Surface, fullscreen: bool, headless: bool) -> pygame.Surface:
+    """Switch display mode only when fullscreen actually changed, never reopening an already
+    matching fullscreen window."""
+    if headless or bool(screen.get_flags() & pygame.FULLSCREEN) == fullscreen:
+        return screen
+    return _open_display(False, fullscreen)
 
 
 def build_selector(options: Options) -> tuple[Selector, str | None, str]:
@@ -353,8 +378,9 @@ def play(options: Options) -> int:
     screen = None
     audio: Audio | None = None
     difficulty = options.difficulty
-    # A replay or a headless run never reads or writes the player's saved keys.
+    # A replay or a headless run never reads or writes saved keys or settings.
     binds = Keybinds() if options.replay or options.headless else Keybinds.load()
+    settings = Settings() if options.replay or options.headless else Settings.load()
     show_title = not (options.headless or options.replay or options.skip_title)
     can_return = show_title and not (options.practice or options.record)
     replay: Recording | None = Recording.load(options.replay) if options.replay else None
@@ -371,18 +397,32 @@ def play(options: Options) -> int:
                 print(f"Replay rejected: {error}")
                 return 2
 
+    def on_display(fullscreen: bool) -> pygame.Surface:
+        nonlocal screen
+        screen = _apply_fullscreen(screen, fullscreen, options.headless)
+        return screen
+
     try:
         while True:
             if show_title:
                 # The title comes first: no rival session or trace exists until the player starts.
                 if screen is None:
                     pygame.init()
-                    screen = _open_window(False)
+                    screen = _open_display(False, settings.fullscreen)
                     pygame.display.set_caption("Overload")
                     # The same Audio carries on into play, so the title music hands over to the
                     # first sector on a bar line instead of cutting out.
                     audio = Audio(enabled=not options.mute)
-                selected = run_title(screen, pygame.time.Clock(), difficulty, binds, audio)
+                    audio.apply_settings(settings)
+                selected = run_title(
+                    screen,
+                    pygame.time.Clock(),
+                    difficulty,
+                    binds,
+                    audio,
+                    settings=settings,
+                    on_display=on_display,
+                )
                 if selected is None:
                     return 0
                 difficulty = selected
@@ -436,19 +476,22 @@ def play(options: Options) -> int:
                 # Keep the title's display mode. Reopening fullscreen can crash SDL on macOS.
                 if screen is None:
                     pygame.init()
-                    screen = _open_window(options.headless)
+                    screen = _open_display(options.headless, settings.fullscreen)
                     pygame.display.set_caption("Overload")
                 view = PixelView(run)
                 view.binds = view.coach.binds = binds
+                view.apply_settings(settings)
                 if options.dev:
                     view.stamp = f"DEV {view.stamp}"  # the build stamp on banners and the ending
                 reader = InputReader(binds)
                 menu = Menu()
                 menu.keys_page.binds = binds
+                menu.settings_page.settings = settings
                 dev_tools = devmode.DevTools() if options.dev else None
                 menu.dev = dev_tools
                 if audio is None:
                     audio = Audio(enabled=not (options.mute or options.headless))
+                audio.apply_settings(settings)
                 clock = pygame.time.Clock()
                 accumulated = 0.0
                 frames = 0
@@ -556,7 +599,14 @@ def play(options: Options) -> int:
                             for sound in menu_frame(
                                 session, menu, reader, recording, round(elapsed * 1000)
                             ):
-                                audio.play(sound)
+                                if sound == "display":
+                                    screen = _apply_fullscreen(
+                                        screen, settings.fullscreen, options.headless
+                                    )
+                                else:
+                                    audio.play(sound)
+                            audio.apply_settings(settings)
+                            view.apply_settings(settings)
                     audio.update(stage, getattr(run, "encounter", 1), run.world.outcome)
                     view.draw(screen, run, cursor)
                     if dev_tools is not None:

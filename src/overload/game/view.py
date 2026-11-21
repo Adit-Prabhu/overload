@@ -465,6 +465,8 @@ class PixelView:
         self.reward: list[str] = []  # the base powers a beaten chassis paid a spare of
         self.prev_slot_state: list[tuple[str, bool]] = [("", False), ("", False)]
         self.ready_flash = [0, 0]
+        self.screen_shake = True
+        self.reduce_flash = False
         player = run.world.player
         self.camera = [player.x - VIEW[0] / 2, player.y - VIEW[1] / 2]
         self._clamp_camera()
@@ -488,10 +490,15 @@ class PixelView:
         """The camera. Aiming converts the cursor with this, so it never shakes."""
         return (round(self.camera[0]), round(self.camera[1]))
 
+    def apply_settings(self, settings) -> None:
+        """Apply cosmetic comfort settings (screen shake and reduced flashes)."""
+        self.screen_shake = bool(settings.screen_shake)
+        self.reduce_flash = bool(settings.reduce_flash)
+
     def jolt(self) -> tuple[int, int]:
         """A slam's screen shake (2 px at most, art direction), applied only when drawing
         the scene, so shots still go exactly where the reticle is."""
-        if self.shake <= 0:
+        if not self.screen_shake or self.shake <= 0:
             return (0, 0)
         amount = 2 if self.shake > 5 else 1
         return (
@@ -1220,9 +1227,18 @@ class PixelView:
                     gait,
                     self.recoils.get(hostile.id, 0),
                 )
-                if hostile.id in self.flashes:
+                if hostile.id in self.flashes and not self.reduce_flash:
                     image = effects.tinted(image, "fx.flash")
                 draw_at_feet(image, (feet[0], feet[1] - hover(hostile, tick)))
+                if hostile.id in self.flashes and self.reduce_flash:
+                    hx, hy = v(hostile.x, hostile.y - hover(hostile, tick))
+                    pygame.draw.circle(
+                        screen,
+                        rgb("px.spark.light"),
+                        (round(hx), round(hy)),
+                        round(hostile.radius) + 2,
+                        1,
+                    )
 
             drawables.append((feet[1], draw_robot))
 
@@ -1241,9 +1257,19 @@ class PixelView:
                 image = self._rival_sprite(rival, player, tick)
                 draw_at_feet(image, rival_feet)
                 if RIVAL_FLASH in self.flashes:
-                    flash = effects.tinted(image, "fx.flash")
-                    flash.set_alpha(self.flashes[RIVAL_FLASH] * 24)
-                    draw_at_feet(flash, rival_feet)
+                    if self.reduce_flash:
+                        rx, ry = v(rival.x, rival.y)
+                        pygame.draw.circle(
+                            screen,
+                            rgb("px.lamp.light"),
+                            (round(rx), round(ry)),
+                            round(rival.radius) + 2,
+                            1,
+                        )
+                    else:
+                        flash = effects.tinted(image, "fx.flash")
+                        flash.set_alpha(self.flashes[RIVAL_FLASH] * 24)
+                        draw_at_feet(flash, rival_feet)
                 if rival.boot > 0 and (tick // 4) % 3:
                     cx, cy = v(rival.x, rival.y)
                     ring = pygame.Rect(0, 0, 40, 46)
@@ -1259,7 +1285,8 @@ class PixelView:
             def draw_wreck(image=w_image, feet=w_feet, ticks=w_ticks) -> None:
                 if ticks % 4 < 2 or ticks < 20:  # it flickers, then holds as it fades
                     sink = (WRECK_TICKS - ticks) // 8
-                    shown = effects.tinted(image, "fx.flash") if ticks % 8 == 0 else image
+                    flash_wreck = ticks % 8 == 0 and not self.reduce_flash
+                    shown = effects.tinted(image, "fx.flash") if flash_wreck else image
                     fx, fy = v(*feet)
                     clip = pygame.Rect(0, 0, image.get_width(), image.get_height() - sink)
                     screen.blit(
@@ -1538,6 +1565,7 @@ class PixelView:
                 tick=tick,
                 keys=(self.binds.short("power_q"), self.binds.short("power_e")),
                 ready_flash=(self.ready_flash[0], self.ready_flash[1]),
+                reduce_flash=self.reduce_flash,
             ),
         )
         self._minimap(screen, run)
@@ -1555,7 +1583,11 @@ class PixelView:
         elif sector_visible:
             self._sector_banner(screen)
         if self.unlock_flash:
-            screen.blit(_flash(VIEW, self.unlock_flash * 8), (0, 0))
+            if self.reduce_flash:
+                if self.unlock_flash > 4:
+                    pygame.draw.rect(screen, rgb("power.spark"), (0, 0, VIEW[0], VIEW[1]), 2)
+            else:
+                screen.blit(_flash(VIEW, self.unlock_flash * 8), (0, 0))
         self._coach(screen, run, cam)
         if self.notice:
             message, ticks = self.notice
@@ -1640,15 +1672,21 @@ class PixelView:
         if stage == "ending" or outcome != "playing":
             return
         if self.hit_vignette > 0:
-            alpha = (self.hit_vignette * 14 // 8) * 8
-            if alpha > 0:
-                screen.blit(_edge_vignette(screen.get_size(), alpha, 4), (0, 0))
+            if self.reduce_flash:
+                screen.blit(_edge_vignette(screen.get_size(), 48, 2), (0, 0))
+            else:
+                alpha = (self.hit_vignette * 14 // 8) * 8
+                if alpha > 0:
+                    screen.blit(_edge_vignette(screen.get_size(), alpha, 4), (0, 0))
             return
         if player.charge == 1:
-            # Slow ~1 Hz breathing pulse (well under the 3 Hz photosensitivity ceiling).
-            raw = round(38 + 26 * math.sin(self.frames * 0.12))
-            alpha = max(16, (raw // 8) * 8)
-            screen.blit(_edge_vignette(screen.get_size(), alpha, 3), (0, 0))
+            if self.reduce_flash:
+                screen.blit(_edge_vignette(screen.get_size(), 40, 2), (0, 0))
+            else:
+                # Slow ~1 Hz breathing pulse (well under the 3 Hz photosensitivity ceiling).
+                raw = round(38 + 26 * math.sin(self.frames * 0.12))
+                alpha = max(16, (raw // 8) * 8)
+                screen.blit(_edge_vignette(screen.get_size(), alpha, 3), (0, 0))
 
     def _sector_banner(self, screen: pygame.Surface) -> None:
         """Non-blocking arrival card when stepping into Sector 2 or Sector 3."""

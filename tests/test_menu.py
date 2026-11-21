@@ -87,7 +87,7 @@ def test_the_hub_offers_continue_in_a_fuse_box_and_resume_mid_sector() -> None:
     assert menu.press(session, "select") == (None, ["quit"]), "QUIT asks twice"
 
 
-@pytest.mark.parametrize("item", ["LOADOUT", "FUSE", "CONTROLS"])
+@pytest.mark.parametrize("item", ["LOADOUT", "FUSE", "SETTINGS", "CONTROLS"])
 def test_each_hub_item_opens_its_own_screen_and_back_returns(item) -> None:
     session = fuse_box_with("spark")
     menu = Menu()
