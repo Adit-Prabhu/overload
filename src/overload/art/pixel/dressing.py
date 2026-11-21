@@ -98,6 +98,13 @@ def dress(
         if place == "wall"
         for k in range(len(words) * 6 // TILE + 2)
     }
+    # Tiles covered by each Fuse Box charging bay stay free of stains, puddles and drips.
+    blocked = props | {
+        (rx + dx, ry + dy)
+        for rx, ry, _, _ in fuse_rooms
+        for dx in range(6, 9)
+        for dy in range(2, 6)
+    }
 
     for ty in range(height):
         for tx in range(width):
@@ -105,7 +112,7 @@ def dress(
             sector = sector_at(tx, ty)
             if not wall(tx, ty):
                 _grime(background, x0, y0, tx, ty)
-                if room.decor[ty][tx] == "." and (tx, ty) not in props:
+                if room.decor[ty][tx] == "." and (tx, ty) not in blocked:
                     _floor_story(background, light, emitters, tx, ty, x0, y0, sector, clear(tx, ty))
                 _contact_shadow(background, x0, y0, wall, tx, ty)
                 if sector == 1:
@@ -169,8 +176,8 @@ def _fuse_pad(s: pygame.Surface, light: pygame.Surface, rect: tuple[int, int, in
         pygame.draw.circle(s, rgb(glow_token), (sx, mid_y), 2)
         pygame.draw.circle(light, rgb(token), (sx, mid_y), 5, 1)
         pygame.draw.circle(light, rgb(glow_token), (sx, mid_y), 2)
-    _px(s, "px.rarity.epic", cx - 1, mid_y - 1, 2, 2)
-    _px(light, "px.rarity.epic", cx - 1, mid_y - 1, 2, 2)
+    _px(s, "px.lamp.light", cx - 1, mid_y - 1, 2, 2)
+    _px(light, "px.lamp.light", cx - 1, mid_y - 1, 2, 2)
 
 
 def _noise(x: int, y: int) -> float:
