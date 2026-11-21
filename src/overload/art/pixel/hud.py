@@ -138,6 +138,7 @@ class Hud:
     tick: int = 0
     keys: tuple[str, str] = ("Q", "E")  # the power keys' short labels (game/keybinds.py)
     ready_flash: tuple[int, int] = (0, 0)  # ticks left to pulse a slot border when ready
+    reduce_flash: bool = False  # steady bar highlight instead of rapid venting flicker
 
 
 def draw(target: pygame.Surface, hud: Hud) -> None:
@@ -148,7 +149,7 @@ def draw(target: pygame.Surface, hud: Hud) -> None:
     pulse = (hud.tick // 8) % 2 == 0
 
     # Health: a battery glyph and one pip per point, red and pulsing when low.
-    body = "hostile.danger" if low and pulse else "player.core"
+    body = "hostile.danger" if low and (hud.reduce_flash or pulse) else "player.core"
     target.fill(rgb("px.outline"), (3, 3, 7, 11))
     pygame.draw.rect(target, rgb(body), (4, 5, 5, 8), 1)
     target.fill(rgb(body), (5, 4, 3, 1))
@@ -170,7 +171,7 @@ def draw(target: pygame.Surface, hud: Hud) -> None:
         ready = bool(power) and hud.cooldowns[i] <= 0
         rarity = rarity_of(power) if power else ""
         if ready and hud.ready_flash[i] > 0:
-            border = "fx.flash"
+            border = "px.lamp.light" if hud.reduce_flash else "fx.flash"
         elif ready and rarity:
             border = f"px.rarity.{rarity}"
         elif ready:
@@ -205,7 +206,13 @@ def draw(target: pygame.Surface, hud: Hud) -> None:
         text(target, title, (w // 2, 2), "ui.text", "midtop")
         target.fill(rgb("px.outline"), (bx - 1, 11, bar_w + 2, 5))
         target.fill(rgb("px.hostile.1"), (bx, 12, bar_w, 3))
-        fill = "fx.flash" if hud.rival_venting and (hud.tick // 4) % 2 else "px.hostile.3"
+        if hud.rival_venting:
+            if hud.reduce_flash:
+                fill = "px.lamp.light"
+            else:
+                fill = "fx.flash" if (hud.tick // 4) % 2 else "px.hostile.3"
+        else:
+            fill = "px.hostile.3"
         target.fill(rgb(fill), (bx, 12, round(bar_w * hud.rival_health), 3))
         for k in range(1, hud.rival_phases):  # where the next phases begin
             nx = bx + round(bar_w * k / hud.rival_phases)

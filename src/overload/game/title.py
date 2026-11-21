@@ -1,7 +1,7 @@
 """The title screen: the wordmark over a slowly drifting, darkened view of the substation, a
-three-item menu (Start, Controls, Quit) and a controls page in the same framed-panel style as
-the loadout screen, where every key can be rebound (game/keybinds.py). Pure presentation:
-nothing here touches the simulation."""
+four-item menu (Start, Settings, Controls, Quit), a settings page (game/settings.py) and a
+controls page in the same framed-panel style as the loadout screen, where every key can be
+rebound (game/keybinds.py). Pure presentation: nothing here touches the simulation."""
 
 from __future__ import annotations
 
@@ -18,9 +18,11 @@ from overload.art.pixel import regulators as regulators_art
 from overload.floor import FLOOR
 from overload.game import keybinds
 from overload.game.keybinds import ACTIONS, Keybinds, RebindPage
+from overload.game.settings import ROWS as SETTING_ROWS
+from overload.game.settings import Settings, SettingsPage
 from overload.sim.difficulty import DIFFICULTIES
 
-ITEMS = ("START", "CONTROLS", "QUIT")
+ITEMS = ("START", "SETTINGS", "CONTROLS", "QUIT")
 # One line on what each preset changes (sim/difficulty.py). Medium is the formal playtest's.
 ABOUT = {
     "easy": "MORE CELLS, SOFTER BOTS",
@@ -77,6 +79,45 @@ def rebind_footer(page: RebindPage, nav: str = "W/S") -> str:
     if page.capturing:
         return "ESC CANCELS"
     return page.notice or f"{nav} MOVE  ENTER CHANGE  ESC BACK"
+
+
+def draw_settings(
+    screen: pygame.Surface, page: SettingsPage, left: int, right: int, top: int
+) -> int:
+    """Shared settings table: volume bars, comfort toggles, fullscreen and reset."""
+    for i, (field_name, title) in enumerate(SETTING_ROWS):
+        y = top + i * 14
+        chosen = i == page.row
+        if chosen:
+            screen.fill(rgb("px.wall.1"), (left - 2, y + 1, right - left + 4, 11))
+        hud.text(screen, title, (left, y + 2), "ui.text" if chosen else "ui.dim")
+        raw = getattr(page.settings, field_name)
+        label = page.value_label(field_name)
+        shown = f"< {label} >" if chosen else label
+        if isinstance(raw, bool):
+            token = "px.hazard.1" if raw else ("ui.text" if chosen else "ui.dim")
+        else:
+            token = "px.hazard.1" if chosen else "ui.text"
+            # 10-segment volume bar just left of the numeric value.
+            bar_x = right - 92
+            lit = raw // 10
+            for seg in range(10):
+                rect = (bar_x + seg * 4, y + 4, 3, 5)
+                if seg < lit:
+                    screen.fill(rgb("px.hazard.1" if chosen else "player.core"), rect)
+                else:
+                    pygame.draw.rect(screen, rgb("px.floor.3"), rect, 1)
+        hud.text(screen, shown, (right, y + 2), token, "topright")
+    y = top + len(SETTING_ROWS) * 14
+    chosen = page.row == len(SETTING_ROWS)
+    if chosen:
+        screen.fill(rgb("px.wall.1"), (left - 2, y + 1, right - left + 4, 11))
+    hud.text(screen, "RESET DEFAULTS", (left, y + 2), "ui.text" if chosen else "ui.dim")
+    return y + 14
+
+
+def settings_footer(page: SettingsPage, nav: str = "W/S", side: str = "A/D") -> str:
+    return page.notice or f"{nav} MOVE  {side} CHANGE  ESC BACK"
 
 
 @cache
@@ -153,12 +194,19 @@ def forget() -> None:
 class TitleScreen:
     """Feed it key presses with `press`. `choice` becomes "start" or "quit"."""
 
-    def __init__(self, difficulty: str = "medium", binds: Keybinds | None = None) -> None:
+    def __init__(
+        self,
+        difficulty: str = "medium",
+        binds: Keybinds | None = None,
+        settings: Settings | None = None,
+    ) -> None:
         self.keys = RebindPage(binds or Keybinds())
+        self.settings_page = SettingsPage(settings or Settings())
         self.selected = 0
         self.difficulty = difficulty
         self.page = "menu"
         self.choice: str | None = None
+        self.display_dirty = False
         self.tick = 0
         self.cosmetic = random.Random(7)
         self.sparks: list[list[float]] = []
@@ -173,6 +221,18 @@ class TitleScreen:
                 self.keys.capture(name if keybinds.known(name) else "escape")
             elif self.keys.nav(TITLE_KEYS.get(key, "")) == "back":
                 self.page = "menu"
+            return
+        if self.page == "settings":
+            sound, display_changed = self.settings_page.nav(TITLE_KEYS.get(key, ""))
+            if display_changed:
+                self.display_dirty = True
+            if sound == "back":
+                self.page = "menu"
+                self.sounds.append("menu_move")
+            elif sound == "move":
+                self.sounds.append("menu_move")
+            elif sound == "confirm":
+                self.sounds.append("confirm")
             return
         if key in (pygame.K_w, pygame.K_UP):
             self.selected = (self.selected - 1) % len(ITEMS)
@@ -190,6 +250,9 @@ class TitleScreen:
             item = ITEMS[self.selected]
             if item == "START":
                 self.choice = "start"
+            elif item == "SETTINGS":
+                self.page = "settings"
+                self.settings_page.row, self.settings_page.notice = 0, ""
             elif item == "CONTROLS":
                 self.page = "controls"
                 self.keys.row, self.keys.notice = 0, ""
@@ -237,6 +300,8 @@ class TitleScreen:
             )
         if self.page == "controls":
             self._controls(screen)
+        elif self.page == "settings":
+            self._settings(screen)
         else:
             self._menu(screen)
         hud.text(screen, f"OVERLOAD {__version__}", (4, h - 3), "px.floor.3", "bottomleft")
@@ -249,7 +314,7 @@ class TitleScreen:
         w, h = screen.get_size()
         self._standoff(screen)
         mark = _wordmark()
-        top = mark.get_rect(midtop=(w // 2, 8))
+        top = mark.get_rect(midtop=(w // 2, 4))
         flicker = self.tick % 240 in (100, 103)  # the sign stutters now and then
         if not flicker:
             glow = _glow()
@@ -258,18 +323,18 @@ class TitleScreen:
             screen.blit(mark, top)
         if self.zap:
             self._bolt(screen, (top.left + 4, top.centery), (top.right - 4, top.centery), 5)
-        hud.text(screen, "SURGE VERSUS THE REGULATOR", (w // 2, top.bottom - 1), "ui.dim", "midtop")
+        hud.text(screen, "SURGE VERSUS THE REGULATOR", (w // 2, top.bottom - 4), "ui.dim", "midtop")
 
         left = 22
         for i, item in enumerate(ITEMS):
-            y = 58 + i * 12
+            y = 52 + i * 10
             chosen = i == self.selected
             if chosen:
-                screen.fill(rgb("px.wall.1"), (left - 4, y + 2, 92, 10))
-                screen.fill(rgb("px.hazard.1"), (left - 4, y + 2, 2, 10))
+                screen.fill(rgb("px.wall.1"), (left - 4, y + 2, 92, 9))
+                screen.fill(rgb("px.hazard.1"), (left - 4, y + 2, 2, 9))
             token = "px.hazard.1" if chosen else "ui.dim"
             hud.text(screen, item, (left + 2, y), token)
-        y = 98
+        y = 97
         hud.text(screen, "DIFFICULTY", (left - 2, y), "ui.dim")
         name = self.difficulty.upper()
         hud.text(screen, f"< {name} >", (left - 2, y + 10), "ui.text")
@@ -323,12 +388,35 @@ class TitleScreen:
         token = "px.hazard.1" if self.keys.capturing or not self.keys.notice else "px.lamp"
         hud.text(screen, rebind_footer(self.keys), (right, panel.bottom - 11), token, "topright")
 
+    def _settings(self, screen: pygame.Surface) -> None:
+        w, h = screen.get_size()
+        panel = pygame.Rect(18, 10, w - 36, h - 20)
+        screen.fill(rgb("px.outline"), panel)
+        pygame.draw.rect(screen, rgb("px.wall.2"), panel, 1)
+        left, right = panel.x + 6, panel.right - 6
+        hud.text(screen, "SETTINGS", (left, panel.y + 4), "ui.text")
+        hud.text(screen, "AUDIO AND DISPLAY", (right, panel.y + 4), "ui.dim", "topright")
+        screen.fill(rgb("px.wall.1"), (left, panel.y + 14, right - left, 1))
+        draw_settings(screen, self.settings_page, left, right, panel.y + 20)
+        token = "px.lamp" if self.settings_page.notice else "ui.dim"
+        hud.text(
+            screen,
+            settings_footer(self.settings_page),
+            (right, panel.bottom - 11),
+            token,
+            "topright",
+        )
+
 
 TITLE_KEYS = {
     pygame.K_w: "up",
     pygame.K_UP: "up",
     pygame.K_s: "down",
     pygame.K_DOWN: "down",
+    pygame.K_a: "left",
+    pygame.K_LEFT: "left",
+    pygame.K_d: "right",
+    pygame.K_RIGHT: "right",
     pygame.K_RETURN: "select",
     pygame.K_KP_ENTER: "select",
     pygame.K_SPACE: "select",
@@ -343,18 +431,27 @@ def run_title(
     difficulty: str = "medium",
     binds: Keybinds | None = None,
     audio=None,
+    settings: Settings | None = None,
+    on_display=None,
 ) -> str | None:
     """Return the selected difficulty on Start, or None on quit. Keys rebound on the
-    controls page change `binds` (and are saved, if it has a path). With `audio`
-    (game/audio.py), the title music plays and the menu has its sounds."""
-    title = TitleScreen(difficulty, binds)
+    controls page change `binds` (and are saved, if it has a path), and settings edits
+    update `settings` live. With `audio` (game/audio.py), the title music plays and the
+    menu has its sounds."""
+    title = TitleScreen(difficulty, binds, settings)
     while title.choice is None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return None
             if event.type == pygame.KEYDOWN and title.choice is None:
                 title.press(event.key)
+        if title.display_dirty:
+            title.display_dirty = False
+            if on_display is not None:
+                screen = on_display(title.settings_page.settings.fullscreen)
         if audio is not None:
+            if settings is not None:
+                audio.apply_settings(settings)
             for sound in title.sounds:
                 audio.play(sound)
             audio.update("title", 1, "playing")

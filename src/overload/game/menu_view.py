@@ -1,6 +1,6 @@
 """Draws the menu (game/menu.py) at the view's 256 x 144: the hub, LOADOUT, FUSE with its
-cards, spin and reveal, and CONTROLS. Rarity always shows by shape first (1, 2 or 3 cross
-marks and the card frame), then color (art direction, rarity tokens)."""
+cards, spin and reveal, SETTINGS and CONTROLS. Rarity always shows by shape first (1, 2 or 3
+cross marks and the card frame), then color (art direction, rarity tokens)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from overload.game.menu import (
     percentages,
     roll_terms,
 )
-from overload.game.title import draw_rebind, rebind_footer
+from overload.game.title import draw_rebind, draw_settings, rebind_footer, settings_footer
 from overload.sim.fusions import INHERITS
 from overload.sim.powers import (
     BASE_POWERS,
@@ -179,13 +179,14 @@ def draw_hub(screen, menu: Menu, session, ready: bool, message: str | None, sect
         for a, b in RECIPE_ORDER
     )
     pulse = (pygame.time.get_ticks() // 400) % 2 == 0  # cosmetic only
+    step = 11 if len(menu.hub_items) > 6 else 12
     for i, item in enumerate(menu.hub_items):
-        y = top + 20 + i * 13  # room for six items (dev mode adds DEV) above the message
+        y = top + 16 + i * step  # room for 7 items (dev mode adds DEV) above the fallback line
         chosen = i == menu.hub
         waiting = item == "CONTINUE" and not ready
         go = item == "CONTINUE" and ready  # pilot playtest: make the way on obvious
         if chosen:
-            screen.fill(rgb("px.wall.1"), (left - 2, y - 2, 104, 12))
+            screen.fill(rgb("px.wall.1"), (left - 2, y - 1, 104, step - 1))
             hud.text(screen, ">", (left, y), "px.hazard.1")
         token = "px.floor.3" if waiting else ("ui.text" if chosen else "ui.dim")
         if go:
@@ -574,7 +575,18 @@ def _help(screen, session) -> None:
     hud.text(screen, "H OR ESC CLOSES", (box.right - 6, box.y + 3), "ui.dim", "topright")
 
 
-# Controls --------------------------------------------------------------------------------------
+# Settings and Controls -------------------------------------------------------------------------
+
+
+def draw_settings_screen(screen, menu: Menu) -> None:
+    left, right, top = _frame(screen)
+    _header(screen, "SETTINGS", "AUDIO AND DISPLAY", left, right, top)
+    page = menu.settings_page
+    draw_settings(screen, page, left, right, top + 18)
+    keys = menu.keys_page.binds
+    token = "px.lamp" if page.notice else "ui.dim"
+    footer = settings_footer(page, keys.pair("up", "down"), keys.pair("left", "right"))
+    _footer(screen, footer, left, token)
 
 
 def draw_controls(screen, menu: Menu) -> None:
@@ -612,6 +624,8 @@ def draw_menu(screen, menu: Menu, session, tuning, ready: bool, message, sector:
         draw_loadout(screen, menu, session, tuning)
     elif menu.screen == "fuse":
         draw_fuse(screen, menu, session)
+    elif menu.screen == "settings":
+        draw_settings_screen(screen, menu)
     elif menu.screen == "dev":
         draw_dev(screen, menu)
     else:
