@@ -188,6 +188,12 @@ HINT_RIGHT = 206  # the hint strip ends left of the power slots (x = 210 at 256 
 DOWNED_TICKS = 180
 INTRO_SLIDE = 18  # ticks the name card takes to slide in during the boot
 BEAM_TICKS = 10
+DEFLECT_TICKS = 7
+SECTOR_BANNER_TICKS = 90
+SECTOR_TITLES = {
+    "s2_entry": (2, "SECTOR 2", "COOLING PLANT", "px.jacket.2"),
+    "s3_entry": (3, "SECTOR 3", "GRID CORE", "px.core.3"),
+}
 # Kit attacks drawn with another attack's tell shape (art/pixel/effects.py).
 KIT_TELLS = {
     "double_ring": "ring",
@@ -326,6 +332,21 @@ def _dim(size: tuple[int, int], alpha: int = 190) -> pygame.Surface:
     return panel
 
 
+@cache
+def _edge_vignette(size: tuple[int, int], alpha: int, thickness: int) -> pygame.Surface:
+    """A thin danger-red perimeter border for player hits and single-cell low battery."""
+    w, h = size
+    panel = pygame.Surface(size, pygame.SRCALPHA)
+    outer = rgba("hostile.danger", alpha)
+    inner = rgba("hostile.danger", alpha // 2)
+    pygame.draw.rect(panel, outer, (0, 0, w, h), thickness)
+    if w > thickness * 2 and h > thickness * 2:
+        pygame.draw.rect(
+            panel, inner, (thickness, thickness, w - thickness * 2, h - thickness * 2), 1
+        )
+    return panel
+
+
 def _wrap(text: str, width: int) -> list[str]:
     lines: list[str] = []
     for word in text.split():
@@ -395,7 +416,9 @@ LEAD_LIMIT = (VIEW[0] / 2 - SURGE_MARGIN[0], VIEW[1] / 2 - SURGE_MARGIN[1])
 
 class PixelView:
     def __init__(self, run: Run | Campaign) -> None:
-        self.room = tiles.render_room(run.arena.room, tiles.floor_sectors(run.arena.floor))
+        self.room = tiles.render_room(
+            run.arena.room, tiles.floor_sectors(run.arena.floor), run.arena.floor
+        )
         self.room_data = run.arena.room
         self.room_size = run.arena.size
         self.glow = Glow(VIEW)
@@ -412,6 +435,7 @@ class PixelView:
         self.tint = [255.0, 255.0, 255.0]
         self.chains: list[tuple] = []
         self.blasts: list[tuple] = []  # ring effects: x, y, radius, life, power
+        self.deflects: list[tuple[float, float, int]] = []  # shield bounce rings: x, y, life
         self.gaits: dict[int, Gait] = {}  # per robot id (-1 the Regulator): walk cycles
         self.frames = 0
         self.motes: list[Mote] = []  # steam and dust, drifting
@@ -427,7 +451,10 @@ class PixelView:
         self.lance_from: tuple[float, float] | None = None  # where a Bolt Lance started
         self.lance_bolt: tuple | None = None  # (start, end, life) after the lance ends
         self.notice: tuple[str, int] | None = None
+        self.sector_banner: tuple[str, str, str, int] | None = None
+        self.announced_sectors: set[int] = {1}
         self.unlock_flash = 0
+        self.hit_vignette = 0
         self.shake = 0
         self.walking = 0
         self.last_player = (run.world.player.x, run.world.player.y)
@@ -579,7 +606,8 @@ class PixelView:
         rival = run.world.rival
         self.rival_last = rival if rival and rival.health > 0 else None
         if run.world.outcome == "down":
-            self.wreck = self.boss_banner = None
+            self.wreck = self.boss_banner = self.sector_banner = None
+            self.hit_vignette = 0
             self.booms.clear()
             self.flyers.clear()
         for wave in run.world.shockwaves:  # dust kicked up along the running ring
@@ -603,6 +631,10 @@ class PixelView:
             if room is not None:
                 self.seen.add(room.id)
                 self.sector = room.sector
+                info = SECTOR_TITLES.get(room.id)
+                if info is not None and info[0] not in self.announced_sectors:
+                    self.announced_sectors.add(info[0])
+                    self.sector_banner = (info[1], info[2], info[3], SECTOR_BANNER_TICKS)
             # Each sector has its own light, eased in as the Surge walks into it.
             target = rgb(f"px.tint.{self.sector}")
             self.tint = [c + (t - c) * 0.04 for c, t in zip(self.tint, target, strict=True)]
@@ -660,9 +692,27 @@ class PixelView:
                 self._burst(event.x, event.y, 8, f"power.{event.power or 'spark'}", 1.4)
             elif event.kind == "player_hit":
                 self._burst(event.x, event.y, 10, "player.core", 1.6)
+                self.shake = max(self.shake, 8)
+                self.hit_vignette = 10
             elif event.kind == "rival_hit":
-                self.flashes[RIVAL_FLASH] = 4
-                self._burst(event.x, event.y, 3, "px.hostile.3", 1.2)
+                venting = event.power == "vent"
+                damage = max(1, event.ref)
+                heavy = damage >= 6
+                self.flashes[RIVAL_FLASH] = 5 if venting else 4
+                self._burst(
+                    event.x,
+                    event.y,
+                    min(10, 3 + damage),
+                    "px.hostile.3",
+                    1.2 + (0.4 if heavy else 0.0),
+                )
+                if heavy:
+                    self.shake = max(self.shake, 3)
+                if venting:
+                    self._burst(event.x, event.y, 10, "px.lamp.light", 2.0)
+                    self._burst(event.x, event.y, 6, "power.spark", 1.7)
+                    self.blasts.append((event.x, event.y, 18, BLAST_TICKS, "spark"))
+                    self.shake = max(self.shake, 4)
             elif event.kind == "rival_destroyed" and run.world.outcome != "down":
                 self._burst(event.x, event.y, 30, "px.hostile.3", 2.4)
                 self._burst(event.x, event.y, 18, "px.lamp.light", 2.0)
@@ -676,7 +726,8 @@ class PixelView:
                 self.shake = 16
                 self.unlock_flash = 14
             elif event.kind == "rival_shielded":
-                self._burst(event.x, event.y, 2, "ui.dim", 0.8)
+                self._burst(event.x, event.y, 5, "px.wall.4", 1.1)
+                self.deflects.append((event.x, event.y, DEFLECT_TICKS))
             elif event.kind == "blink_from":
                 blink_start = (event.x, event.y)
                 self.blinks.append((event.x, event.y, 16))
@@ -1030,12 +1081,17 @@ class PixelView:
         self.blasts = [
             (x, y, r, life - 1, power) for x, y, r, life, power in self.blasts if life > 1
         ]
+        self.deflects = [(x, y, life - 1) for x, y, life in self.deflects if life > 1]
         if self.lance_bolt:
             start, end, life = self.lance_bolt
             self.lance_bolt = (start, end, life - 1) if life > 1 else None
         self.unlock_flash = max(0, self.unlock_flash - 1)
+        self.hit_vignette = max(0, self.hit_vignette - 1)
         self.shake = max(0, self.shake - 1)
         self.ready_flash = [max(0, ticks - 1) for ticks in self.ready_flash]
+        if self.sector_banner is not None:
+            title, subtitle, token, ticks = self.sector_banner
+            self.sector_banner = (title, subtitle, token, ticks - 1) if ticks > 1 else None
         if self.notice:
             message, ticks = self.notice
             self.notice = (message, ticks - 1) if ticks > 1 else None
@@ -1407,6 +1463,8 @@ class PixelView:
             effects.chain_bolt(screen, self.glow.layer, v(*a), v(*b), cable)
         for x, y, radius, life, power in self.blasts:
             effects.blast_ring(screen, self.glow.layer, v(x, y), radius, life / BLAST_TICKS, power)
+        for x, y, life in self.deflects:
+            effects.deflect_ring(screen, self.glow.layer, v(x, y), life / DEFLECT_TICKS)
         for mote in self.motes:
             mx, my = v(mote.x, mote.y)
             screen.fill(rgb(mote.token), (round(mx), round(my), mote.size, mote.size))
@@ -1450,6 +1508,8 @@ class PixelView:
         if tint != (255, 255, 255):
             screen.fill(tint, special_flags=pygame.BLEND_RGB_MULT)
         self.glow.apply(screen)
+        stage = getattr(run, "stage", None)
+        self._draw_vignette(screen, player, world.outcome, stage)
 
         dodge_total = tuning.dodge_ticks + tuning.dodge_cooldown
         hud.draw(
@@ -1483,17 +1543,30 @@ class PixelView:
         self._minimap(screen, run)
         if rival is not None and rival.health > 0 and rival.boot > 0:
             self._intro_card(screen, rival, tuning)
+        sector_visible = (
+            self.boss_banner is None
+            and self.sector_banner is not None
+            and rival is None
+            and world.outcome == "playing"
+            and stage != "ending"
+        )
         if self.boss_banner is not None:
             self._boss_banner(screen)
+        elif sector_visible:
+            self._sector_banner(screen)
         if self.unlock_flash:
             screen.blit(_flash(VIEW, self.unlock_flash * 8), (0, 0))
         self._coach(screen, run, cam)
         if self.notice:
             message, ticks = self.notice
             if ticks > 8 or ticks % 2:
-                y = 33 if rival and BY_KIND[rival.kind].phases else 26
+                if sector_visible:
+                    y = 50
+                elif rival and BY_KIND[rival.kind].phases:
+                    y = 33
+                else:
+                    y = 26
                 hud.text(screen, message, (VIEW[0] // 2, y), "power.spark", "midtop")
-        stage = getattr(run, "stage", None)
         if world.outcome == "down" or (stage is None and world.outcome == "clear"):
             self._banner(screen, world.outcome)
         reticle = effects.reticle()
@@ -1560,18 +1633,58 @@ class PixelView:
             effects.bubble(screen, glow, at, tuning.toss_radius, 1.0, tick, "power.magnet")
             effects.charge(screen, glow, at, "bulwark", tick / TICK_RATE)
 
+    def _draw_vignette(
+        self, screen: pygame.Surface, player, outcome: str, stage: str | None = None
+    ) -> None:
+        """Danger-red perimeter border on player damage or when down to the last battery cell."""
+        if stage == "ending" or outcome != "playing":
+            return
+        if self.hit_vignette > 0:
+            alpha = (self.hit_vignette * 14 // 8) * 8
+            if alpha > 0:
+                screen.blit(_edge_vignette(screen.get_size(), alpha, 4), (0, 0))
+            return
+        if player.charge == 1:
+            # Slow ~1 Hz breathing pulse (well under the 3 Hz photosensitivity ceiling).
+            raw = round(38 + 26 * math.sin(self.frames * 0.12))
+            alpha = max(16, (raw // 8) * 8)
+            screen.blit(_edge_vignette(screen.get_size(), alpha, 3), (0, 0))
+
+    def _sector_banner(self, screen: pygame.Surface) -> None:
+        """Non-blocking arrival card when stepping into Sector 2 or Sector 3."""
+        title, subtitle, token, ticks = self.sector_banner
+        w = screen.get_width()
+        card = pygame.Surface((138, 25), pygame.SRCALPHA)
+        card.blit(_dim(card.get_size(), 200), (0, 0))
+        card.fill(rgb(token), (0, 0, card.get_width(), 1))
+        card.fill(rgb(token), (0, card.get_height() - 1, card.get_width(), 1))
+        hud.text(card, title, (card.get_width() // 2, 3), "ui.text", "midtop")
+        hud.text(card, subtitle, (card.get_width() // 2, 13), token, "midtop")
+        if ticks < 16:
+            card.set_alpha(max(0, ticks * 16))
+        screen.blit(card, card.get_rect(midtop=(w // 2, 22)))
+
     def _intro_card(self, screen: pygame.Surface, rival, tuning) -> None:
-        """Bring in the chassis name during boot, in the space above the power slots."""
+        """Bring in the chassis name and active protocol during boot, above the power slots.
+        Identical across live, fixed and off conditions (D5 revision, Nov 21)."""
         w, h = screen.get_size()
         elapsed = tuning.rival_boot - rival.boot
         slide = min(1.0, elapsed / INTRO_SLIDE)
         x = round(-120 + (w // 2 + 120) * (1 - (1 - slide) ** 3))
-        panel = pygame.Rect(0, h - 61, 150, 27)
+        panel = pygame.Rect(0, h - 72, 170, 38)
         panel.centerx = x
-        screen.blit(_dim(panel.size, 215), panel)
+        screen.blit(_dim(panel.size, 220), panel)
+        pygame.draw.rect(screen, rgb("px.hostile.2"), panel, 1)
         name = big_text(BY_KIND[rival.kind].name, "hostile.danger")
         screen.blit(name, name.get_rect(midtop=(x, panel.y + 2)))
-        hud.text(screen, f"SECTOR {self.sector} REGULATOR", (x, panel.y + 17), "ui.dim", "midtop")
+        hud.text(screen, f"SECTOR {self.sector} REGULATOR", (x, panel.y + 18), "ui.dim", "midtop")
+        pose = POSES[rival.protocol]
+        icon = effects.protocol_icon(pose)
+        label = f"{pose.upper()} PROTOCOL"
+        label_w = hud.pixel_font().size(label)[0]
+        row_x = x - (icon.get_width() + 3 + label_w) // 2
+        screen.blit(icon, icon.get_rect(midleft=(row_x, panel.y + 31)))
+        hud.text(screen, label, (row_x + icon.get_width() + 3, panel.y + 26), "px.hazard.1")
 
     def _boss_banner(self, screen: pygame.Surface) -> None:
         name, ticks = self.boss_banner

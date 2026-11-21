@@ -563,7 +563,7 @@ def floor_sectors(floor) -> dressing.SectorAt:
     return lambda tx, ty: cells.get((tx // CELL[0], ty // CELL[1]), 1)
 
 
-def render_room(room: Room, sector_at: dressing.SectorAt | None = None) -> RoomArt:
+def render_room(room: Room, sector_at: dressing.SectorAt | None = None, floor=None) -> RoomArt:
     w, h = room.size
     background = pygame.Surface((w, h))
     background.fill(rgb("px.void"))
@@ -689,6 +689,9 @@ def render_room(room: Room, sector_at: dressing.SectorAt | None = None) -> RoomA
     fixture_tiles = {
         (tx, ty) for ty, row in enumerate(decor) for tx, char in enumerate(row) if char in "PSLVMp"
     }
+    fuse_rooms = tuple(r.rect for r in floor.rooms if r.kind == "fuse") if floor is not None else ()
+    for rx, ry, _, _ in fuse_rooms:
+        art.ceiling.append(((rx + 7) * TILE + 8, (ry + 4) * TILE + 14))
     art.emitters = dressing.dress(
         background,
         light,
@@ -697,6 +700,7 @@ def render_room(room: Room, sector_at: dressing.SectorAt | None = None) -> RoomA
         art.lamps,
         prop_tiles,
         fixture_tiles,
+        fuse_rooms=fuse_rooms,
     )
 
     # Stenciled signage: wall words sit on the upper face, floor words are worn paint.

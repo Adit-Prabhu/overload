@@ -715,6 +715,19 @@ def blast_ring(
         pygame.draw.circle(surface, rgb(f"px.{power}.light"), center, max(1, r - 3), 1)
 
 
+def deflect_ring(
+    target: pygame.Surface,
+    light: pygame.Surface,
+    pos: Point,
+    life: float,
+) -> None:
+    """A crisp pale impact ring where a shot bounces off a shielded Regulator."""
+    r = max(2, round(10 * (1.0 - 0.7 * life)))
+    center = (round(pos[0]), round(pos[1]))
+    pygame.draw.circle(target, rgb("px.wall.4"), center, r, 1)
+    pygame.draw.circle(light, rgb("ui.text"), center, max(1, r - 1), 1)
+
+
 def mine(target: pygame.Surface, light: pygame.Surface, pos: Point, fuse: float) -> None:
     """A Shock Mine: a spiked charge. Armed, a dotted ring closes in as the fuse burns
     (`fuse` from 1 at arming to 0 at the burst), the same filling tell as hostile attacks

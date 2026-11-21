@@ -373,3 +373,178 @@ def test_hud_slots_show_rarity_marks_and_ready_flash(display) -> None:
     # Three legendary crosses sit below the slot inside the 256 x 144 frame.
     colors = {screen.get_at((x, y))[:3] for x in range(210, 228) for y in range(136, 141)}
     assert rgb("px.rarity.legendary") in colors
+
+
+@pytest.mark.parametrize(
+    ("chamber", "sector", "protocol", "expected"),
+    [
+        ("s1_chamber", 1, "pressure", "CLAMP PROTOCOL"),
+        ("s2_chamber", 2, "spacing", "INSULATE PROTOCOL"),
+        ("s3_chamber", 3, "lateral", "OSCILLATE PROTOCOL"),
+        (None, 1, "lateral", "OSCILLATE PROTOCOL"),
+    ],
+)
+def test_boss_intro_card_names_active_protocol(
+    display, chamber, sector, protocol, expected
+) -> None:
+    from overload.art.pixel import hud
+    from overload.game.view import PixelView
+    from overload.sim.run import Run
+
+    if chamber is None:
+        from overload.sim.spawns import spawn_rival
+
+        run = Run(1)
+        rival = spawn_rival(run.world, 128.0, 72.0, protocol, run.tuning)
+    else:
+        run = Campaign(1)
+        enter(run, chamber)
+        rival = run.world.rival
+    rival.protocol = protocol
+    view = PixelView(run)
+    view.sector = sector
+    # Slide start (elapsed == 0) renders safely without error.
+    rival.boot = run.tuning.rival_boot
+    view._intro_card(display, rival, run.tuning)
+    # Fully slid in (elapsed >= INTRO_SLIDE): verify text and bounds.
+    rival.boot = run.tuning.rival_boot - 20
+    drawn: list[tuple[str, pygame.Rect]] = []
+    original = hud.text
+
+    def record(target, message, pos, *args, **kwargs):
+        rect = original(target, message, pos, *args, **kwargs)
+        drawn.append((message, rect))
+        return rect
+
+    hud.text = record
+    try:
+        view._intro_card(display, rival, run.tuning)
+    finally:
+        hud.text = original
+    texts = [msg for msg, _ in drawn]
+    assert expected in texts
+    assert f"SECTOR {sector} REGULATOR" in texts
+    panel_left = (256 - 170) // 2
+    panel_right = panel_left + 170
+    for msg, rect in drawn:
+        assert panel_left < rect.left and rect.right < panel_right, f"{msg} clipped card: {rect}"
+        assert rect.bottom <= 112, f"{msg} overlaps HUD key tabs: {rect}"
+
+
+def test_vent_crit_heavy_hit_shield_deflect_and_player_hit_feedback(display) -> None:
+    from overload.art.palette import rgb
+    from overload.game.view import BLAST_TICKS, DEFLECT_TICKS, PixelView
+    from overload.sim.difficulty import PRESETS
+    from overload.sim.state import Event
+
+    campaign = Campaign(1)
+    view = PixelView(campaign)
+    # Normal light hit: no shake, no blast ring.
+    campaign.world.events = [Event("rival_hit", 100.0, 100.0, 2, "")]
+    view.after_tick(campaign)
+    assert view.shake == 0 and not view.blasts
+    # Heavy non-vent hit (damage >= 6): micro-jolt.
+    campaign.world.events = [Event("rival_hit", 100.0, 100.0, 6, "")]
+    view.after_tick(campaign)
+    assert view.shake >= 2 and abs(view.jolt()[0]) >= 1
+    # Vent crit hit: full-duration gold blast ring + stronger jolt + longer flash.
+    view.shake = 0
+    campaign.world.events = [Event("rival_hit", 100.0, 100.0, 4, "vent")]
+    view.after_tick(campaign)
+    assert view.shake >= 3 and view.flashes[-1] == 4
+    assert any(life == BLAST_TICKS - 1 and p == "spark" for _, _, _, life, p in view.blasts)
+    # Shield deflection spawns a deflect ring and decays to empty over DEFLECT_TICKS.
+    campaign.world.events = [Event("rival_shielded", 100.0, 100.0)]
+    view.after_tick(campaign)
+    assert len(view.deflects) == 1
+    view.draw(display, campaign, (128, 72))
+    campaign.world.events = []
+    for _ in range(DEFLECT_TICKS):
+        view.after_tick(campaign)
+    assert not view.deflects
+    # Player hit produces a real 2 px jolt on the very next draw and lights the danger vignette.
+    view.shake = 0
+    campaign.world.events = [Event("player_hit", 100.0, 100.0)]
+    view.after_tick(campaign)
+    assert abs(view.jolt()[0]) == 2 and view.hit_vignette == 9
+    campaign.world.events = []
+    display.fill(rgb("px.void"))
+    view._draw_vignette(display, campaign.world.player, "playing", "encounter")
+    assert display.get_at((0, 0))[:3] != rgb("px.void"), "hit vignette drew red edge"
+    # Single-cell low battery draws the breathing edge vignette only while playing, not at 2
+    # cells (even on Nightmare max_charge == 4), not when down and not during ending.
+    view.hit_vignette = 0
+    campaign.world.player.charge = 1
+    display.fill(rgb("px.void"))
+    view._draw_vignette(display, campaign.world.player, "playing", "encounter")
+    assert display.get_at((0, 0))[:3] != rgb("px.void")
+    for outcome, stage in (("down", "encounter"), ("playing", "ending")):
+        display.fill(rgb("px.void"))
+        view._draw_vignette(display, campaign.world.player, outcome, stage)
+        assert display.get_at((0, 0))[:3] == rgb("px.void")
+    nightmare = Campaign(1, PRESETS["nightmare"])
+    nightmare.world.player.charge = 2
+    display.fill(rgb("px.void"))
+    view._draw_vignette(display, nightmare.world.player, "playing", "encounter")
+    assert display.get_at((0, 0))[:3] == rgb("px.void")
+
+
+def test_sector_arrival_banners_and_fuse_box_charging_bay(display) -> None:
+    from overload.art.palette import rgb
+    from overload.art.pixel import hud
+    from overload.game.view import SECTOR_BANNER_TICKS, PixelView
+
+    campaign = Campaign(1)
+    view = PixelView(campaign)
+    assert view.sector_banner is None
+    enter(campaign, "s2_entry")
+    view.after_tick(campaign)
+    assert view.sector_banner is not None
+    assert view.sector_banner[:2] == ("SECTOR 2", "COOLING PLANT")
+    # Notice toast shifts below the sector banner while it is visible (no overlap).
+    view.toast("A HIDDEN ROOM", 40)
+    drawn: list[tuple[str, pygame.Rect]] = []
+    original = hud.text
+
+    def record(target, message, pos, *args, **kwargs):
+        rect = original(target, message, pos, *args, **kwargs)
+        drawn.append((message, rect))
+        return rect
+
+    hud.text = record
+    try:
+        view.draw(display, campaign, (128, 72))
+    finally:
+        hud.text = original
+    notice_rect = next(rect for msg, rect in drawn if msg == "A HIDDEN ROOM")
+    assert notice_rect.top >= 48, f"notice overlapped sector banner: {notice_rect}"
+    # Decays to None over SECTOR_BANNER_TICKS and does not re-announce on revisit.
+    for _ in range(SECTOR_BANNER_TICKS):
+        view.after_tick(campaign)
+    assert view.sector_banner is None
+    view.after_tick(campaign)
+    assert view.sector_banner is None
+    # Sector 3 announces once, clears on down, and stays suppressed on retry.
+    enter(campaign, "s3_entry")
+    view.after_tick(campaign)
+    assert view.sector_banner is not None
+    assert view.sector_banner[:2] == ("SECTOR 3", "GRID CORE")
+    campaign.world.outcome = "down"
+    view.after_tick(campaign)
+    assert view.sector_banner is None
+    campaign.world.outcome = "playing"
+    view.after_tick(campaign)
+    assert view.sector_banner is None
+
+    # Both Fuse Box rooms render the glowing recessed charging bay without rarity tokens.
+    for room_id in ("fuse_1", "fuse_2"):
+        room = campaign.arena.floor.get(room_id)
+        cx = (room.rect[0] + 7) * 16 + 8
+        cy = (room.rect[1] + 4) * 16 + 14
+        light_colors = {
+            view.room.light.get_at((x, y))[:3]
+            for x in range(cx - 14, cx + 15)
+            for y in range(cy - 6, cy + 7)
+        }
+        assert rgb("power.spark") in light_colors and rgb("power.blink") in light_colors
+        assert rgb("px.rarity.epic") not in light_colors

@@ -70,6 +70,7 @@ def dress(
     lamps: list[Point],
     props: set[Point],
     fixtures: set[Point],
+    fuse_rooms: tuple[tuple[int, int, int, int], ...] = (),
 ) -> list[Emitter]:
     """Draw the dressing onto the room's background and light layers. `props` are tiles
     under props and `fixtures` wall tiles that already carry one. Returns the emitters."""
@@ -97,6 +98,13 @@ def dress(
         if place == "wall"
         for k in range(len(words) * 6 // TILE + 2)
     }
+    # Tiles covered by each Fuse Box charging bay stay free of stains, puddles and drips.
+    blocked = props | {
+        (rx + dx, ry + dy)
+        for rx, ry, _, _ in fuse_rooms
+        for dx in range(6, 9)
+        for dy in range(2, 6)
+    }
 
     for ty in range(height):
         for tx in range(width):
@@ -104,7 +112,7 @@ def dress(
             sector = sector_at(tx, ty)
             if not wall(tx, ty):
                 _grime(background, x0, y0, tx, ty)
-                if room.decor[ty][tx] == "." and (tx, ty) not in props:
+                if room.decor[ty][tx] == "." and (tx, ty) not in blocked:
                     _floor_story(background, light, emitters, tx, ty, x0, y0, sector, clear(tx, ty))
                 _contact_shadow(background, x0, y0, wall, tx, ty)
                 if sector == 1:
@@ -123,7 +131,53 @@ def dress(
         for tx in range(width):
             if room.decor[ty][tx] == "V" and sector_at(tx, ty) == 2:
                 emitters.append(Emitter("steam", tx * TILE + 8, ty * TILE + 12, tx + ty))
+    for rect in fuse_rooms:
+        _fuse_pad(background, light, rect)
     return emitters
+
+
+def _fuse_pad(s: pygame.Surface, light: pygame.Surface, rect: tuple[int, int, int, int]) -> None:
+    """Cosmetic recessed charging and fusion bay in each Fuse Box safe room, tied by twin
+    floor cables to the north wall monitor. Floor-level so the Surge walks right across it."""
+    rx, ry, _, _ = rect
+    cx = (rx + 7) * TILE + 8
+    py = (ry + 4) * TILE + 2
+    wall_bottom = (ry + 2) * TILE
+    # Twin insulated conduit cables from the wall monitor down to the charging bay.
+    for dx in (-4, 3):
+        _px(s, "px.outline", cx + dx - 1, wall_bottom, 3, py - wall_bottom)
+        _px(s, "px.conduit.1", cx + dx, wall_bottom, 1, py - wall_bottom)
+        _px(light, "px.conduit.1", cx + dx, wall_bottom, 1, py - wall_bottom)
+    # Recessed steel bay (36 x 24 px) with beveled rim and corner bolts.
+    x0, y0, w, h = cx - 18, py, 36, 24
+    _px(s, "px.outline", x0, y0, w, h)
+    _px(s, "px.wall.2", x0 + 1, y0 + 1, w - 2, h - 2)
+    _px(s, "px.wall.4", x0 + 1, y0 + 1, w - 2, 1)
+    _px(s, "px.floor.0", x0 + 3, y0 + 3, w - 6, h - 6)
+    for gy in range(y0 + 5, y0 + h - 4, 3):
+        _px(s, "px.floor.1", x0 + 4, gy, w - 8, 1)
+    for bx, by in (
+        (x0 + 2, y0 + 2),
+        (x0 + w - 4, y0 + 2),
+        (x0 + 2, y0 + h - 4),
+        (x0 + w - 4, y0 + h - 4),
+    ):
+        _px(s, "px.hazard.1", bx, by, 2, 2)
+    # Twin glowing fusion sockets linked by a live bus bar.
+    mid_y = y0 + h // 2
+    _px(s, "px.conduit.1", cx - 5, mid_y - 1, 10, 2)
+    _px(light, "px.lamp.light", cx - 4, mid_y - 1, 8, 2)
+    for sx, token, glow_token in (
+        (cx - 9, "power.spark", "px.spark.light"),
+        (cx + 9, "power.blink", "px.blink.light"),
+    ):
+        pygame.draw.circle(s, rgb("px.outline"), (sx, mid_y), 6)
+        pygame.draw.circle(s, rgb(token), (sx, mid_y), 5, 1)
+        pygame.draw.circle(s, rgb(glow_token), (sx, mid_y), 2)
+        pygame.draw.circle(light, rgb(token), (sx, mid_y), 5, 1)
+        pygame.draw.circle(light, rgb(glow_token), (sx, mid_y), 2)
+    _px(s, "px.lamp.light", cx - 1, mid_y - 1, 2, 2)
+    _px(light, "px.lamp.light", cx - 1, mid_y - 1, 2, 2)
 
 
 def _noise(x: int, y: int) -> float:
