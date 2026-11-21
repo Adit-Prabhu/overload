@@ -532,12 +532,22 @@ def drop_charge(world: World, kind: str, x: float, y: float) -> None:
         world.charges.append(Charge(world.new_id(), power, x, y))
 
 
-def absorb_charges(world: World, tuning: Tuning, everything: bool = False) -> None:
-    """Absorb charges the Surge touches (or all of them, when the encounter is won)."""
+def absorb_charges(
+    world: World,
+    tuning: Tuning,
+    everything: bool = False,
+    exclude_rect: tuple[float, float, float, float] | None = None,
+) -> None:
+    """Absorb charges the Surge touches (or all of them when a room is won, leaving an
+    unclaimed secret room cache in place until the Surge walks in to take it)."""
     player = world.player
     left = []
     for charge in world.charges:
-        if everything or circles_overlap(
+        excluded = exclude_rect is not None and (
+            exclude_rect[0] <= charge.x < exclude_rect[0] + exclude_rect[2]
+            and exclude_rect[1] <= charge.y < exclude_rect[1] + exclude_rect[3]
+        )
+        if (everything and not excluded) or circles_overlap(
             (player.x, player.y), tuning.player_radius, (charge.x, charge.y), tuning.charge_radius
         ):
             _absorb(world, charge, tuning)

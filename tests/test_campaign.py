@@ -266,10 +266,11 @@ def test_retry_restores_the_sector_entry_and_keeps_the_protocol() -> None:
     assert campaign.protocols[2] == "spacing", "a retry never asks for a new protocol"
 
 
-def test_the_secret_wall_cracks_after_a_few_shots() -> None:
+def test_the_secret_wall_cracks_and_rewards_a_burst_charge() -> None:
     campaign = Campaign(4)
     skip_sector(campaign)
     campaign.begin_next("pressure")
+    entry_hash = state_hash(campaign.world)
     world = campaign.world
     floor = campaign.arena.floor
     x, y, w, _ = next(d.rect for d in floor.doors if d.id == "s2_entry>hidden")
@@ -281,6 +282,32 @@ def test_the_secret_wall_cracks_after_a_few_shots() -> None:
         if "s2_entry>hidden" not in world.locked:
             break
     assert "s2_entry>hidden" not in world.locked and "hidden>s2_entry" not in world.locked
+    assert [c.kind for c in world.charges] == ["burst"]
+    # Clearing another room never pulls the hidden room's cache through the walls.
+    enter(campaign, "s2_yard")
+    while world.active_room == "s2_yard":
+        for hostile in world.hostiles:
+            hostile.health = 0
+        campaign.step(IDLE)
+    assert "burst" not in world.unlocked and any(c.kind == "burst" for c in world.charges)
+    assert "hidden" not in world.cleared
+    # Walking into the hidden room steals Burst early and marks the room cleared.
+    enter(campaign, "hidden")
+    assert "burst" in world.unlocked and not world.charges
+    assert "hidden" in world.cleared
+    # A later Breaker drop in s2_tanks banks a spare Burst charge and advances evolution.
+    enter(campaign, "s2_tanks")
+    while world.active_room == "s2_tanks":
+        for hostile in world.hostiles:
+            hostile.health = 0
+        campaign.step(IDLE)
+    assert world.fragments["burst"] == 2 and world.bank["burst"] == 1
+    # Dying and retrying rolls back the secret wall and the stolen charge to sector entry.
+    world.player.charge = 0
+    campaign.step(IDLE)
+    campaign.step(InputFrame(restart=True))
+    assert state_hash(campaign.world) == entry_hash
+    assert "s2_entry>hidden" in campaign.world.locked and "burst" not in campaign.world.unlocked
 
 
 def test_campaign_replay_reproduces_the_run(tmp_path) -> None:
