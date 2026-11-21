@@ -1,24 +1,24 @@
 {
-  "version": 2,
+  "version": 3,
   "neutral": "lateral",
   "tactics": [
     {
       "id": "pressure",
       "protocol": "Clamp",
       "description": "Close the distance with clearly signaled lunges, then recover.",
-      "counters": "Best against a Surge who keeps their distance and shoots from far away."
+      "counters": "Best against a Surge who keeps their distance, fires Spark-type shots from far away, or camps behind shields and pull fields (lunges break through stationary shield and pull play)."
     },
     {
       "id": "spacing",
       "protocol": "Insulate",
       "description": "Back off and hold the player at range with hatched hazard tiles and slow orbs.",
-      "counters": "Best against a Surge who fights up close."
+      "counters": "Best against a Surge who fights up close, dives in with teleports, or relies on close-range pulse blasts."
     },
     {
       "id": "lateral",
       "protocol": "Oscillate",
       "description": "Strafe side to side and fire perpendicular volleys. The neutral default.",
-      "counters": "Neutral. Use when no habit dominates or the evidence is thin."
+      "counters": "Neutral. Use when no distance or power-family habit dominates, or when the evidence is thin."
     }
   ]
 }

@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import math
 import re
 
 from overload.paths import ROOT
@@ -15,13 +16,31 @@ spec.loader.exec_module(live_suite)
 
 def test_authored_histories_use_only_allowed_kinds() -> None:
     suite = json.loads(live_suite.HISTORIES.read_text(encoding="utf-8"))
+    evidence = json.loads((ROOT / "config" / "evidence.json").read_text(encoding="utf-8"))
+    allowed_kinds = set(evidence["kinds"])
     tactics = {
         t["id"] for t in json.loads((ROOT / "config" / "tactics.json").read_text())["tactics"]
     }
+    assert suite["version"] == 2
     assert len(suite["cases"]) == 6
+    assert len({case["id"] for case in suite["cases"]}) == len(suite["cases"])
+    assert {case["intended"] for case in suite["cases"]} == tactics
     for case in suite["cases"]:
         assert case["intended"] in tactics
+        assert set(case["values"]) == allowed_kinds, case["id"]
+        for kind, value in case["values"].items():
+            assert not isinstance(value, bool) and isinstance(value, int | float), (
+                case["id"],
+                kind,
+            )
+            assert math.isfinite(value) and value >= 0, (case["id"], kind)
+            if kind.endswith("_share"):
+                assert 0.0 <= value <= 1.0, (case["id"], kind)
+        shares = case["values"]["far_share"] + case["values"]["mid_share"]
+        shares += case["values"]["near_share"]
+        assert abs(shares - 1.0) < 1e-6, case["id"]
         summary = live_suite.summary_for(case["values"])
+        assert len(summary["items"]) <= 12
         for item in summary["items"]:
             assert re.fullmatch(r"e1\.[a-z_]+", item["id"])
             assert 1 <= len(item["label"]) <= 80
