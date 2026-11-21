@@ -11,6 +11,7 @@ import pygame
 from overload.art.palette import rgb, rgba
 from overload.art.pixel import effects
 from overload.paths import FONTS
+from overload.sim.powers import rarity_of
 
 _SILKSCREEN = FONTS / "silkscreen" / "Silkscreen-Regular.ttf"
 
@@ -136,6 +137,7 @@ class Hud:
     stamp: str = ""
     tick: int = 0
     keys: tuple[str, str] = ("Q", "E")  # the power keys' short labels (game/keybinds.py)
+    ready_flash: tuple[int, int] = (0, 0)  # ticks left to pulse a slot border when ready
 
 
 def draw(target: pygame.Surface, hud: Hud) -> None:
@@ -166,16 +168,29 @@ def draw(target: pygame.Surface, hud: Hud) -> None:
     for i, power in enumerate(hud.sockets[:2]):
         x, y = w - 4 - 20 * (2 - i) - 2 * (1 - i), h - 24
         ready = bool(power) and hud.cooldowns[i] <= 0
+        rarity = rarity_of(power) if power else ""
+        if hud.ready_flash[i] > 0:
+            border = "fx.flash"
+        elif ready and rarity:
+            border = f"px.rarity.{rarity}"
+        elif ready:
+            border = "player.core"
+        else:
+            border = "px.wall.2"
         target.fill(rgb("px.outline"), (x - 1, y - 1, 20, 20))
-        pygame.draw.rect(
-            target, rgb("player.core" if ready else "px.wall.2"), (x - 1, y - 1, 20, 20), 1
-        )
+        pygame.draw.rect(target, rgb(border), (x - 1, y - 1, 20, 20), 1)
         if power:
             icon = pygame.transform.scale_by(effects.charge_icon(power), 2)
             target.blit(icon, icon.get_rect(center=(x + 9, y + 9)))
             if hud.cooldowns[i] > 0:
                 shade = _cooldown_shade(round(18 * hud.cooldowns[i]))
                 target.blit(shade, (x, y))
+            if rarity:
+                marks = ("rare", "epic", "legendary").index(rarity) + 1
+                mark_w = marks * 4 - 1
+                mx = x + 9 - mark_w // 2
+                target.fill(rgb("px.outline"), (mx - 1, y + 16, mark_w + 2, 5))
+                rarity_marks(target, rarity, mx, y + 17)
         label = hud.keys[i]
         tab_x = x + 8 - (4 * len(label[:3]) - 1) // 2  # centered over the slot
         key_glyph(target, label, tab_x, y - 7, "ui.text" if ready else "ui.dim")  # a tab above

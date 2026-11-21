@@ -106,6 +106,50 @@ def test_start_reuses_the_fullscreen_title_window(monkeypatch, tmp_path) -> None
     assert len(windows) == 1 and gameplay == windows
 
 
+def test_ending_space_returns_to_title_reusing_the_window(monkeypatch, tmp_path) -> None:
+    from overload.game import app
+
+    windows = []
+    title_calls = []
+    closed = []
+    real_close = app.Session.close
+    real_draw = app.PixelView.draw
+
+    def open_window(headless):
+        assert not headless
+        screen = pygame.display.set_mode(app.VIEW)
+        windows.append(screen)
+        return screen
+
+    def fake_run_title(screen, clock, difficulty, binds, audio):
+        title_calls.append((screen, audio, difficulty))
+        return "hard" if len(title_calls) == 1 else None
+
+    def close_session(self):
+        closed.append(self)
+        real_close(self)
+
+    def draw_ending_then_press_space(self, screen, run, cursor):
+        if run.stage != "ending":
+            run.stage = "ending"
+            self.boss_banner = None
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE))
+        real_draw(self, screen, run, cursor)
+
+    monkeypatch.setattr(app, "_open_window", open_window)
+    monkeypatch.setattr(app, "run_title", fake_run_title)
+    monkeypatch.setattr(app.Session, "close", close_session)
+    monkeypatch.setattr(app.PixelView, "draw", draw_ending_then_press_space)
+    options = app.Options(condition="off", mute=True, trace=tmp_path / "trace.jsonl")
+    assert app.play(options) == 0
+    assert len(windows) == 1
+    assert len(title_calls) == 2
+    assert title_calls[0][0] is title_calls[1][0]
+    assert title_calls[0][1] is title_calls[1][1]
+    assert title_calls[1][2] == "hard"
+    assert len(closed) == 1
+
+
 def test_start_returns_the_difficulty_selected_with_arrow_keys(display) -> None:
     from overload.game.title import run_title
 

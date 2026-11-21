@@ -451,3 +451,83 @@ def test_each_power_can_be_equipped_and_drawn_in_both_slots(ability) -> None:
         menu.sockets = list(INGREDIENTS[ability])
         menu.discovered.update(RESULTS[frozenset(menu.sockets)])
         menu_view.draw_menu(screen, menu, session, campaign.tuning, True, None, 1)
+
+
+@pytest.mark.usefixtures("headless_pygame")
+def test_loadout_shows_evolution_status_and_inherited_evolutions() -> None:
+    import pygame
+
+    from overload.game import dev, menu_view
+
+    session = Session(Campaign(1), NeutralSelector())
+    world = session.campaign.world
+    world.unlocked = ["spark", "burst"]
+    world.fragments = {"spark": 1, "burst": 0}
+    dev.grant(world, "storm_aura")
+    world.player.slots = ["storm_aura", "spark"]
+    menu = Menu()
+    menu.show(in_fuse_box=False)
+    menu.hub = HUB_PAUSED.index("LOADOUT")
+    menu.press(session, "select")
+    screen = pygame.Surface((256, 144))
+
+    def capture(row: int) -> list[str]:
+        menu.row = row
+        texts: list[str] = []
+        original = menu_view.hud.text
+
+        def record(target, message, *args, **kwargs):
+            texts.append(message)
+            return original(target, message, *args, **kwargs)
+
+        menu_view.hud.text = record
+        try:
+            menu_view.draw_loadout(screen, menu, session, session.campaign.tuning)
+        finally:
+            menu_view.hud.text = original
+        return texts
+
+    rows = loadout_rows(world.unlocked)
+    unevolved_texts = capture(rows.index("spark"))
+    assert "EVOLVE 1/3" in unevolved_texts and "AT 3: CHAIN" in unevolved_texts
+    assert "Q" in unevolved_texts and "E" in unevolved_texts
+
+    fused_inactive = capture(rows.index("storm_aura"))
+    assert "USES CHAIN+WIDE" in fused_inactive
+
+    world.fragments["spark"] = 3
+    evolved_texts = capture(rows.index("spark"))
+    assert "CHAIN" in evolved_texts
+    assert any("SECOND ROBOT" in line for line in evolved_texts)
+    assert not any("TWO MORE CHARGES" in line for line in evolved_texts)
+
+    world.fragments["burst"] = 3
+    fused_active = capture(rows.index("storm_aura"))
+    assert "ACTIVE: CHAIN+WIDE" in fused_active
+
+
+@pytest.mark.usefixtures("headless_pygame")
+def test_fuse_reveal_shows_the_rolled_power_description() -> None:
+    import pygame
+
+    from overload.game import menu_view
+    from overload.game.view import DESCRIPTIONS
+
+    session, menu = bench("spark", "blink")
+    socket(session, menu, "spark", "blink")
+    roll_through(session, menu)
+    screen = pygame.Surface((256, 144))
+    texts: list[str] = []
+    original = menu_view.hud.text
+
+    def record(target, message, *args, **kwargs):
+        texts.append(message)
+        return original(target, message, *args, **kwargs)
+
+    menu_view.hud.text = record
+    try:
+        menu_view.draw_menu(screen, menu, session, session.campaign.tuning, True, None, 2)
+    finally:
+        menu_view.hud.text = original
+    expected = menu_view._wrap(DESCRIPTIONS[menu.roll.result], 28)[:2]
+    assert all(line in texts for line in expected)
