@@ -355,224 +355,250 @@ def play(options: Options) -> int:
     difficulty = options.difficulty
     # A replay or a headless run never reads or writes the player's saved keys.
     binds = Keybinds() if options.replay or options.headless else Keybinds.load()
-    if not (options.headless or options.replay or options.skip_title):
-        # The title comes first: no rival session or trace exists until the player starts.
-        pygame.init()
-        selected = None
-        try:
-            screen = _open_window(False)
-            pygame.display.set_caption("Overload")
-            # The same Audio carries on into play, so the title music hands over to the
-            # first sector on a bar line instead of cutting out.
-            audio = Audio(enabled=not options.mute)
-            selected = run_title(screen, pygame.time.Clock(), difficulty, binds, audio)
-        finally:
-            if selected is None:
-                pygame.quit()
-                hud.forget()
-                tiles.forget_fonts()
-                title_screen.forget()
-        if selected is None:
-            return 0
-
-        difficulty = selected
-
+    show_title = not (options.headless or options.replay or options.skip_title)
+    can_return = show_title and not (options.practice or options.record)
     replay: Recording | None = Recording.load(options.replay) if options.replay else None
-    try:
-        tuning = recorded_tuning(replay.tuning_id) if replay else PRESETS[difficulty]
-    except ValueError as error:
-        print(f"Replay rejected: {error}")
-        return 2
-    practice = replay.mode == "practice" if replay else options.practice
-    seed = replay.seed if replay else options.seed
-    session: Session | None = None
-    starts: dict[int, str] = {}
-    replay_menu: dict[int, list[list]] = {}
-    if practice:
-        run: Run | Campaign = Run(seed, tuning)
-    elif replay:
+    if replay is not None:
         try:
-            check_campaign(replay)
+            recorded_tuning(replay.tuning_id)
         except ValueError as error:
             print(f"Replay rejected: {error}")
             return 2
-        run = Campaign(seed, tuning)
-        starts = dict(zip(replay.starts, replay.protocols[1:], strict=True))
-        replay_menu = menu_by_frame(replay)
-    else:
-        selector, session_id, condition = build_selector(options)
-        run = Campaign(seed, tuning)
-        trace = None
-        if not options.dev and (options.trace or not options.headless):
-            stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-            trace = TraceWriter(
-                options.trace or ROOT / "logs" / f"trace-{stamp}.jsonl",
-                condition=condition,
-                tuning_id=run.tuning.tuning_id(),
-                arena_id=arena_id(run.arena),
-            )
-        try:
-            session = Session(run, selector, trace, session_id)
-        except Exception:
-            if isinstance(selector, LiveSelector):
-                selector.client.close()
-            raise
-    room = arena_id(run.arena)
-    if replay and replay.arena_id != room:
-        print(f"Replay uses arena {replay.arena_id}, this build is {room}")
-        return 2
-    recording = Recording(
-        seed=seed,
-        tuning_id=run.tuning.tuning_id(),
-        arena_id=room,
-        mode="practice" if practice else "campaign",
-        protocols=[] if practice else [run.protocols[1]],
-    )
-    scripted: Iterator[InputFrame] | None = iter(replay.frames) if replay else None
+        if replay.mode != "practice":
+            try:
+                check_campaign(replay)
+            except ValueError as error:
+                print(f"Replay rejected: {error}")
+                return 2
 
     try:
-        # Keep the title's display mode. Reopening a fullscreen window can crash SDL on macOS.
-        if screen is None:
-            pygame.init()
-            screen = _open_window(options.headless)
-            pygame.display.set_caption("Overload")
-        view = PixelView(run)
-        view.binds = view.coach.binds = binds
-        if options.dev:
-            view.stamp = f"DEV {view.stamp}"  # the build stamp on banners and the ending
-        reader = InputReader(binds)
-        menu = Menu()
-        menu.keys_page.binds = binds
-        dev_tools = devmode.DevTools() if options.dev else None
-        menu.dev = dev_tools
-        if audio is None:
-            audio = Audio(enabled=not (options.mute or options.headless))
-        clock = pygame.time.Clock()
-        accumulated = 0.0
-        frames = 0
-        finished = False
-        replay_complete = False
-        replay_coda = 0
-        cursor = (VIEW[0] // 2, VIEW[1] // 2)
-        while not reader.quit and not finished:
-            for event in pygame.event.get():
-                reader.handle(event)
-            if reader.take_escape() and not menu.open:
-                # Esc outside a menu opens it (QUIT lives there), and quits only when no
-                # menu can open (down, the ending, practice or a replay).
-                if session is None or not can_open_menu(run):
-                    break
-                open_menu(menu, reader, in_fuse_box=False)
-            if scripted is None and not options.headless:
-                cursor = pygame.mouse.get_pos()
-            elapsed = clock.tick(240) / 1000.0
-            if reader.take_toggle() and session is not None and not menu.capturing:
-                was_open = menu.open
-                toggle_menu(menu, run)
-                if was_open and not menu.open:
-                    reader.drop_power_latches()
-                if menu.open and not was_open:
-                    reader.take_menu()  # keys from before the menu opened are not choices
-            paused = menu.open and getattr(run, "stage", None) != "fuse_box"
-            due, accumulated = ticks_due(paused, options.headless, accumulated, elapsed)
-            for _ in range(due):
-                if replay_complete:
-                    if replay_coda == 0:
-                        finished = True
-                        break
-                    view.advance_defeat()
-                    view.follow(run, cursor)
-                    replay_coda -= 1
-                    continue
-                if scripted is not None:
-                    for action in replay_menu.get(len(recording.frames), []):
-                        try:
-                            apply_menu(run, action)
-                        except ValueError as error:
-                            print(f"Replay rejected: {error}")
-                            return 2
-                        recording.fuse_box(*action[1:])
-                    if len(recording.frames) in starts:
-                        if run.stage != "fuse_box":
-                            print(
-                                f"Replay rejected: start at tick {len(recording.frames)} "
-                                "is not in the Fuse Box"
-                            )
-                            return 2
-                        run.begin_next(starts[len(recording.frames)])
-                        recording.begin_next(run.protocols[run.encounter])
-                    frame = next(scripted, None)
-                    if frame is None:
-                        replay_complete = True
-                        if options.headless:
-                            finished = True
-                        else:
-                            if view.boss_banner is not None:
-                                replay_coda = view.boss_banner[1]
-                            if isinstance(run, Campaign) and run.stage == "ending":
-                                replay_coda += 2 * TICK_RATE
-                        break
-                else:
-                    # Move the camera first, so the cursor is read against the same camera
-                    # the frame will be drawn with: the reticle and the aim point agree.
-                    view.follow(run, cursor)
-                    frame = reader.frame(view.camera_offset()) if not options.headless else IDLE
-                if dev_tools is not None:
-                    dev_tools.before_tick(run)
-                if session is not None:
-                    session.tick(frame)
-                else:
-                    run.step(frame)
-                if dev_tools is not None:
-                    dev_tools.after_tick(run)
-                recording.frames.append(frame)
-                audio.events(run.world.events, run.world)
-                if scripted is not None:
-                    cam = view.camera_offset()
-                    cursor = (frame.aim_x - cam[0], frame.aim_y - cam[1])
-                    view.update(run, cursor)
-                else:
-                    view.after_tick(run)
-            if session is not None:
-                if run.stage == "fuse_box" and not menu.open:
-                    open_menu(menu, reader, in_fuse_box=True)  # arriving opens the hub
-                for sound in menu_frame(session, menu, reader, recording, round(elapsed * 1000)):
-                    audio.play(sound)
-            audio.update(
-                getattr(run, "stage", None), getattr(run, "encounter", 1), run.world.outcome
+        while True:
+            if show_title:
+                # The title comes first: no rival session or trace exists until the player starts.
+                if screen is None:
+                    pygame.init()
+                    screen = _open_window(False)
+                    pygame.display.set_caption("Overload")
+                    # The same Audio carries on into play, so the title music hands over to the
+                    # first sector on a bar line instead of cutting out.
+                    audio = Audio(enabled=not options.mute)
+                selected = run_title(screen, pygame.time.Clock(), difficulty, binds, audio)
+                if selected is None:
+                    return 0
+                difficulty = selected
+
+            tuning = recorded_tuning(replay.tuning_id) if replay else PRESETS[difficulty]
+            practice = replay.mode == "practice" if replay else options.practice
+            seed = replay.seed if replay else options.seed
+            session: Session | None = None
+            starts: dict[int, str] = {}
+            replay_menu: dict[int, list[list]] = {}
+            if practice:
+                run: Run | Campaign = Run(seed, tuning)
+            elif replay:
+                run = Campaign(seed, tuning)
+                starts = dict(zip(replay.starts, replay.protocols[1:], strict=True))
+                replay_menu = menu_by_frame(replay)
+            else:
+                selector, session_id, condition = build_selector(options)
+                run = Campaign(seed, tuning)
+                trace = None
+                if not options.dev and (options.trace or not options.headless):
+                    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+                    trace = TraceWriter(
+                        options.trace or ROOT / "logs" / f"trace-{stamp}.jsonl",
+                        condition=condition,
+                        tuning_id=run.tuning.tuning_id(),
+                        arena_id=arena_id(run.arena),
+                    )
+                try:
+                    session = Session(run, selector, trace, session_id)
+                except Exception:
+                    if isinstance(selector, LiveSelector):
+                        selector.client.close()
+                    raise
+            room = arena_id(run.arena)
+            if replay and replay.arena_id != room:
+                print(f"Replay uses arena {replay.arena_id}, this build is {room}")
+                return 2
+            recording = Recording(
+                seed=seed,
+                tuning_id=run.tuning.tuning_id(),
+                arena_id=room,
+                mode="practice" if practice else "campaign",
+                protocols=[] if practice else [run.protocols[1]],
             )
-            view.draw(screen, run, cursor)
-            stage = getattr(run, "stage", None)
-            if dev_tools is not None:
-                draw_dev_overlay(screen, dev_tools, run, clock.get_fps())
-            if menu.open and session is not None:
-                in_box = stage == "fuse_box"
-                menu_view.draw_menu(
-                    screen,
-                    menu,
-                    session,
-                    run.tuning,
-                    session.ready() if in_box else True,
-                    session.fuse_message() if in_box else None,
-                    run.encounter + (1 if in_box else 0),
-                )
-            elif stage == "ending":
-                view.draw_campaign_ending(screen, run)
-            if dev_tools is not None:
-                draw_dev_tag(screen)
-            pygame.display.flip()
-            frames += 1
-            if options.frames and frames >= options.frames:
-                break
+            scripted: Iterator[InputFrame] | None = iter(replay.frames) if replay else None
+            return_to_title = False
+            replay_complete = False
+
+            try:
+                # Keep the title's display mode. Reopening fullscreen can crash SDL on macOS.
+                if screen is None:
+                    pygame.init()
+                    screen = _open_window(options.headless)
+                    pygame.display.set_caption("Overload")
+                view = PixelView(run)
+                view.binds = view.coach.binds = binds
+                if options.dev:
+                    view.stamp = f"DEV {view.stamp}"  # the build stamp on banners and the ending
+                reader = InputReader(binds)
+                menu = Menu()
+                menu.keys_page.binds = binds
+                dev_tools = devmode.DevTools() if options.dev else None
+                menu.dev = dev_tools
+                if audio is None:
+                    audio = Audio(enabled=not (options.mute or options.headless))
+                clock = pygame.time.Clock()
+                accumulated = 0.0
+                frames = 0
+                finished = False
+                ending_shown = False
+                replay_coda = 0
+                cursor = (VIEW[0] // 2, VIEW[1] // 2)
+                while not reader.quit and not finished:
+                    for event in pygame.event.get():
+                        reader.handle(event)
+                    if reader.take_escape() and not menu.open:
+                        # Esc outside a menu opens it (QUIT lives there), and quits only when no
+                        # menu can open (down, the ending, practice or a replay).
+                        if session is None or not can_open_menu(run):
+                            break
+                        open_menu(menu, reader, in_fuse_box=False)
+                    if scripted is None and not options.headless:
+                        cursor = pygame.mouse.get_pos()
+                    elapsed = clock.tick(240) / 1000.0
+                    if reader.take_toggle() and session is not None and not menu.capturing:
+                        was_open = menu.open
+                        toggle_menu(menu, run)
+                        if was_open and not menu.open:
+                            reader.drop_power_latches()
+                        if menu.open and not was_open:
+                            reader.take_menu()  # keys from before the menu opened are not choices
+                    paused = menu.open and getattr(run, "stage", None) != "fuse_box"
+                    due, accumulated = ticks_due(paused, options.headless, accumulated, elapsed)
+                    for _ in range(due):
+                        if replay_complete:
+                            if replay_coda == 0:
+                                finished = True
+                                break
+                            view.advance_defeat()
+                            view.follow(run, cursor)
+                            replay_coda -= 1
+                            continue
+                        if scripted is not None:
+                            for action in replay_menu.get(len(recording.frames), []):
+                                try:
+                                    apply_menu(run, action)
+                                except ValueError as error:
+                                    print(f"Replay rejected: {error}")
+                                    return 2
+                                recording.fuse_box(*action[1:])
+                            if len(recording.frames) in starts:
+                                if run.stage != "fuse_box":
+                                    print(
+                                        f"Replay rejected: start at tick {len(recording.frames)} "
+                                        "is not in the Fuse Box"
+                                    )
+                                    return 2
+                                run.begin_next(starts[len(recording.frames)])
+                                recording.begin_next(run.protocols[run.encounter])
+                            frame = next(scripted, None)
+                            if frame is None:
+                                replay_complete = True
+                                if options.headless:
+                                    finished = True
+                                else:
+                                    if view.boss_banner is not None:
+                                        replay_coda = view.boss_banner[1]
+                                    if isinstance(run, Campaign) and run.stage == "ending":
+                                        replay_coda += 2 * TICK_RATE
+                                break
+                        else:
+                            # Move the camera first, so the cursor is read against the same camera
+                            # the frame will be drawn with: the reticle and the aim point agree.
+                            view.follow(run, cursor)
+                            frame = (
+                                reader.frame(view.camera_offset()) if not options.headless else IDLE
+                            )
+                        if dev_tools is not None:
+                            dev_tools.before_tick(run)
+                        if session is not None:
+                            session.tick(frame)
+                        else:
+                            run.step(frame)
+                        if dev_tools is not None:
+                            dev_tools.after_tick(run)
+                        recording.frames.append(frame)
+                        audio.events(run.world.events, run.world)
+                        if scripted is not None:
+                            cam = view.camera_offset()
+                            cursor = (frame.aim_x - cam[0], frame.aim_y - cam[1])
+                            view.update(run, cursor)
+                        else:
+                            view.after_tick(run)
+                    stage = getattr(run, "stage", None)
+                    if session is not None:
+                        if run.stage == "fuse_box" and not menu.open:
+                            open_menu(menu, reader, in_fuse_box=True)  # arriving opens the hub
+                        if (
+                            stage == "ending"
+                            and view.boss_banner is None
+                            and can_return
+                            and not menu.open
+                        ):
+                            ending_keys = reader.take_menu()
+                            if ending_shown and "select" in ending_keys and not reader.quit:
+                                audio.play("confirm")
+                                return_to_title = True
+                                break
+                        else:
+                            for sound in menu_frame(
+                                session, menu, reader, recording, round(elapsed * 1000)
+                            ):
+                                audio.play(sound)
+                    audio.update(stage, getattr(run, "encounter", 1), run.world.outcome)
+                    view.draw(screen, run, cursor)
+                    if dev_tools is not None:
+                        draw_dev_overlay(screen, dev_tools, run, clock.get_fps())
+                    if menu.open and session is not None:
+                        in_box = stage == "fuse_box"
+                        menu_view.draw_menu(
+                            screen,
+                            menu,
+                            session,
+                            run.tuning,
+                            session.ready() if in_box else True,
+                            session.fuse_message() if in_box else None,
+                            run.encounter + (1 if in_box else 0),
+                        )
+                    elif stage == "ending":
+                        view.draw_campaign_ending(screen, run, can_return)
+                        if view.boss_banner is None:
+                            ending_shown = True
+                    if dev_tools is not None:
+                        draw_dev_tag(screen)
+                    pygame.display.flip()
+                    frames += 1
+                    if options.frames and frames >= options.frames:
+                        break
+            finally:
+                if session is not None:
+                    try:
+                        session.close()
+                    finally:
+                        if isinstance(session.selector, LiveSelector):
+                            session.selector.client.close()
+
+            if return_to_title:
+                continue
+            break
     finally:
-        if session is not None:
-            session.close()
-        pygame.quit()
-        hud.forget()
-        tiles.forget_fonts()
-        title_screen.forget()
-        if session is not None and isinstance(session.selector, LiveSelector):
-            session.selector.client.close()
+        if pygame.get_init():
+            pygame.quit()
+            hud.forget()
+            tiles.forget_fonts()
+            title_screen.forget()
 
     recording.final_hash = run.state_hash()
     if options.record:

@@ -106,6 +106,120 @@ def test_start_reuses_the_fullscreen_title_window(monkeypatch, tmp_path) -> None
     assert len(windows) == 1 and gameplay == windows
 
 
+def test_ending_space_returns_to_title_reusing_the_window(monkeypatch, tmp_path) -> None:
+    from overload.agent.selector import LiveSelector
+    from overload.game import app
+
+    windows = []
+    title_calls = []
+    closed_sessions = []
+    closed_clients = []
+    ending_renders = []
+    real_close = app.Session.close
+    real_draw = app.PixelView.draw
+    real_ending = app.PixelView.draw_campaign_ending
+
+    class FakeClient:
+        def close(self) -> None:
+            closed_clients.append(self)
+
+    def open_window(headless):
+        assert not headless
+        screen = pygame.display.set_mode(app.VIEW, pygame.FULLSCREEN)
+        windows.append(screen)
+        return screen
+
+    def fake_build_selector(options):
+        return LiveSelector(FakeClient(), "sess-1"), "sess-1", "live"
+
+    def fake_run_title(screen, clock, difficulty, binds, audio):
+        assert screen.get_flags() & pygame.FULLSCREEN
+        title_calls.append((screen, audio, difficulty))
+        if len(title_calls) == 1:
+            return "hard"
+        if len(title_calls) == 2:
+            return "medium"
+        return None
+
+    def close_session(self):
+        closed_sessions.append(self)
+        real_close(self)
+
+    def drive_run(self, screen, run, cursor):
+        if len(title_calls) == 1:
+            if run.stage != "ending":
+                run.stage = "ending"
+                self.boss_banner = None
+                # Stale Space pressed before the ending renders once must be dropped.
+                pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE))
+        else:
+            # Second run starts fresh, then exits via Escape on the ending screen.
+            if run.stage != "ending":
+                run.stage = "ending"
+                self.boss_banner = None
+            else:
+                pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+        real_draw(self, screen, run, cursor)
+
+    def record_ending(self, screen, run, can_return=False):
+        ending_renders.append((len(title_calls), can_return))
+        real_ending(self, screen, run, can_return)
+        if len(title_calls) == 1 and len(ending_renders) == 2:
+            # Space pressed after the ending has rendered returns to title.
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE))
+
+    monkeypatch.setattr(app, "_open_window", open_window)
+    monkeypatch.setattr(app, "build_selector", fake_build_selector)
+    monkeypatch.setattr(app, "run_title", fake_run_title)
+    monkeypatch.setattr(app.Session, "close", close_session)
+    monkeypatch.setattr(app.PixelView, "draw", drive_run)
+    monkeypatch.setattr(app.PixelView, "draw_campaign_ending", record_ending)
+    options = app.Options(condition="off", mute=True, trace=tmp_path / "trace.jsonl")
+    assert app.play(options) == 0
+    assert len(windows) == 1
+    assert len(title_calls) == 2
+    assert title_calls[0][0] is title_calls[1][0]
+    assert title_calls[0][1] is title_calls[1][1]
+    assert title_calls[1][2] == "hard"
+    assert len(closed_sessions) == 2 and closed_sessions[0] is not closed_sessions[1]
+    assert len(closed_clients) == 2 and closed_clients[0] is not closed_clients[1]
+    assert ending_renders[:2] == [(1, True), (1, True)], "stale Space did not skip ending"
+
+
+def test_ending_space_ignored_while_boss_banner_or_skip_title(monkeypatch, tmp_path) -> None:
+    from overload.game import app
+
+    real_draw = app.PixelView.draw
+    seen_can_return = []
+    real_ending = app.PixelView.draw_campaign_ending
+
+    def drive_skip_title(self, screen, run, cursor):
+        if run.stage != "ending":
+            run.stage = "ending"
+            self.boss_banner = ("GRID CORE DOWN", 5)
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE))
+        elif self.boss_banner is not None:
+            self.boss_banner = None
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE))
+        else:
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+        real_draw(self, screen, run, cursor)
+
+    def record_ending(self, screen, run, can_return=False):
+        if self.boss_banner is None:
+            seen_can_return.append(can_return)
+        real_ending(self, screen, run, can_return)
+
+    monkeypatch.setattr(app, "_open_window", lambda _: pygame.display.set_mode(app.VIEW))
+    monkeypatch.setattr(app.PixelView, "draw", drive_skip_title)
+    monkeypatch.setattr(app.PixelView, "draw_campaign_ending", record_ending)
+    options = app.Options(
+        condition="off", mute=True, skip_title=True, trace=tmp_path / "trace.jsonl"
+    )
+    assert app.play(options) == 0
+    assert seen_can_return and all(flag is False for flag in seen_can_return)
+
+
 def test_start_returns_the_difficulty_selected_with_arrow_keys(display) -> None:
     from overload.game.title import run_title
 

@@ -33,7 +33,9 @@ from overload.sim.powers import (
     COOLDOWN_KEYS,
     EVOLUTIONS,
     NAMES,
+    RARITIES,
     cooldown_of,
+    rarity_of,
 )
 from overload.sim.run import Run
 from overload.sim.state import Event
@@ -434,6 +436,8 @@ class PixelView:
         # Charges absorbed from afar, flying into the Surge: x, y, power, age.
         self.flyers: list[list] = []
         self.reward: list[str] = []  # the base powers a beaten chassis paid a spare of
+        self.prev_slot_state: list[tuple[str, bool]] = [("", False), ("", False)]
+        self.ready_flash = [0, 0]
         player = run.world.player
         self.camera = [player.x - VIEW[0] / 2, player.y - VIEW[1] / 2]
         self._clamp_camera()
@@ -569,6 +573,7 @@ class PixelView:
         self.consume(run, run.world.events)
         self._tick_cosmetics()
         self._tick_flyers(run)
+        self._tick_slot_ready(run.world)
         self.coach.update(run)
         self._walk(run.world)
         rival = run.world.rival
@@ -956,6 +961,22 @@ class PixelView:
                 flying.append(flyer)
         self.flyers = flying
 
+    def _tick_slot_ready(self, world) -> None:
+        """Flash a HUD slot border briefly the tick its equipped power comes off cooldown."""
+        if world.outcome == "down":
+            self.ready_flash = [0, 0]
+            self.prev_slot_state = [("", False), ("", False)]
+            return
+        player = world.player
+        for i, slot in enumerate(player.slots[:2]):
+            cooling = bool(slot) and player.cooldowns.get(COOLDOWN_KEYS[slot], 0) > 0
+            prev_slot, prev_cooling = self.prev_slot_state[i]
+            if not slot or cooling or slot != prev_slot:
+                self.ready_flash[i] = 0
+            elif prev_cooling and not cooling:
+                self.ready_flash[i] = 6
+            self.prev_slot_state[i] = (slot, cooling)
+
     def _burst(self, x: float, y: float, count: int, token: str, speed: float) -> None:
         for _ in range(count):
             angle = self.cosmetic.uniform(0, math.tau)
@@ -1014,6 +1035,7 @@ class PixelView:
             self.lance_bolt = (start, end, life - 1) if life > 1 else None
         self.unlock_flash = max(0, self.unlock_flash - 1)
         self.shake = max(0, self.shake - 1)
+        self.ready_flash = [max(0, ticks - 1) for ticks in self.ready_flash]
         if self.notice:
             message, ticks = self.notice
             self.notice = (message, ticks - 1) if ticks > 1 else None
@@ -1455,6 +1477,7 @@ class PixelView:
                 rival_venting=bool(rival and rival.vent > 0),
                 tick=tick,
                 keys=(self.binds.short("power_q"), self.binds.short("power_e")),
+                ready_flash=(self.ready_flash[0], self.ready_flash[1]),
             ),
         )
         self._minimap(screen, run)
@@ -1676,7 +1699,9 @@ class PixelView:
         if rival.vent > 0 and self.frames % 5 == 0:  # it vents: steam off its core
             self._burst(rival.x, rival.y - 6, 3, "px.wall.4", 1.0)
 
-    def draw_campaign_ending(self, screen: pygame.Surface, run: Campaign) -> None:
+    def draw_campaign_ending(
+        self, screen: pygame.Surface, run: Campaign, can_return: bool = False
+    ) -> None:
         if run.stage == "ending" and self.boss_banner is None:
             self.draw_ending(
                 screen,
@@ -1685,6 +1710,7 @@ class PixelView:
                 run.stats["shots"],
                 run.stats["powers"],
                 run.stats["bosses"],
+                can_return,
             )
 
     def draw_ending(
@@ -1695,38 +1721,92 @@ class PixelView:
         shots: int,
         powers: dict[str, int] | None = None,
         bosses: dict[str, int] | None = None,
+        can_return: bool = False,
     ) -> None:
         """The readout: completion time, short circuits, shots and the powers tried. No score
         and no ranking (GDD)."""
         w, h = screen.get_size()
         screen.blit(_dim(screen.get_size(), 235), (0, 0))
-        hud.text(screen, "SECTOR CLEAR", (w // 2, 14), "ui.text", "midtop")
-        hud.text(screen, "THE GRID IS BACK ONLINE", (w // 2, 25), "ui.dim", "midtop")
+        tried = [(name, n) for name, n in (powers or {}).items() if n and name in NAMES]
+        two_rows = len(tried) > 10
+        hud.text(screen, "SECTOR CLEAR", (w // 2, 4 if two_rows else 12), "ui.text", "midtop")
+        hud.text(
+            screen,
+            "THE GRID IS BACK ONLINE",
+            (w // 2, 13 if two_rows else 23),
+            "ui.dim",
+            "midtop",
+        )
         minutes, rest = divmod(int(seconds), 60)
         rows = (
             ("TIME", f"{minutes:02d}:{rest:02d}"),
             ("SHORT CIRCUITS", str(retries)),
             ("SHOTS", str(shots)),
         )
+        row_top = 23 if two_rows else 36
+        row_step = 9 if two_rows else 11
         for i, (label, value) in enumerate(rows):
-            y = 39 + i * 11
+            y = row_top + i * row_step
             hud.text(screen, label, (w // 2 - 6, y), "ui.dim", "topright")
             hud.text(screen, value, (w // 2 + 6, y), "ui.text")
         fights = [ticks for _, ticks in sorted((bosses or {}).items())]
         if fights:  # each chassis' fight time, in the order they fell
             times = "  ".join(f"{t // TICK_RATE // 60}:{t // TICK_RATE % 60:02d}" for t in fights)
-            hud.text(screen, f"BOSSES {times}", (w // 2, 74), "px.hazard.1", "midtop")
-        hud.text(screen, "POWERS TRIED", (w // 2, 89), "ui.dim", "midtop")
-        tried = [(name, n) for name, n in (powers or {}).items() if n and name in NAMES]
+            hud.text(
+                screen,
+                f"BOSSES {times}",
+                (w // 2, 52 if two_rows else 71),
+                "px.hazard.1",
+                "midtop",
+            )
+        hud.text(screen, "POWERS TRIED", (w // 2, 63 if two_rows else 85), "ui.dim", "midtop")
         if not tried:
-            hud.text(screen, "GUN AND DODGE ONLY", (w // 2, 103), "px.floor.3", "midtop")
-        for i, (name, count) in enumerate(tried):
-            x = w // 2 - (len(tried) * 40) // 2 + i * 40 + 20
+            hud.text(screen, "GUN AND DODGE ONLY", (w // 2, 100), "px.floor.3", "midtop")
+        elif not two_rows:
+            stride = min(28, (w - 16) // len(tried))
+            self._draw_ending_row(screen, tried, 102, stride)
+        else:
+            max_items = 22
+            if len(tried) > max_items:
+                overflow = len(tried) - (max_items - 1)
+                entries: list[tuple[str, int] | None] = [*tried[: max_items - 1], None]
+            else:
+                overflow = 0
+                entries = list(tried)
+            split = (len(entries) + 1) // 2
+            top_row = entries[:split]
+            bot_row = entries[split:]
+            stride = min(22, (w - 12) // max(len(top_row), len(bot_row)))
+            self._draw_ending_row(screen, top_row, 83, stride)
+            self._draw_ending_row(screen, bot_row, 107, stride, overflow=overflow)
+        footer = "SPACE TITLE   ESC QUIT" if can_return else "ESC TO QUIT"
+        hud.text(screen, footer, (w // 2, h - 21), "px.hazard.1", "midtop")
+        hud.text(screen, self.stamp, (4, h - 2), "px.floor.3", "bottomleft")
+
+    def _draw_ending_row(
+        self,
+        screen: pygame.Surface,
+        entries: list[tuple[str, int] | None],
+        cy: int,
+        stride: int,
+        overflow: int = 0,
+    ) -> None:
+        """One centered row of tried-power icons with rarity marks above fused powers."""
+        w = screen.get_width()
+        start = w // 2 - (len(entries) * stride) // 2 + stride // 2
+        for i, entry in enumerate(entries):
+            x = start + i * stride
+            if entry is None:
+                hud.text(screen, f"+{overflow}", (x, cy - 3), "ui.dim", "midtop")
+                continue
+            name, count = entry
+            rarity = rarity_of(name)
+            if rarity:
+                mark_w = (RARITIES.index(rarity) + 1) * 4 - 1
+                hud.rarity_marks(screen, rarity, x - mark_w // 2, cy - 8)
             icon = effects.charge_icon(name)
-            screen.blit(icon, icon.get_rect(center=(x, 103)))
-            hud.text(screen, str(count), (x, 110), "ui.text", "midtop")
-        hud.text(screen, "ESC TO QUIT", (w // 2, h - 22), "px.hazard.1", "midtop")
-        hud.text(screen, self.stamp, (4, h - 3), "px.floor.3", "bottomleft")
+            screen.blit(icon, icon.get_rect(center=(x, cy)))
+            hud.text(screen, str(count), (x, cy + 4), "ui.text", "midtop")
 
     def _banner(self, screen: pygame.Surface, outcome: str) -> None:
         w, h = screen.get_size()

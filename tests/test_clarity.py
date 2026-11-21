@@ -246,3 +246,130 @@ def test_the_arrow_points_from_the_edge_or_over_the_room(display) -> None:
     view = PixelView(Campaign(1))
     for point in ((128.0, 72.0), (900.0, 72.0), (-400.0, -400.0), (128.0, 999.0)):
         view._arrow(display, point)
+
+
+@pytest.mark.parametrize("count", [0, 8, 10, 11, 16, 22, 23, 30, 35])
+def test_ending_fits_many_powers_and_caps_overflow_inside_the_view(display, count) -> None:
+    from overload.art.palette import rgb
+    from overload.art.pixel import hud
+    from overload.game.view import PixelView
+    from overload.sim.powers import ABILITIES
+
+    view = PixelView(Campaign(1))
+    powers = {name: i + 1 for i, name in enumerate(ABILITIES[:count])}
+    drawn: list[tuple[str, pygame.Rect]] = []
+    original = hud.text
+
+    def record(target, message, pos, *args, **kwargs):
+        rect = original(target, message, pos, *args, **kwargs)
+        drawn.append((message, rect))
+        return rect
+
+    hud.text = record
+    try:
+        view.draw_ending(
+            display, 185.0, 1, 120, powers, {"1": 1800, "2": 2400, "3": 3600}, can_return=True
+        )
+    finally:
+        hud.text = original
+    texts = [msg for msg, _ in drawn]
+    assert "SPACE TITLE   ESC QUIT" in texts
+    if count > 22:
+        assert f"+{count - 21}" in texts
+    else:
+        assert not any(msg.startswith("+") for msg in texts)
+    if count >= 8:
+        colors = {display.get_at((x, y))[:3] for x in range(256) for y in range(72, 120)}
+        assert rgb("px.rarity.legendary") in colors
+    for msg, rect in drawn:
+        assert rect.left >= 0 and rect.right <= 256, f"{msg} clipped horizontally: {rect}"
+        assert rect.top >= 0 and rect.bottom <= 144, f"{msg} clipped vertically: {rect}"
+
+    # Non-interactive ending keeps the quit-only footer.
+    drawn.clear()
+    hud.text = record
+    try:
+        view.draw_ending(display, 185.0, 0, 50, {}, {}, can_return=False)
+    finally:
+        hud.text = original
+    assert "ESC TO QUIT" in [msg for msg, _ in drawn]
+
+
+def test_hud_slots_show_rarity_marks_and_ready_flash(display) -> None:
+    from overload.art.palette import rgb
+    from overload.art.pixel import hud
+    from overload.game.view import PixelView
+    from overload.sim.powers import COOLDOWN_KEYS
+
+    campaign = Campaign(1)
+    world = campaign.world
+    world.unlocked = ["spark", "blink", "chain_jump"]
+    world.player.slots = ["chain_jump", "spark"]
+    view = PixelView(campaign)
+    world.player.cooldowns[COOLDOWN_KEYS["chain_jump"]] = 2
+    view.after_tick(campaign)
+    assert view.ready_flash == [0, 0]
+    world.player.cooldowns[COOLDOWN_KEYS["chain_jump"]] = 0
+    view.after_tick(campaign)
+    assert view.ready_flash[0] == 6 and view.ready_flash[1] == 0
+
+    # Immediate recast cancels ready_flash so a cooling slot never flashes white.
+    world.player.cooldowns[COOLDOWN_KEYS["chain_jump"]] = 10
+    view.after_tick(campaign)
+    assert view.ready_flash == [0, 0]
+
+    # Natural decay runs down to 0 over 6 ticks.
+    world.player.cooldowns[COOLDOWN_KEYS["chain_jump"]] = 0
+    view.after_tick(campaign)
+    assert view.ready_flash[0] == 6
+    for _ in range(6):
+        view.after_tick(campaign)
+    assert view.ready_flash == [0, 0]
+
+    # Dying while cooling and retrying never triggers a spurious ready flash.
+    world.player.cooldowns[COOLDOWN_KEYS["chain_jump"]] = 10
+    view.after_tick(campaign)
+    world.outcome = "down"
+    view.after_tick(campaign)
+    world.outcome = "playing"
+    world.player.cooldowns[COOLDOWN_KEYS["chain_jump"]] = 0
+    view.after_tick(campaign)
+    assert view.ready_flash == [0, 0]
+
+    screen = pygame.Surface((256, 144))
+    hud.draw(
+        screen,
+        hud.Hud(
+            charge=6,
+            max_charge=6,
+            sockets=("chain_jump", "spark"),
+            ready_flash=(6, 0),
+            keys=("LSH", "RSH"),
+        ),
+    )
+    # Slot 0 border at (210 - 1, 120 - 1) flashes fx.flash while ready_flash > 0 and ready.
+    assert screen.get_at((209, 119))[:3] == rgb("fx.flash")
+
+    # Cooling slot suppresses ready_flash even if passed nonzero.
+    screen.fill(rgb("px.void"))
+    hud.draw(
+        screen,
+        hud.Hud(
+            charge=6,
+            max_charge=6,
+            sockets=("chain_jump", "spark"),
+            cooldowns=(0.5, 0.0),
+            ready_flash=(6, 0),
+        ),
+    )
+    assert screen.get_at((209, 119))[:3] == rgb("px.wall.2")
+
+    screen.fill(rgb("px.void"))
+    hud.draw(
+        screen,
+        hud.Hud(charge=6, max_charge=6, sockets=("chain_jump", "spark"), ready_flash=(0, 0)),
+    )
+    assert screen.get_at((209, 119))[:3] == rgb("px.rarity.legendary")
+    # Three legendary crosses sit below the slot inside the 256 x 144 frame.
+    colors = {screen.get_at((x, y))[:3] for x in range(210, 228) for y in range(136, 141)}
+    assert rgb("px.rarity.legendary") in colors

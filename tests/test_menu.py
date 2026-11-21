@@ -451,3 +451,159 @@ def test_each_power_can_be_equipped_and_drawn_in_both_slots(ability) -> None:
         menu.sockets = list(INGREDIENTS[ability])
         menu.discovered.update(RESULTS[frozenset(menu.sockets)])
         menu_view.draw_menu(screen, menu, session, campaign.tuning, True, None, 1)
+
+
+@pytest.mark.usefixtures("headless_pygame")
+def test_loadout_shows_evolution_status_and_inherited_evolutions() -> None:
+    import pygame
+
+    from overload.game import dev, menu_view
+    from overload.game.view import EVOLVED_INFO
+
+    session = Session(Campaign(1), NeutralSelector())
+    world = session.campaign.world
+    world.unlocked = list(BASE_POWERS)
+    world.fragments = {"spark": 1, "blink": 0, "burst": 0, "bulwark": 0, "magnet": 0}
+    dev.grant(world, "storm_aura")
+    world.player.slots = ["storm_aura", "spark"]
+    menu = Menu()
+    menu.show(in_fuse_box=False)
+    menu.hub = HUB_PAUSED.index("LOADOUT")
+    menu.press(session, "select")
+    screen = pygame.Surface((256, 144))
+
+    def capture(row: int) -> list[tuple[str, pygame.Rect]]:
+        menu.row = row
+        drawn: list[tuple[str, pygame.Rect]] = []
+        original = menu_view.hud.text
+
+        def record(target, message, pos, *args, **kwargs):
+            rect = original(target, message, pos, *args, **kwargs)
+            drawn.append((message, rect))
+            return rect
+
+        menu_view.hud.text = record
+        try:
+            menu_view.draw_loadout(screen, menu, session, session.campaign.tuning)
+        finally:
+            menu_view.hud.text = original
+        return drawn
+
+    rows = loadout_rows(world.unlocked)
+    unevolved_texts = [t for t, _ in capture(rows.index("spark"))]
+    assert "EVOLVE 1/3" in unevolved_texts and "AT 3: CHAIN" in unevolved_texts
+    assert "Q" in unevolved_texts and "E" in unevolved_texts
+
+    fused_inactive = "".join(t for t, _ in capture(rows.index("storm_aura")))
+    assert "USES CHAIN WIDE" in fused_inactive
+
+    # Partial multi-inheritance (Spark evolved, Burst still unevolved) shows both.
+    world.fragments["spark"] = 3
+    fused_partial = "".join(t for t, _ in capture(rows.index("storm_aura")))
+    assert "USES +CHAIN WIDE" in fused_partial
+
+    # Every evolved base power displays its full EVOLVED_INFO without truncation or overflow.
+    for power in BASE_POWERS:
+        world.fragments[power] = 3
+        drawn = capture(rows.index(power))
+        joined = " ".join(t for t, _ in drawn)
+        assert EVOLVED_INFO[power] in joined, f"{power} truncated: {joined}"
+        for msg, rect in drawn:
+            assert rect.right <= menu_view.PANEL.right - 2, f"{power} clipped right: {msg} {rect}"
+            assert rect.bottom <= menu_view.PANEL.bottom, f"{power} clipped bottom: {msg} {rect}"
+        if power == "spark":
+            assert "TWO MORE CHARGES" not in joined
+
+    fused_active = "".join(t for t, _ in capture(rows.index("storm_aura")))
+    assert "ACTIVE +CHAIN +WIDE" in fused_active
+
+    # Rebound 3-letter keys stay left of the divider in LOADOUT.
+    menu.keys_page.binds.bind("power_q", "left shift")
+    menu.keys_page.binds.bind("power_e", "right shift")
+    rebound = capture(rows.index("spark"))
+    assert any(t == "LSH" and r.right <= menu_view.PANEL.x + 116 for t, r in rebound)
+
+
+@pytest.mark.usefixtures("headless_pygame")
+def test_fuse_cards_owned_label_never_overlaps_two_line_names() -> None:
+    import pygame
+
+    from overload.game import menu_view
+    from overload.sim.powers import FUSED
+
+    screen = pygame.Surface((256, 144))
+    original = menu_view.hud.text
+    for power in FUSED:
+        a, b = INGREDIENTS[power]
+        session, menu = bench(a, b)
+        session.campaign.world.unlocked.append(power)
+        menu.sockets = [a, b]
+        menu.discovered.update(RESULTS[frozenset((a, b))])
+        drawn: list[tuple[str, pygame.Rect]] = []
+
+        def record(target, message, pos, *args, out=drawn, fn=original, **kwargs):
+            rect = fn(target, message, pos, *args, **kwargs)
+            out.append((message, rect))
+            return rect
+
+        menu_view.hud.text = record
+        try:
+            menu_view.draw_fuse(screen, menu, session)
+        finally:
+            menu_view.hud.text = original
+        owned = [rect for msg, rect in drawn if msg == "OWNED"]
+        assert len(owned) == 1, power
+        owned_rect = owned[0]
+        card_bottom = menu_view.PANEL.y + 4 + 46 + menu_view.CARD_H
+        assert owned_rect.bottom <= card_bottom - 1, f"{power}: OWNED hits card border"
+        # Shrink font cell padding (Silkscreen has 2 px transparent top/bottom padding).
+        owned_box = owned_rect.inflate(0, -3)
+        for msg, rect in drawn:
+            if msg == "OWNED" or rect.centerx != owned_rect.centerx:
+                continue
+            assert not owned_box.colliderect(rect.inflate(0, -3)), f"{power}: {msg} hit OWNED"
+
+
+@pytest.mark.usefixtures("headless_pygame")
+def test_fuse_reveal_fits_all_thirty_fused_powers_without_overlap() -> None:
+    import pygame
+
+    from overload.game import menu_view
+    from overload.game.menu import Roll
+    from overload.game.view import DESCRIPTIONS
+    from overload.sim.powers import FUSED, NAMES
+
+    screen = pygame.Surface((256, 144))
+    session, menu = bench(*BASE_POWERS)
+    box = pygame.Rect(0, 0, 198, 98)
+    box.center = (menu_view.PANEL.centerx, menu_view.PANEL.centery - 2)
+    icon_bottom = box.y + 4 + menu_view._icon("storm_aura", 3).get_height()
+    original = menu_view.hud.text
+    for power in FUSED:
+        menu.roll = Roll(
+            pair=INGREDIENTS[power],
+            result=power,
+            replaced="reflector_wave" if power != "reflector_wave" else "capacitor_armor",
+            steps=[0],
+            delays=[50],
+            phase="reveal",
+        )
+        drawn: list[tuple[str, pygame.Rect]] = []
+
+        def record(target, message, pos, *args, out=drawn, fn=original, **kwargs):
+            rect = fn(target, message, pos, *args, **kwargs)
+            out.append((message, rect))
+            return rect
+
+        menu_view.hud.text = record
+        try:
+            menu_view._reveal(screen, menu)
+        finally:
+            menu_view.hud.text = original
+        joined = " ".join(msg for msg, _ in drawn)
+        assert DESCRIPTIONS[power] in joined, f"{power} truncated in reveal: {joined}"
+        name_rect = next(rect for msg, rect in drawn if msg == NAMES[power])
+        assert name_rect.top >= icon_bottom, f"{power} name overlaps 3x icon"
+        for msg, rect in drawn:
+            assert box.left <= rect.left and rect.right <= box.right, f"{power}: {msg} {rect}"
+            assert box.top <= rect.top and rect.bottom <= box.bottom, f"{power}: {msg} {rect}"
