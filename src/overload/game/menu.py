@@ -1,6 +1,6 @@
 """The menu (docs/POWERS_AND_FUSION.md section 7): a hub with RESUME (CONTINUE in a Fuse
-Box), LOADOUT, FUSE and CONTROLS, each a screen with one job. No pygame: menu_view.py draws
-it, app.py feeds it keys and time.
+Box), LOADOUT, FUSE, SETTINGS and CONTROLS, each a screen with one job. No pygame:
+menu_view.py draws it, app.py feeds it keys and time.
 
 Keys arrive as names: up, down, left, right, select (Space or Enter), back (Esc or
 Backspace), q, e, help (H), roll (F). The menu key (Tab by default) is handled by the
@@ -82,7 +82,7 @@ class Roll:
 class Menu:
     open: bool = False
     in_fuse_box: bool = False
-    screen: str = "hub"  # hub, loadout, fuse, controls, dev
+    screen: str = "hub"  # hub, loadout, fuse, settings, controls, dev
     hub: int = 0
     row: int = 0  # loadout selection
     cursor: int = 0  # fuse: a base power's index, or len(BASE_POWERS) for the ROLL button
@@ -175,13 +175,10 @@ class Menu:
         return None, ["move"]
 
     def _settings(self, session: Session, key: str):
-        sound, display_changed = self.settings_page.nav(key)
+        sound, _display_changed = self.settings_page.nav(key)
         if sound == "back":
             return self._back()
-        sounds = [sound] if sound else []
-        if display_changed:
-            sounds.append("display")
-        return None, sounds
+        return None, [sound] if sound else []
 
     def _controls(self, session: Session, key: str):
         sound = self.keys_page.nav(key)

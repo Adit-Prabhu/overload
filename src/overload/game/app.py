@@ -271,32 +271,25 @@ def draw_dev_tag(screen: pygame.Surface) -> None:
     hud.text(screen, "DEV", rect.center, "px.hazard.1", "center")
 
 
-def _open_window(headless: bool) -> pygame.Surface:
+def _open_window(headless: bool, fullscreen: bool = False) -> pygame.Surface:
     if headless:
         return pygame.display.set_mode(VIEW)
-    flags = pygame.SCALED | pygame.RESIZABLE
+    pygame.display.set_icon(actors.app_icon())
+    flags = pygame.SCALED | (pygame.FULLSCREEN if fullscreen else pygame.RESIZABLE)
     try:
         screen = pygame.display.set_mode(VIEW, flags, vsync=1)
     except pygame.error:
         screen = pygame.display.set_mode(VIEW, flags)
-    pygame.display.set_icon(actors.app_icon())
     pygame.mouse.set_visible(False)
     return screen
 
 
 def _open_display(headless: bool, fullscreen: bool) -> pygame.Surface:
-    """Open the window, matching saved fullscreen state while preserving the 1-arg
-    `_open_window` helper for windowed startup."""
+    """Open the window, matching saved fullscreen state while keeping 1-arg `_open_window`
+    calls intact for windowed startup."""
     if headless or not fullscreen:
         return _open_window(headless)
-    flags = pygame.SCALED | pygame.FULLSCREEN
-    try:
-        screen = pygame.display.set_mode(VIEW, flags, vsync=1)
-    except pygame.error:
-        screen = pygame.display.set_mode(VIEW, flags)
-    pygame.display.set_icon(actors.app_icon())
-    pygame.mouse.set_visible(False)
-    return screen
+    return _open_window(False, True)
 
 
 def _apply_fullscreen(screen: pygame.Surface, fullscreen: bool, headless: bool) -> pygame.Surface:
@@ -596,17 +589,18 @@ def play(options: Options) -> int:
                                 return_to_title = True
                                 break
                         else:
-                            for sound in menu_frame(
+                            was_full = settings.fullscreen
+                            cues = menu_frame(
                                 session, menu, reader, recording, round(elapsed * 1000)
-                            ):
-                                if sound == "display":
-                                    screen = _apply_fullscreen(
-                                        screen, settings.fullscreen, options.headless
-                                    )
-                                else:
-                                    audio.play(sound)
+                            )
                             audio.apply_settings(settings)
                             view.apply_settings(settings)
+                            if settings.fullscreen != was_full:
+                                screen = _apply_fullscreen(
+                                    screen, settings.fullscreen, options.headless
+                                )
+                            for sound in cues:
+                                audio.play(sound)
                     audio.update(stage, getattr(run, "encounter", 1), run.world.outcome)
                     view.draw(screen, run, cursor)
                     if dev_tools is not None:
@@ -646,6 +640,7 @@ def play(options: Options) -> int:
     finally:
         if pygame.get_init():
             pygame.quit()
+            actors.app_icon.cache_clear()
             hud.forget()
             tiles.forget_fonts()
             title_screen.forget()

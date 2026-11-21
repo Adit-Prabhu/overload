@@ -41,6 +41,10 @@ class Settings:
     fullscreen: bool = False
     path: Path | None = None  # None: never saved (tests, replays, headless)
 
+    def __post_init__(self) -> None:
+        self.music_volume = _clamp_volume(self.music_volume)
+        self.sfx_volume = _clamp_volume(self.sfx_volume)
+
     @classmethod
     def load(cls, path: Path = PATH) -> Settings:
         """Load saved settings, falling back to defaults for any missing or damaged field."""

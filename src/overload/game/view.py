@@ -1270,7 +1270,7 @@ class PixelView:
                         flash = effects.tinted(image, "fx.flash")
                         flash.set_alpha(self.flashes[RIVAL_FLASH] * 24)
                         draw_at_feet(flash, rival_feet)
-                if rival.boot > 0 and (tick // 4) % 3:
+                if rival.boot > 0 and (self.reduce_flash or (tick // 4) % 3):
                     cx, cy = v(rival.x, rival.y)
                     ring = pygame.Rect(0, 0, 40, 46)
                     ring.center = (round(cx), round(cy) + 2)
@@ -1283,7 +1283,7 @@ class PixelView:
             w_image, w_feet, _wx, _wy, w_ticks = self.wreck
 
             def draw_wreck(image=w_image, feet=w_feet, ticks=w_ticks) -> None:
-                if ticks % 4 < 2 or ticks < 20:  # it flickers, then holds as it fades
+                if self.reduce_flash or ticks % 4 < 2 or ticks < 20:
                     sink = (WRECK_TICKS - ticks) // 8
                     flash_wreck = ticks % 8 == 0 and not self.reduce_flash
                     shown = effects.tinted(image, "fx.flash") if flash_wreck else image
@@ -1311,13 +1311,22 @@ class PixelView:
             state = "walk" if self.walking > 2 else "idle"
             sockets = tuple(SOCKET_TOKENS.get(slot) for slot in player.slots)
             image = actors.surge(state, tick, facing_left, sockets)
-            if hit_blink:
+            if hit_blink and not self.reduce_flash:
                 image = effects.tinted(image, "fx.flash")
             lift = 0
             if player.leap > 0:  # Meteor: an arc up and down over the ground shadow
                 done = 1.0 - player.leap / tuning.meteor_ticks
                 lift = round(28 * 4 * done * (1.0 - done))
             draw_at_feet(image, (surge_feet[0], surge_feet[1] - lift))
+            if player.invulnerable > 0 and self.reduce_flash:
+                px, py = v(player.x, player.y - lift)
+                pygame.draw.circle(
+                    screen,
+                    rgb("player.core"),
+                    (round(px), round(py)),
+                    round(tuning.player_radius) + 4,
+                    1,
+                )
             if player.lance and player.dodging:
                 effects.lance_streak(
                     screen, self.glow.layer, v(player.x, player.y), player.dodge_dx, player.dodge_dy
@@ -1506,7 +1515,7 @@ class PixelView:
         for i, (x, y) in enumerate(self.room.lamps):
             pulse = quantize(90 + 10 * math.sin(t * 2 + i))
             phase = self.flicker.get((x, y))
-            if phase is not None and flickering(self.frames, phase):
+            if phase is not None and not self.reduce_flash and flickering(self.frames, phase):
                 pulse = FLICKER_DIM
                 lx, ly = v(x, y)  # the lens goes dark with its light
                 lens = (round(lx) - 3, round(ly) - 2, 6, 3)
@@ -1591,7 +1600,7 @@ class PixelView:
         self._coach(screen, run, cam)
         if self.notice:
             message, ticks = self.notice
-            if ticks > 8 or ticks % 2:
+            if self.reduce_flash or ticks > 8 or ticks % 2:
                 if sector_visible:
                     y = 50
                 elif rival and BY_KIND[rival.kind].phases:
@@ -1615,7 +1624,9 @@ class PixelView:
             POSES[rival.protocol],
             facing_left,
             needle,
-            rival.protocol == "lateral" and rival.action == "tell" and (tick // 4) % 2 == 0,
+            rival.protocol == "lateral"
+            and rival.action == "tell"
+            and (self.reduce_flash or (tick // 4) % 2 == 0),
             kind=rival.kind,
             phase=rival.phase,
             step=walk_step(gait, "regulator"),

@@ -1,7 +1,7 @@
 """The title screen: the wordmark over a slowly drifting, darkened view of the substation, a
-three-item menu (Start, Controls, Quit) and a controls page in the same framed-panel style as
-the loadout screen, where every key can be rebound (game/keybinds.py). Pure presentation:
-nothing here touches the simulation."""
+four-item menu (Start, Settings, Controls, Quit), a settings page (game/settings.py) and a
+controls page in the same framed-panel style as the loadout screen, where every key can be
+rebound (game/keybinds.py). Pure presentation: nothing here touches the simulation."""
 
 from __future__ import annotations
 

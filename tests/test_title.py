@@ -1,4 +1,4 @@
-"""The title screen: Start, Controls and Quit, and a controls page."""
+"""The title screen: Start, Settings, Controls and Quit, plus the controls and settings pages."""
 
 from __future__ import annotations
 
@@ -12,15 +12,33 @@ from overload.game.title import CONTROLS, ITEMS, TitleScreen, controls
 
 
 @pytest.fixture(autouse=True)
-def display():
+def display(monkeypatch, tmp_path):
+    from overload.game import keybinds, settings
+
+    orig_keys_load = keybinds.Keybinds.load
+    orig_prefs_load = settings.Settings.load
+    # Keep tests isolated from any local workspace settings/keys.json or settings/prefs.json.
+    monkeypatch.setattr(keybinds, "PATH", tmp_path / "keys.json")
+    monkeypatch.setattr(settings, "PATH", tmp_path / "prefs.json")
+    monkeypatch.setattr(
+        keybinds.Keybinds,
+        "load",
+        classmethod(lambda cls, path=None: orig_keys_load(path or tmp_path / "keys.json")),
+    )
+    monkeypatch.setattr(
+        settings.Settings,
+        "load",
+        classmethod(lambda cls, path=None: orig_prefs_load(path or tmp_path / "prefs.json")),
+    )
     os.environ["SDL_VIDEODRIVER"] = "dummy"
     pygame.init()
     screen = pygame.display.set_mode((256, 144))
     yield screen
     pygame.quit()
-    from overload.art.pixel import hud, tiles
+    from overload.art.pixel import actors, hud, tiles
     from overload.game import title
 
+    actors.app_icon.cache_clear()
     hud.forget()
     tiles.forget_fonts()
     title.forget()

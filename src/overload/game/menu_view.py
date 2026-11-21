@@ -1,6 +1,6 @@
 """Draws the menu (game/menu.py) at the view's 256 x 144: the hub, LOADOUT, FUSE with its
-cards, spin and reveal, and CONTROLS. Rarity always shows by shape first (1, 2 or 3 cross
-marks and the card frame), then color (art direction, rarity tokens)."""
+cards, spin and reveal, SETTINGS and CONTROLS. Rarity always shows by shape first (1, 2 or 3
+cross marks and the card frame), then color (art direction, rarity tokens)."""
 
 from __future__ import annotations
 
@@ -575,7 +575,7 @@ def _help(screen, session) -> None:
     hud.text(screen, "H OR ESC CLOSES", (box.right - 6, box.y + 3), "ui.dim", "topright")
 
 
-# Controls --------------------------------------------------------------------------------------
+# Settings and Controls -------------------------------------------------------------------------
 
 
 def draw_settings_screen(screen, menu: Menu) -> None:
