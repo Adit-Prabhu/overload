@@ -373,3 +373,108 @@ def test_hud_slots_show_rarity_marks_and_ready_flash(display) -> None:
     # Three legendary crosses sit below the slot inside the 256 x 144 frame.
     colors = {screen.get_at((x, y))[:3] for x in range(210, 228) for y in range(136, 141)}
     assert rgb("px.rarity.legendary") in colors
+
+
+@pytest.mark.parametrize(
+    ("protocol", "expected"),
+    [
+        ("pressure", "CLAMP PROTOCOL"),
+        ("spacing", "INSULATE PROTOCOL"),
+        ("lateral", "OSCILLATE PROTOCOL"),
+    ],
+)
+def test_boss_intro_card_names_active_protocol(display, protocol, expected) -> None:
+    from overload.art.pixel import hud
+    from overload.game.view import PixelView
+
+    campaign = Campaign(1)
+    enter(campaign, "s1_chamber")
+    rival = campaign.world.rival
+    rival.protocol = protocol
+    rival.boot = campaign.tuning.rival_boot - 20
+    view = PixelView(campaign)
+    drawn: list[tuple[str, pygame.Rect]] = []
+    original = hud.text
+
+    def record(target, message, pos, *args, **kwargs):
+        rect = original(target, message, pos, *args, **kwargs)
+        drawn.append((message, rect))
+        return rect
+
+    hud.text = record
+    try:
+        view._intro_card(display, rival, campaign.tuning)
+    finally:
+        hud.text = original
+    texts = [msg for msg, _ in drawn]
+    assert expected in texts
+    assert "SECTOR 1 REGULATOR" in texts
+    for msg, rect in drawn:
+        assert rect.bottom <= 112, f"{msg} overlaps HUD key tabs: {rect}"
+
+
+def test_vent_crit_heavy_hit_shield_deflect_and_player_hit_feedback(display) -> None:
+    from overload.game.view import PixelView
+    from overload.sim.state import Event
+
+    campaign = Campaign(1)
+    view = PixelView(campaign)
+    # Normal light hit: no shake, no blast ring.
+    view.consume(campaign, [Event("rival_hit", 100.0, 100.0, 2, "")])
+    assert view.shake == 0 and not view.blasts
+    # Heavy non-vent hit (damage >= 6): micro-jolt.
+    view.consume(campaign, [Event("rival_hit", 100.0, 100.0, 6, "")])
+    assert view.shake >= 3
+    # Vent crit hit: gold blast ring + stronger jolt + longer flash.
+    view.shake = 0
+    view.consume(campaign, [Event("rival_hit", 100.0, 100.0, 4, "vent")])
+    assert view.shake >= 4 and view.flashes[-1] == 5
+    assert any(power == "spark" for _, _, _, _, power in view.blasts)
+    # Shield deflection spawns a deflect ring that decays cleanly.
+    view.consume(campaign, [Event("rival_shielded", 100.0, 100.0)])
+    assert len(view.deflects) == 1
+    view.draw(display, campaign, (128, 72))
+    # Player hit jolts and lights the danger vignette.
+    view.shake = 0
+    view.consume(campaign, [Event("player_hit", 100.0, 100.0)])
+    assert view.shake >= 6 and view.hit_vignette == 10
+    view.draw(display, campaign, (128, 72))
+    # Single-cell low battery draws the breathing edge vignette cleanly.
+    view.hit_vignette = 0
+    campaign.world.player.charge = 1
+    view.draw(display, campaign, (128, 72))
+
+
+def test_sector_arrival_banners_and_fuse_box_charging_bay(display) -> None:
+    from overload.art.palette import rgb
+    from overload.game.view import PixelView
+
+    campaign = Campaign(1)
+    view = PixelView(campaign)
+    assert view.sector_banner is None
+    enter(campaign, "s2_entry")
+    view.after_tick(campaign)
+    assert view.sector_banner is not None
+    assert view.sector_banner[:2] == ("SECTOR 2", "COOLING PLANT")
+    view.draw(display, campaign, (128, 72))
+    # Re-entering Sector 2 never re-announces it.
+    view.sector_banner = None
+    view.after_tick(campaign)
+    assert view.sector_banner is None
+    # Sector 3 announces once too.
+    enter(campaign, "s3_entry")
+    view.after_tick(campaign)
+    assert view.sector_banner is not None
+    assert view.sector_banner[:2] == ("SECTOR 3", "GRID CORE")
+    view.draw(display, campaign, (128, 72))
+
+    # Fuse Box rooms render the glowing recessed charging bay onto the light surface.
+    fuse_1 = campaign.arena.floor.get("fuse_1")
+    cx = (fuse_1.rect[0] + 7) * 16 + 8
+    cy = (fuse_1.rect[1] + 4) * 16 + 14
+    light_colors = {
+        view.room.light.get_at((x, y))[:3]
+        for x in range(cx - 14, cx + 15)
+        for y in range(cy - 6, cy + 7)
+    }
+    assert rgb("power.spark") in light_colors and rgb("power.blink") in light_colors

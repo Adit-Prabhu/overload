@@ -144,7 +144,7 @@ VISUAL_TWINS = {
     "hazard_armed": "hatched hazard tile that fills as it arms",
     "rival_orb": "large orb",
     "rival_volley": "three-bolt fan",
-    "rival_hit": "white flash on the Regulator, its bar drops",
+    "rival_hit": "white flash on the Regulator, its bar drops, gold burst and ring while venting",
     "rival_destroyed": "the wreck sinks under chained explosions, then NAME DOWN",
     "absorb": "burst in the power color",
     "unlock": "screen flash and a SPARK STOLEN or BLINK STOLEN notice",
@@ -332,6 +332,8 @@ class Audio:
             if name is None:
                 continue
             self.play(name, 0.3 if name == "shot" else SFX_LEVEL)
+            if event.kind == "rival_hit" and event.power == "vent":
+                self.play("spark", 0.45)
             if event.kind == "player_hit" and 0 < world.player.charge <= 2:
                 self.play("low_health", 0.6)
 

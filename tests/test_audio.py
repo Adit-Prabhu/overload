@@ -238,3 +238,20 @@ def test_a_base_power_in_the_other_slot_keeps_its_cast(live_audio, monkeypatch) 
     tick.append(Event("burst", 0, 0, 0, "shock_cone"))
     live_audio.events(tick, Quiet())
     assert played == ["blink_depart", "fused_shock_cone"]
+
+
+def test_vent_window_rival_hit_layers_spark_cue(live_audio, monkeypatch) -> None:
+    from overload.sim.state import Event
+
+    played = []
+    monkeypatch.setattr(live_audio, "play", lambda name, volume=0.7: played.append((name, volume)))
+
+    class Quiet:
+        rival = None
+        outcome = "playing"
+
+    live_audio.events([Event("rival_hit", 0, 0, 3, "")], Quiet())
+    assert played == [("regulator_hit", 0.7)]
+    played.clear()
+    live_audio.events([Event("rival_hit", 0, 0, 5, "vent")], Quiet())
+    assert played == [("regulator_hit", 0.7), ("spark", 0.45)]
