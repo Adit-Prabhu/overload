@@ -32,7 +32,7 @@ from overload.sim.powers import (
 from overload.sim.tuning import TICK_RATE
 
 PANEL = pygame.Rect(8, 6, 240, 132)
-CARD_W, CARD_H = 72, 51
+CARD_W, CARD_H = 72, 52
 
 # Names for compact cards. The selected power's detail panel shows its full name.
 _COMPACT_NAMES = {
@@ -84,6 +84,18 @@ def _wrap(text: str, width: int) -> list[str]:
     lines: list[str] = []
     for word in text.split():
         if lines and len(lines[-1]) + 1 + len(word) <= width:
+            lines[-1] += " " + word
+        else:
+            lines.append(word)
+    return lines
+
+
+def _wrap_px(text: str, max_px: int) -> list[str]:
+    """Wrap words to fit inside `max_px` pixels in the HUD pixel font without truncating."""
+    font = hud.pixel_font()
+    lines: list[str] = []
+    for word in text.split():
+        if lines and font.size(f"{lines[-1]} {word}")[0] <= max_px:
             lines[-1] += " " + word
         else:
             lines.append(word)
@@ -313,21 +325,30 @@ def draw_loadout(screen, menu: Menu, session, tuning) -> None:
             rarity = rarity_of(ability)
             hud.rarity_marks(screen, rarity, rx + 18, y + 11)
             hud.text(screen, rarity.upper(), (rx + 32, y + 9), f"px.rarity.{rarity}")
-            for i, line in enumerate(_wrap(DESCRIPTIONS[ability], 19)[:3]):
-                hud.text(screen, line, (rx, y + 19 + i * 9), "ui.dim")
+            cy = y + 19
+            for line in _wrap_px(DESCRIPTIONS[ability], right - rx):
+                hud.text(screen, line, (rx, cy), "ui.dim")
+                cy += 9
             seconds = cooldown_of(ability, tuning) / TICK_RATE
-            hud.text(screen, f"COOLDOWN {seconds:.1f} S", (rx, y + 47), "px.floor.3")
+            hud.text(screen, f"COOLDOWN {seconds:.1f} S", (rx, max(cy + 2, y + 47)), "px.floor.3")
             a, b = INGREDIENTS[ability]
-            hud.text(screen, f"{a.upper()} + {b.upper()}", (rx, y + 56), "px.floor.3")
+            hud.text(screen, f"{a.upper()} + {b.upper()}", (rx, max(cy + 11, y + 56)), "px.floor.3")
             inherited = INHERITS.get(frozenset((a, b)), ())
             if inherited:
-                active = [EVOLUTIONS[p] for p in inherited if evolved(world.fragments, p, tuning)]
-                if active:
-                    tag = "ACTIVE: " + "+".join(active)
-                    hud.text(screen, tag, (rx, y + 65), "px.hazard.1")
-                else:
-                    tag = "USES " + "+".join(EVOLUTIONS[p] for p in inherited)
-                    hud.text(screen, tag, (rx, y + 65), "px.floor.3")
+                iy = max(cy + 20, y + 65)
+                all_active = all(evolved(world.fragments, p, tuning) for p in inherited)
+                prefix = "ACTIVE " if all_active else "USES "
+                rect = hud.text(
+                    screen, prefix, (rx, iy), "px.hazard.1" if all_active else "px.floor.3"
+                )
+                cx = rect.right
+                for j, ingredient in enumerate(inherited):
+                    if j > 0:
+                        cx = hud.text(screen, " ", (cx, iy), "px.floor.3").right
+                    active = evolved(world.fragments, ingredient, tuning)
+                    tag = f"+{EVOLUTIONS[ingredient]}" if active else EVOLUTIONS[ingredient]
+                    token = f"power.{ingredient}" if active else "px.floor.3"
+                    cx = hud.text(screen, tag, (cx, iy), token).right
         else:
             frags = min(tuning.evolve_at, world.fragments.get(ability, 0))
             is_evolved = evolved(world.fragments, ability, tuning)
@@ -335,22 +356,33 @@ def draw_loadout(screen, menu: Menu, session, tuning) -> None:
             if is_evolved:
                 hud.text(screen, EVOLUTIONS[ability], (rx + 32, y + 9), f"power.{ability}")
                 base_desc = DESCRIPTIONS[ability].split(". TWO MORE")[0]
-                for i, line in enumerate(_wrap(base_desc, 19)[:2]):
-                    hud.text(screen, line, (rx, y + 19 + i * 9), "ui.dim")
-                for i, line in enumerate(_wrap(EVOLVED_INFO[ability], 19)[:2]):
-                    hud.text(screen, line, (rx, y + 38 + i * 9), f"power.{ability}")
+                cy = y + 18
+                for line in _wrap_px(base_desc, right - rx):
+                    hud.text(screen, line, (rx, cy), "ui.dim")
+                    cy += 8
+                cy += 2
+                for line in _wrap_px(EVOLVED_INFO[ability], right - rx):
+                    hud.text(screen, line, (rx, cy), f"power.{ability}")
+                    cy += 8
                 seconds = cooldown_of(ability, tuning) / TICK_RATE
-                hud.text(screen, f"COOLDOWN {seconds:.1f} S", (rx, y + 58), "px.floor.3")
+                hud.text(screen, f"COOLDOWN {seconds:.1f} S", (rx, cy + 3), "px.floor.3")
             else:
                 hud.text(screen, f"EVOLVE {frags}/{tuning.evolve_at}", (rx + 32, y + 9), "ui.dim")
-                for i, line in enumerate(_wrap(DESCRIPTIONS[ability], 19)[:3]):
-                    hud.text(screen, line, (rx, y + 19 + i * 9), "ui.dim")
+                cy = y + 19
+                for line in _wrap_px(DESCRIPTIONS[ability], right - rx):
+                    hud.text(screen, line, (rx, cy), "ui.dim")
+                    cy += 9
                 seconds = cooldown_of(ability, tuning) / TICK_RATE
-                hud.text(screen, f"COOLDOWN {seconds:.1f} S", (rx, y + 48), "px.floor.3")
+                hud.text(
+                    screen,
+                    f"COOLDOWN {seconds:.1f} S",
+                    (rx, max(cy + 2, y + 48)),
+                    "px.floor.3",
+                )
                 hud.text(
                     screen,
                     f"AT {tuning.evolve_at}: {EVOLUTIONS[ability]}",
-                    (rx, y + 57),
+                    (rx, max(cy + 11, y + 57)),
                     "px.floor.3",
                 )
     equip = binds.pair("power_q", "power_e")
@@ -401,7 +433,7 @@ def draw_fuse(screen, menu: Menu, session) -> None:
     # The three possible results.
     if len(menu.sockets) == 2:
         terms = roll_terms(session, *menu.sockets)
-        _cards(screen, menu, terms, left, top + 47)
+        _cards(screen, menu, terms, left, top + 46)
         _terms(screen, menu, terms, left, right, top + 102)
     else:
         for i, line in enumerate(
@@ -443,12 +475,12 @@ def _cards(screen, menu: Menu, terms: dict, left: int, y: int) -> None:
         hud.rarity_marks(screen, rarity, rect.x + 3, rect.y + 3)
         hud.text(screen, f"{terms['odds'][i]}%", (rect.right - 3, rect.y + 2), token, "topright")
         icon = _icon(power, 2, hidden=not seen)
-        screen.blit(icon, icon.get_rect(midtop=(rect.centerx, rect.y + 12)))
+        screen.blit(icon, icon.get_rect(midtop=(rect.centerx, rect.y + 6)))
         name = NAMES[power] if seen else "???"
         for j, line in enumerate(_wrap(name, 11)[:2]):
-            hud.text(screen, line, (rect.centerx, rect.y + 29 + j * 9), "ui.text", "midtop")
+            hud.text(screen, line, (rect.centerx, rect.y + 24 + j * 8), "ui.text", "midtop")
         if power == terms["owned"] and roll is None:
-            hud.text(screen, "OWNED", (rect.centerx, rect.bottom - 11), "px.hazard.1", "midtop")
+            hud.text(screen, "OWNED", (rect.centerx, rect.bottom - 12), "px.hazard.1", "midtop")
 
 
 def _terms(screen, menu: Menu, terms: dict, left: int, right: int, y: int) -> None:
@@ -482,7 +514,7 @@ def _terms(screen, menu: Menu, terms: dict, left: int, right: int, y: int) -> No
 def _reveal(screen, menu: Menu) -> None:
     roll = menu.roll
     rarity = rarity_of(roll.result)
-    box = pygame.Rect(0, 0, 194, 94)
+    box = pygame.Rect(0, 0, 198, 98)
     box.center = (PANEL.centerx, PANEL.centery - 2)
     screen.fill(rgb("px.outline"), box)
     rarity_frame(screen, box, rarity, f"px.rarity.{rarity}")
@@ -490,14 +522,18 @@ def _reveal(screen, menu: Menu) -> None:
         pulse = (roll.clock // 200) % 2
         pygame.draw.rect(screen, rgb("px.rarity.legendary"), box.inflate(4 + 2 * pulse, 4), 1)
     icon = _icon(roll.result, 3)
-    screen.blit(icon, icon.get_rect(midtop=(box.centerx, box.y + 5)))
-    hud.text(screen, NAMES[roll.result], (box.centerx, box.y + 28), "ui.text", "midtop")
-    hud.rarity_marks(screen, rarity, box.centerx - 22, box.y + 41)
-    hud.text(screen, rarity.upper(), (box.centerx - 8, box.y + 39), f"px.rarity.{rarity}")
+    screen.blit(icon, icon.get_rect(midtop=(box.centerx, box.y + 4)))
+    hud.text(screen, NAMES[roll.result], (box.centerx, box.y + 33), "ui.text", "midtop")
+    marks_w = (("rare", "epic", "legendary").index(rarity) + 1) * 4 - 1
+    rarity_label = rarity.upper()
+    label_w = hud.pixel_font().size(rarity_label)[0]
+    row_x = box.centerx - (marks_w + 4 + label_w) // 2
+    hud.rarity_marks(screen, rarity, row_x, box.y + 46)
+    hud.text(screen, rarity_label, (row_x + marks_w + 4, box.y + 44), f"px.rarity.{rarity}")
     from overload.game.view import DESCRIPTIONS  # one table of descriptions
 
-    for i, line in enumerate(_wrap(DESCRIPTIONS[roll.result], 28)[:2]):
-        hud.text(screen, line, (box.centerx, box.y + 52 + i * 9), "ui.text", "midtop")
+    for i, line in enumerate(_wrap_px(DESCRIPTIONS[roll.result], box.width - 14)):
+        hud.text(screen, line, (box.centerx, box.y + 56 + i * 9), "ui.text", "midtop")
     if roll.replaced and roll.replaced != roll.result:
         line = f"REPLACES {NAMES[roll.replaced]}"
         token = "px.hazard.1"
@@ -507,7 +543,7 @@ def _reveal(screen, menu: Menu) -> None:
     else:
         line = "NEW POWER"
         token = "ui.dim"
-    hud.text(screen, line, (box.centerx, box.y + 76), token, "midtop")
+    hud.text(screen, line, (box.centerx, box.y + 80), token, "midtop")
 
 
 def help_lines(tuning) -> list[str]:

@@ -571,13 +571,13 @@ def build() -> Floor:
             doors += _carve(terrain, decor, rooms[a], rooms[b], secret)
 
     labels = tuple(
-        (room.rect[0] + 5, room.rect[1] + dy, label, "floor")
-        for room, dy, label in (
-            (rooms["s1_entry"], 4, "SECTOR 1"),
-            (rooms["s2_entry"], 4, "SECTOR 2"),
-            (rooms["s3_entry"], 4, "SECTOR 3"),
-            (rooms["fuse_1"], 9, "FUSE BOX"),
-            (rooms["fuse_2"], 9, "FUSE BOX"),
+        (room.rect[0] + dx, room.rect[1] + dy, label, "floor")
+        for room, dx, dy, label in (
+            (rooms["s1_entry"], 5, 4, "SECTOR 1"),
+            (rooms["s2_entry"], 5, 4, "SECTOR 2"),
+            (rooms["s3_entry"], 5, 4, "SECTOR 3"),
+            (rooms["fuse_1"], 3, 9, "FUSE BOX"),
+            (rooms["fuse_2"], 3, 9, "FUSE BOX"),
         )
     )
     room = Room(

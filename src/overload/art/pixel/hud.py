@@ -169,7 +169,7 @@ def draw(target: pygame.Surface, hud: Hud) -> None:
         x, y = w - 4 - 20 * (2 - i) - 2 * (1 - i), h - 24
         ready = bool(power) and hud.cooldowns[i] <= 0
         rarity = rarity_of(power) if power else ""
-        if hud.ready_flash[i] > 0:
+        if ready and hud.ready_flash[i] > 0:
             border = "fx.flash"
         elif ready and rarity:
             border = f"px.rarity.{rarity}"

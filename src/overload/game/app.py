@@ -453,6 +453,7 @@ def play(options: Options) -> int:
                 accumulated = 0.0
                 frames = 0
                 finished = False
+                ending_shown = False
                 replay_coda = 0
                 cursor = (VIEW[0] // 2, VIEW[1] // 2)
                 while not reader.quit and not finished:
@@ -547,7 +548,7 @@ def play(options: Options) -> int:
                             and not menu.open
                         ):
                             ending_keys = reader.take_menu()
-                            if "select" in ending_keys and not reader.quit:
+                            if ending_shown and "select" in ending_keys and not reader.quit:
                                 audio.play("confirm")
                                 return_to_title = True
                                 break
@@ -573,6 +574,8 @@ def play(options: Options) -> int:
                         )
                     elif stage == "ending":
                         view.draw_campaign_ending(screen, run, can_return)
+                        if view.boss_banner is None:
+                            ending_shown = True
                     if dev_tools is not None:
                         draw_dev_tag(screen)
                     pygame.display.flip()
@@ -581,15 +584,17 @@ def play(options: Options) -> int:
                         break
             finally:
                 if session is not None:
-                    session.close()
-                if session is not None and isinstance(session.selector, LiveSelector):
-                    session.selector.client.close()
+                    try:
+                        session.close()
+                    finally:
+                        if isinstance(session.selector, LiveSelector):
+                            session.selector.client.close()
 
             if return_to_title:
                 continue
             break
     finally:
-        if screen is not None:
+        if pygame.get_init():
             pygame.quit()
             hud.forget()
             tiles.forget_fonts()

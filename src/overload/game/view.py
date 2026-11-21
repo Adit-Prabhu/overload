@@ -963,11 +963,17 @@ class PixelView:
 
     def _tick_slot_ready(self, world) -> None:
         """Flash a HUD slot border briefly the tick its equipped power comes off cooldown."""
+        if world.outcome == "down":
+            self.ready_flash = [0, 0]
+            self.prev_slot_state = [("", False), ("", False)]
+            return
         player = world.player
         for i, slot in enumerate(player.slots[:2]):
             cooling = bool(slot) and player.cooldowns.get(COOLDOWN_KEYS[slot], 0) > 0
             prev_slot, prev_cooling = self.prev_slot_state[i]
-            if slot and slot == prev_slot and prev_cooling and not cooling:
+            if not slot or cooling or slot != prev_slot:
+                self.ready_flash[i] = 0
+            elif prev_cooling and not cooling:
                 self.ready_flash[i] = 6
             self.prev_slot_state[i] = (slot, cooling)
 
