@@ -1,11 +1,11 @@
 # Live smoke test, November 19, 2026 (evidence version 4)
 
-**Evidence type: live.** Real calls to the deployed rival service, run by Adit after redeploying the Worker from the merged `main` with evidence version 4 (power uses by family). This is not fixture, mock or replay evidence. Runs 3 and 4 replace the November 17 runs as the November 23 checkpoint evidence (run 4 for live replies, isolation and the cap, run 3 for the forced timeout), since the Worker now runs the evidence version the game sends.
+**Evidence type: live.** Real calls to the deployed rival service, run by Adit after redeploying the Worker from the merged `main` with evidence version 4 (power uses by family). This is not fixture, mock or replay evidence. Runs 5 and 6, on the hardened Worker (PR #60), are the November 23 checkpoint evidence: run 5 for live replies, isolation and the cap, run 6 for the forced timeout. They replace the November 17 runs and runs 3 and 4, which were on the version before the hardening.
 
 | Item | Value |
 | --- | --- |
 | Date | 2026-11-19 |
-| Worker version ID | `8739211e-286f-421d-a76e-1b1400f28527` (deployed 2026-11-20 01:59 UTC, the evening of Nov 19 locally, read from `npx wrangler deployments list`) |
+| Worker version ID | Runs 1 to 4: `8739211e-286f-421d-a76e-1b1400f28527` (deployed 2026-11-20 01:59 UTC). Runs 5 and 6: `bf48e333-023b-44bf-8633-43fbb83b800b` (2026-11-20 02:33 UTC, after PR #60). Both the evening of Nov 19 locally, read from `npx wrangler deployments list` |
 | Provider and model | Vertex AI, `gemini-3.5-flash-lite` (as reported in each reply) |
 | Service URL | Kept out of the repository (`OVERLOAD_RIVAL_URL`) |
 | Command | `uv run python tools/rival/smoke.py "$OVERLOAD_RIVAL_URL"`, and with `--expect-timeout --deadline 0.05` |
@@ -56,11 +56,34 @@ smoke passed
 - The `wrangler tail` log showed every session start, budget reservation and proposal returning Ok, with no exception.
 - Input is 515 tokens per first request (521 under version 3), as the version 4 summary is slightly shorter.
 
+## Run 5, hardened Worker: live replies, isolation and the request cap, passed
+```json
+{"case": "far", "encounter": 2, "tactic": "pressure", "source": "live", "reason": null, "request_id": "96032750-e232-4224-9053-dc99e324dd1a", "evidence_ids": ["e1.far_share"], "latency_ms": 1219, "model": "gemini-3.5-flash-lite", "input_tokens": 515, "output_tokens": 35, "cost_usd": 0.00158}
+{"case": "near", "encounter": 2, "tactic": "spacing", "source": "live", "reason": null, "request_id": "63d4f3b2-fe70-49af-ae09-d0548b08de2d", "evidence_ids": ["e1.near_share"], "latency_ms": 1174, "model": "gemini-3.5-flash-lite", "input_tokens": 515, "output_tokens": 35, "cost_usd": 0.00158}
+{"case": "far_3", "encounter": 3, "tactic": "pressure", "source": "live", "reason": null, "request_id": "b2ef94fe-e7a4-4d13-8d15-bd70d575b854", "evidence_ids": ["e1.far_share"], "latency_ms": 1300, "model": "gemini-3.5-flash-lite", "input_tokens": 695, "output_tokens": 35, "cost_usd": 0.00158}
+{"case": "far_4", "encounter": 4, "tactic": "lateral", "source": "fallback", "reason": "request_cap", "request_id": null, "evidence_ids": [], "latency_ms": null, "model": null, "input_tokens": null, "output_tokens": null, "cost_usd": null}
+smoke passed
+```
+- Two sessions got their own answers: long range drew pressure, close range drew spacing, each citing the matching evidence, in 1.2 to 1.3 s. Every answer passed validation.
+- This was the first smoke run in Adit's terminal session after the redeploy (as pasted, deploy then smoke). The cold start of run 1 did not recur in this run, so a cold start does not happen after every deploy. One run says nothing about how often it happens (the warm-up was not built).
+- No `wrangler tail` log was captured for runs 5 and 6.
+- The third request in a session was refused (`request_cap`) and became the neutral tactic.
+
+## Run 6, hardened Worker: forced timeout falls back to neutral, passed
+```json
+{"case": "far", "encounter": 2, "tactic": "lateral", "source": "fallback", "reason": "timeout", "request_id": "6c037d56-b792-4a09-82d6-3bba4896094e", "evidence_ids": [], "latency_ms": 71, "model": null, "input_tokens": null, "output_tokens": null, "cost_usd": null}
+{"case": "near", "encounter": 2, "tactic": "lateral", "source": "fallback", "reason": "timeout", "request_id": "7957c1e8-ff5b-40e4-835e-82d077584709", "evidence_ids": [], "latency_ms": 71, "model": null, "input_tokens": null, "output_tokens": null, "cost_usd": null}
+{"case": "far_3", "encounter": 3, "tactic": "lateral", "source": "fallback", "reason": "timeout", "request_id": "cfbe94c6-fab0-447f-9769-eff4ee223847", "evidence_ids": [], "latency_ms": 66, "model": null, "input_tokens": null, "output_tokens": null, "cost_usd": null}
+{"case": "far_4", "encounter": 4, "tactic": "lateral", "source": "fallback", "reason": "request_cap", "request_id": null, "evidence_ids": [], "latency_ms": null, "model": null, "input_tokens": null, "output_tokens": null, "cost_usd": null}
+smoke passed
+```
+- With the game's deadline cut to 0.05 s, every request became the neutral tactic, labelled as fallback with reason `timeout`. As in run 3, the game stops waiting at its deadline, so a later reply cannot change the tactic. The output shows the fallbacks, not the late replies.
+
 ## Cost
-At most 12 model calls across the four runs (three per run, counting calls the service likely finished after the game stopped waiting, and the run 2 request that failed, which may not have reached the model), at $0.00158 reserved each: under $0.02 in the ledger, far below the $1.00 daily cap.
+At most 18 model calls across the six runs (three per run, counting calls the service likely finished after the game stopped waiting, and the run 2 request that failed, which may not have reached the model), at $0.00158 reserved each: under $0.03 in the ledger, far below the $1.00 daily cap.
 
 ## Follow-up
-- A cold first request can miss the 5 s deadline, and one transient server error was seen. Both fall back safely but lose a live data point. Adit chose the hardening (a retried budget reservation and labelled errors instead of a raw 500, see DECISIONS, Nov 19). The cold-start warm-up was not built.
+- A cold first request can miss the 5 s deadline, and one transient server error was seen (runs 1 and 2). Both fell back safely but lost a live data point. Adit chose the hardening (a retried budget reservation and labelled errors instead of a raw 500, PR #60, DECISIONS Nov 19), and it was deployed as `bf48e333` and passed runs 5 and 6. Those runs show no 500, but that is not proof the fix addresses run 2's cause, since that error was transient and its cause unconfirmed. The cold-start warm-up was not built.
 
 ## Not covered here
 These summaries are synthetic (fixed distances and shot counts from `tools/rival/smoke.py`), not from play. Evidence from real play sessions, and the comparison against the fixed-schedule baseline, come later and will be recorded separately.
