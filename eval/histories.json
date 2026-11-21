@@ -1,12 +1,102 @@
 {
-  "version": 1,
-  "note": "Authored observation histories for the rival live suite. intended is the designer's intent (counter the dominant habit, neutral when none dominates). It is a reference for human review, not ground truth.",
+  "version": 2,
+  "note": "Authored Evidence Version 4 observation histories (all ten allowed kinds: range shares, shots, dodges and five power families) for the rival live suite. intended is the designer's intent (counter the dominant distance or power-family habit, neutral when none dominates). It is a reference for human review, not ground truth.",
   "cases": [
-    {"id": "far_heavy", "intended": "pressure", "values": {"far_share": 0.75, "mid_share": 0.2, "near_share": 0.05, "shots_per_minute": 48.0, "dodges": 3}},
-    {"id": "near_heavy", "intended": "spacing", "values": {"far_share": 0.05, "mid_share": 0.25, "near_share": 0.7, "shots_per_minute": 52.0, "dodges": 4}},
-    {"id": "balanced", "intended": "lateral", "values": {"far_share": 0.32, "mid_share": 0.36, "near_share": 0.32, "shots_per_minute": 40.0, "dodges": 5}},
-    {"id": "far_dodgy", "intended": "pressure", "values": {"far_share": 0.62, "mid_share": 0.3, "near_share": 0.08, "shots_per_minute": 30.0, "dodges": 14}},
-    {"id": "near_quiet", "intended": "spacing", "values": {"far_share": 0.1, "mid_share": 0.24, "near_share": 0.66, "shots_per_minute": 12.0, "dodges": 1}},
-    {"id": "thin_evidence", "intended": "lateral", "values": {"far_share": 0.4, "mid_share": 0.3, "near_share": 0.3, "shots_per_minute": 6.0, "dodges": 0}}
+    {
+      "id": "far_snipe_shield",
+      "intended": "pressure",
+      "values": {
+        "far_share": 0.72,
+        "mid_share": 0.22,
+        "near_share": 0.06,
+        "shots_per_minute": 48.0,
+        "dodges": 3,
+        "shot_power_uses": 9,
+        "teleport_uses": 0,
+        "pulse_uses": 0,
+        "shield_uses": 7,
+        "pull_uses": 1
+      }
+    },
+    {
+      "id": "near_teleport_pulse",
+      "intended": "spacing",
+      "values": {
+        "far_share": 0.08,
+        "mid_share": 0.24,
+        "near_share": 0.68,
+        "shots_per_minute": 44.0,
+        "dodges": 5,
+        "shot_power_uses": 1,
+        "teleport_uses": 8,
+        "pulse_uses": 9,
+        "shield_uses": 0,
+        "pull_uses": 0
+      }
+    },
+    {
+      "id": "balanced_mixed",
+      "intended": "lateral",
+      "values": {
+        "far_share": 0.32,
+        "mid_share": 0.36,
+        "near_share": 0.32,
+        "shots_per_minute": 40.0,
+        "dodges": 5,
+        "shot_power_uses": 3,
+        "teleport_uses": 3,
+        "pulse_uses": 3,
+        "shield_uses": 2,
+        "pull_uses": 2
+      }
+    },
+    {
+      "id": "mid_shield_pull_camp",
+      "intended": "pressure",
+      "values": {
+        "far_share": 0.42,
+        "mid_share": 0.44,
+        "near_share": 0.14,
+        "shots_per_minute": 34.0,
+        "dodges": 2,
+        "shot_power_uses": 5,
+        "teleport_uses": 0,
+        "pulse_uses": 0,
+        "shield_uses": 10,
+        "pull_uses": 8
+      }
+    },
+    {
+      "id": "mid_dive_pulse",
+      "intended": "spacing",
+      "values": {
+        "far_share": 0.14,
+        "mid_share": 0.44,
+        "near_share": 0.42,
+        "shots_per_minute": 36.0,
+        "dodges": 10,
+        "shot_power_uses": 0,
+        "teleport_uses": 11,
+        "pulse_uses": 8,
+        "shield_uses": 1,
+        "pull_uses": 0
+      }
+    },
+    {
+      "id": "thin_evidence",
+      "intended": "lateral",
+      "values": {
+        "far_share": 0.4,
+        "mid_share": 0.3,
+        "near_share": 0.3,
+        "shots_per_minute": 6.0,
+        "dodges": 0,
+        "shot_power_uses": 0,
+        "teleport_uses": 0,
+        "pulse_uses": 0,
+        "shield_uses": 0,
+        "pull_uses": 0
+      }
+    }
   ]
 }

@@ -15,13 +15,22 @@ spec.loader.exec_module(live_suite)
 
 def test_authored_histories_use_only_allowed_kinds() -> None:
     suite = json.loads(live_suite.HISTORIES.read_text(encoding="utf-8"))
+    evidence = json.loads((ROOT / "config" / "evidence.json").read_text(encoding="utf-8"))
+    allowed_kinds = set(evidence["kinds"])
     tactics = {
         t["id"] for t in json.loads((ROOT / "config" / "tactics.json").read_text())["tactics"]
     }
+    assert suite["version"] == 2
     assert len(suite["cases"]) == 6
+    assert {case["intended"] for case in suite["cases"]} == tactics
     for case in suite["cases"]:
         assert case["intended"] in tactics
+        assert set(case["values"]) == allowed_kinds, case["id"]
+        shares = case["values"]["far_share"] + case["values"]["mid_share"]
+        shares += case["values"]["near_share"]
+        assert abs(shares - 1.0) < 1e-6, case["id"]
         summary = live_suite.summary_for(case["values"])
+        assert len(summary["items"]) <= 12
         for item in summary["items"]:
             assert re.fullmatch(r"e1\.[a-z_]+", item["id"])
             assert 1 <= len(item["label"]) <= 80

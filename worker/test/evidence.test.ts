@@ -38,6 +38,9 @@ describe("power-use evidence", () => {
     const prompt = buildPrompt(summary as never, []);
     expect(prompt.user).toContain("- e2.teleport_uses: Teleports used = 9");
     expect(prompt.user).not.toContain("client text is ignored");
+    expect(prompt.user).toContain("shields and pull fields");
+    expect(prompt.user).toContain("dives in with teleports");
+    expect(prompt.user).toContain("pulse blasts");
   });
 
   it("accepts a proposal that cites power evidence that was supplied", () => {
