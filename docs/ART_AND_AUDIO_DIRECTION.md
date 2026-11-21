@@ -13,6 +13,8 @@ This document is the single source of truth for how Overload looks and sounds. E
 - `pixel_room.png`: the whole substation hall.
 - `pixel_contact_sheet.png`: every asset.
 - `pixel_contact_sheet_cvd.png`: the contact sheet in grayscale and three color-vision simulations.
+- `title.png`, `title_controls.png`, `title_settings.png`, `hud_in_play.png`, `hud_loadout.png`: title, controls, settings, HUD and loadout review renders (`tools/art/ui_renders.py`).
+- `boss_entrance.png`, `boss_in_play.png`, `bosses.png`, `boss_down.png`: three-phase Regulator review renders (`tools/art/boss_review.py`).
 
 ## 1. Theme
 
@@ -46,8 +48,8 @@ Use these names everywhere: UI text, logs shown to players, recordings and docs.
 | Arc Drone | Robot that carries Spark (was the Arc Mite before the Nov 17 overhaul) | `drone` |
 | Relay Bot | Robot that carries Blink | `relay` |
 | Breaker | Robot that carries Burst (was the Coil) | `breaker` |
-| Sweeper | Robot that rushes and carries nothing | `sweeper` |
-| Sentry | Turret robot that carries nothing | `sentry` |
+| Sweeper | Robot that rushes and carries Magnet | `sweeper` |
+| Sentry | Turret robot that carries Bulwark | `sentry` |
 | Charge | A power fragment dropped by an enemy | `fragment` |
 | Fuse Box | The safe room for loadout and fusion | `safe_room` |
 | Substation hall | The arena | `arena` |
@@ -136,13 +138,13 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | ID | Asset | Look | Motion and tells | Pri | Status |
 | --- | --- | --- | --- | --- | --- |
 | CH-01 | Surge | Lineworker: white hard hat with a headlamp and reflective band, goggles, teal jacket with a reflective strip, utility belt, battery pack with two power sockets, siphon glove, spark caster | 2-frame idle, 4-frame walk, dodge ghosts, hit flicker, headlamp light follows the aim | P0 | Done |
-| CH-02 | Regulator chassis | Linesman gantry and mask, oil-cooled Transformer, fractured reactor cage. Core armor anchors aim and the protocol modules attach on both sides | Three distinct silhouettes per chassis, articulated walks, notched health bar, vent steam, boss entrance and a defeat sequence before the ending | P0 | Implemented in the boss stack. See [design and review renders](BOSS_DESIGN.md) |
+| CH-02 | Regulator chassis | Linesman gantry and mask, oil-cooled Transformer, fractured reactor cage. Core armor anchors aim and the protocol modules attach on both sides | Three distinct silhouettes per chassis, articulated walks, notched health bar, vent steam, boss entrance with protocol label and icon, and a defeat sequence before the ending | P0 | Done (`art/pixel/regulators.py`, contact sheet and [BOSS_DESIGN.md](BOSS_DESIGN.md)) |
 | CH-02a | Clamp protocol | Pincers forward | Lunge with a filling tell, then recovery | P0 | Done |
 | CH-02b | Insulate protocol | Hatched shield plates on both sides | Backs off, lays hatched hazard tiles, slow orbs | P0 | Done |
-| CH-02c | Oscillate protocol | Side thruster fins | Strafes, fins flash before a volley | P0 | Done (fins flash during the volley tell, with the aim line and ring) |
-| CH-03 | Arc Mite | Beetle machine with a shiny shell, a glowing bolt core, a sparking antenna, one eye, jointed legs | Legs cycle, faster while charging. Dotted aim line and filling ring for 0.45 s, then a spiked bolt | P0 | Done |
-| CH-04 | Relay | Boxy machine with a lever switch, visor eyes, a diamond core window, a status light, treads | Lever flips. A hatched landing diamond shows 0.5 s before it blinks | P0 | Done (the lever flips down while the landing diamond shows) |
-| CH-05 | Coil | Coil-spring machine with a ring core | Coils tighten, then a shockwave | P2 | Not started |
+| CH-02c | Oscillate protocol | Side thruster fins | Strafes, fins flash before a volley | P0 | Done (fins flash during the volley tell, steady under Reduce Flash) |
+| CH-03 | Arc Drone | Hovering maintenance drone with a spinning rotor and bolt core (replaced Arc Mite) | Leans into flight, dotted aim line and filling ring for 0.45 s, spiked bolt | P0 | Done (`art/pixel/robots.py`) |
+| CH-04 | Relay Bot | Boxy relay robot with a lever switch and diamond core window | Crouches before a blink, beams out and in on a column of Blink light | P0 | Done (`art/pixel/robots.py`) |
+| CH-05 | Breaker, Sweeper, Sentry | Heavy slam walker (Burst), four-legged spider rusher (Magnet), swiveling shield turret (Bulwark) | Articulated walks, Breaker slam shockwave, Sweeper rev and rush, Sentry scanning eye and recoil | P2 | Done (`art/pixel/robots.py`, sector color tiers in `game/view.py`) |
 
 ### Abilities
 | ID | Asset | Look | Pri | Status |
@@ -174,7 +176,7 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | EN-05 | Props: transformer, switchgear cabinet, insulator stack, cable reel, crate, oil drum | P0 | Done |
 | EN-06 | Stenciled signage on walls and floors | P0 | Done |
 | EN-07 | Blackout lighting: lamp and overhead pools, headlamp, glow | P0 | Done |
-| EN-08 | Fuse Box room | P0 | Fuse Box menu screen done over the dimmed room. A separate room is not drawn |
+| EN-08 | Fuse Box room | P0 | Done: dedicated safe rooms (`fuse_1`, `fuse_2`) with a cosmetic recessed charging and fusion bay wired to the north wall monitor, plus the Fuse Box menu hub |
 | EN-09 | Lighting states per encounter (standby, rising, overload) | P1 | Partly done: one light per sector (below) |
 | EN-10 | Sector identity (Nov 17) | P0 | Done, see below |
 | EN-11 | Set dressing (Nov 18, `art/pixel/dressing.py`) | P1 | Done. Seeded by tile, cosmetic only. Contact shadows at wall bases, low-frequency grime, bolts and scuffs on every floor. Switchyard: painted walk lines, oil stains, cable trays on the upper walls. Cooling plant: wet patches (kept off the Cooled robots' teal) that catch drips, drains, rust streaks, pipes with valve wheels, steam from the vents. Grid core: scorch marks, cracks leaking conduit light, a lit conduit strip on the upper walls, damaged panels that spit sparks. Bare wall faces get junction boxes, numbered plates and fans. Some emergency lamps flicker, lens and light together. Dust drifts through lamp light |
@@ -211,8 +213,8 @@ The view is only 256 x 144, so every HUD pixel competes with the fight. Rules, a
 | UI-04 | Pixel reticle | P0 | Done |
 | UI-05 | Banners ("SHORT CIRCUIT", "SECTOR CLEAR") with the build stamp | P0 | Done, labels approved |
 | UI-06 | Fuse Box link status message | P0 | Done (decision D7, live condition only) |
-| UI-07 | Title screen and wordmark | P1 | Done (Start, Controls, Quit over the drifting substation) |
-| UI-08 | Settings (volume, screen shake, flash reduction) | P1 | Not started |
+| UI-07 | Title screen and wordmark | P1 | Done (Start, Settings, Controls, Quit and difficulty selector over the Surge vs Grid Core standoff) |
+| UI-08 | Settings (volume, screen shake, flash reduction, fullscreen) | P1 | Done (`game/settings.py`, Title and Pause/Fuse Box hubs, saved in `settings/prefs.json`) |
 | UI-10 | Font: Silkscreen (SIL OFL 1.1), native 8 px | P0 | Done |
 
 ### Music
@@ -273,7 +275,7 @@ Peaks stay at or below -1 dBFS. Assets are exported as 44.1 kHz OGG.
 | ID | Asset | Notes | Pri |
 | --- | --- | --- | --- |
 | MK-01 | Key art and video thumbnail | Composed in-engine from real game assets with the wordmark | P1 |
-| MK-02 | App icon | The Surge's hard hat with a spark | P1 |
+| MK-02 | App icon | Done: 32 x 32 Surge hard hat with a Spark bolt (`art/pixel/actors.py:app_icon`, set via `pygame.display.set_icon`) | P1 |
 | MK-03 | Short gameplay clip | For G5 and the finals showcase | P1 |
 
 ### Text
@@ -326,11 +328,12 @@ This approach has four advantages:
 | QA agent | Grayscale, color-vision, mute and timing checks. Read-only | Adit resolves findings |
 
 ## 5. Accessibility settings
-- Volume sliders for music and SFX
+All implemented in `SETTINGS` (`game/settings.py`) and `CONTROLS` (`game/keybinds.py`):
+- Volume sliders for music and SFX (0 to 100% in 10% steps)
 - Screen shake toggle
-- Flash reduction (replaces white flashes with outline pulses)
-- Color-independent cues throughout
-- Key rebinding stays an open question from the GDD
+- Flash reduction (replaces white unlock/hit/wreck flashes and rapid HUD/tell flicker with steady outline cues)
+- Color-independent cues throughout (shape before color, CVD contact sheet verified)
+- Key rebinding for move, dodge, both power slots, retry and menu (`settings/keys.json`)
 
 ## 6. Acceptance checks (automated where possible)
 | Check | How |

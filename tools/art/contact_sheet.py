@@ -28,12 +28,12 @@ import numpy as np  # noqa: E402
 import pygame  # noqa: E402
 
 from overload.art.palette import rgb  # noqa: E402
-from overload.art.pixel import actors, effects, hud, tiles  # noqa: E402
+from overload.art.pixel import actors, effects, hud, regulators, robots, tiles  # noqa: E402
 from overload.paths import ROOT  # noqa: E402
 from overload.rooms import Room  # noqa: E402
-from overload.sim.powers import ABILITIES
+from overload.sim.powers import ABILITIES  # noqa: E402
 
-CELL = (88, 64)
+CELL = (128, 68)
 COLUMNS = 7
 SCALE = 3
 DEFAULT_DIR = ROOT / "docs" / "art"
@@ -86,6 +86,11 @@ Draw = Callable[[pygame.Surface, tuple[int, int]], None]
 
 
 def centered(image: pygame.Surface) -> Draw:
+    max_w, max_h = CELL[0] - 8, CELL[1] - 18
+    w, h = image.get_size()
+    if w > max_w or h > max_h:
+        ratio = min(max_w / w, max_h / h)
+        image = pygame.transform.scale(image, (max(1, round(w * ratio)), max(1, round(h * ratio))))
     return lambda target, c: target.blit(image, image.get_rect(center=c))
 
 
@@ -98,15 +103,26 @@ def items() -> list[tuple[str, Draw]]:
         entries.append((f"surge walk {i + 1}", centered(image)))
     entries.append(("surge sockets", centered(actors.surge("idle", 0, False, ("spark", "blink")))))
     entries.append(("caster", centered(actors.caster())))
-    for i, image in enumerate(actors.arc_mite_frames()):
-        entries.append((f"arc mite {i + 1}", centered(image)))
-    for i, image in enumerate(actors.relay_frames()):
-        entries.append((f"relay {i + 1}", centered(image)))
+    entries.append(("app icon", centered(actors.app_icon())))
+    # Maintenance robot roster (art/pixel/robots.py) and Regulator chassis (regulators.py).
+    entries += [
+        ("arc drone", centered(robots.drone(0, False))),
+        ("relay bot", centered(robots.relay_bot(False))),
+        ("breaker", centered(robots.breaker(False))),
+        ("sweeper", centered(robots.sweeper(0, False))),
+        ("sentry", centered(robots.sentry(False))),
+        ("linesman", centered(regulators.regulator("clamp", False, -0.6, kind="linesman"))),
+        (
+            "transformer",
+            centered(regulators.regulator("insulate", False, -0.6, kind="transformer")),
+        ),
+        ("grid core", centered(regulators.regulator("oscillate", False, -0.6, kind="grid_core"))),
+    ]
     for protocol in ("clamp", "insulate", "oscillate"):
         entries.append((f"reg {protocol}", centered(actors.regulator(protocol, False, -2.4))))
     entries.append(("reg volley tell", centered(actors.regulator("oscillate", False, -2.4, True))))
     for name, image in (
-        ("transformer", tiles.transformer()),
+        ("transformer prop", tiles.transformer()),
         ("cabinet", tiles.cabinet()),
         ("insulator", tiles.insulator()),
         ("cable reel", tiles.cable_reel()),
@@ -124,7 +140,10 @@ def items() -> list[tuple[str, Draw]]:
 
     entries += [
         ("hostile bolt", centered(effects.hostile_bolt())),
-        ("orb", centered(pygame.transform.scale_by(effects.hostile_bolt(), 2))),
+        ("shard", centered(robots.shard())),
+        ("shell", centered(robots.shell())),
+        ("needle dart", centered(robots.needle_dart())),
+        ("orb", centered(robots.orb())),
         ("player shot", lambda t, c: effects.player_shot(t, scratch(), c, 0.0)),
         ("spark shot", lambda t, c: effects.spark_shot(t, scratch(), c, 0.0)),
         (

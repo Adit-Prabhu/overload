@@ -1,67 +1,35 @@
 # Overload · Handoff
-Snapshot of November 19, 2026. For any agent or chat picking up the work. The standing rules are in [AGENTS.md](../AGENTS.md) (Workflow). This file says where things stand, so check `gh pr list` and `git log` before trusting it, and update it when a milestone lands.
+Snapshot of November 21, 2026. For any agent or chat picking up the work. The standing rules are in [AGENTS.md](../AGENTS.md) (Workflow). Check `gh pr list` and `git log` before trusting this snapshot, and update it when a milestone lands.
 
 ## Where the project is
-- G1 approved Nov 16. The combined G2/G3 review is Nov 30, the recording Nov 28, the external playtest Nov 25. Past-G1 scope is logged for the G3 scope-lock proposal.
-- On `main`:
-  - the deterministic sim
-  - the floor of three sectors with locking combat rooms, Fuse Boxes and a hidden room
-  - five robot types, and the three Regulator chassis (Linesman, Transformer, Grid Core)
-  - sector identity and difficulty, with sector 3 hard on purpose
-  - the HUD, the title screen, audio and pixel art
-  - the rival service: Cloudflare Worker, deployed, with both smoke tests passing on evidence version 4 (docs/evidence/LIVE_SMOKE_2026-11-19.md, which replaces LIVE_SMOKE_2026-11-17.md)
-  - evidence version 4 (power uses by family), live on the Worker since Adit's Nov 19 redeploy, and the MIT and CC BY 4.0 licenses
-  - the chance-fusion spec, nine distinct fusion outcomes, the pause and Fuse menus, and dev mode from PRs #30 to #35
-  - the polish pass and the boss rework from PRs #36 to #43:
-    - robots walk on moving legs
-    - the floor is dressed per sector, with live ambience
-    - three Regulator chassis with three phases each, their own attack rotations, vent windows, an entrance, a death sequence and their own sounds
-- Review images: the [nine phase images](art/bosses.png), the [Grid Core victory](art/boss_down.png), the [robot walk cycles](art/robot_walk_cycles.png) and the [roster](art/robot_style_frame.png). The design and its research are in [BOSS_DESIGN.md](BOSS_DESIGN.md). These are headless renders, not playtest evidence.
-- Practice mode (the single arena) still has the legacy Regulator with no kit. Check boss work in the campaign or with `tools/art/boss_review.py`.
+- G1 approved Nov 16. The combined G2/G3 review is Nov 30, the recording Nov 28, the live evaluation suite Nov 26 to 27, and the external playtest Nov 25. Past-G1 scope is logged for the G3 scope-lock proposal.
+- On `main` (`b561af8`):
+  - deterministic simulation with Medium `tuning_id` `624e3a96` and `arena_id` `cff616dc` (freeze candidate)
+  - three-sector hand-built substation floor (Switchyard, Cooling Plant, Grid Core) with locking combat rooms, Fuse Boxes and Sector 2's hidden room
+  - five articulated maintenance robots (Arc Drone, Relay Bot, Breaker, Sweeper, Sentry) with sector color tiers, and three three-phase Regulator chassis (Linesman, Transformer, Grid Core) with attack kits, vent windows, entrance and defeat sequences
+  - five evolvable base powers and thirty distinct chance-fused powers across ten pairs and three rarities, plus the Tab pause/Fuse Box menu, Loadout, Fuse crafting bench, four difficulty presets, rebindable keys (`settings/keys.json`), first-run coach hints and dev mode
+  - all 90 audio cues (81 `sfx_` cues including all 30 fused power cues, 6 music stems and 3 protocol stings) approved by Adit in `assets/ASSET_MANIFEST.json`
+  - deployed and hardened Cloudflare Worker rival service (`bf48e333`, Vertex AI `gemini-3.5-flash-lite`) passing both Nov 23 checkpoint smoke tests on Evidence Version 4 ([LIVE_SMOKE_2026-11-19.md](evidence/LIVE_SMOKE_2026-11-19.md))
 
-## Powers and evidence integration
+## Polish stack (Nov 21, PRs #64 to #69)
+Six stacked PRs, each independently reviewed by a fresh read-only QA reviewer and verified on Python 3.12 and 3.11 without changing `tuning_id` (`624e3a96`), `arena_id` (`cff616dc`), simulation hash pins or approved `.ogg` audio files:
+1. **PR #64 (`feat/secret-room-cache`):** shooting open Sector 2's secret wall spawns a Burst charge in `hidden`, room-clear auto-pickup stays scoped to the cleared combat room so the player walks in to claim the cache, and contact pickups never spawn duplicate flyers.
+2. **PR #65 (`polish/ui-clarity`):** ending screen wraps up to 22 powers across two rows (with rarity marks and a `+N` cap beyond 22) and lets interactive runs press Space/Enter to return cleanly to the title screen on the same window and Audio instance. LOADOUT shows square evolution pips, `EVOLVED_INFO`, and inline inherited evolution badges (`USES` / `ACTIVE`). Fuse bench clears `+N` spares above card frames and shows the rolled power's description inside the reveal card. In-play HUD slots show rarity borders, rarity crosses and a 6-tick ready flash. Entry and Fuse Box floor stencils shift clear of the top-left battery HUD.
+3. **PR #66 (`polish/combat-juice-and-world`):** revises D5 for OQ5 by showing the active protocol icon and label (`CLAMP`, `INSULATE`, or `OSCILLATE PROTOCOL`) on the 1.5 s Regulator boot card identically in all conditions. Adds Vent-window gold crit rings, bursts and layered spark audio, shield deflection rings, a 2 px jolt and thin danger-red edge vignette on player hits and single-cell low battery, a cosmetic recessed charging bay in `fuse_1` and `fuse_2`, and non-blocking 1.5 s arrival banners for Sector 2 and Sector 3.
+4. **PR #67 (`feat/settings-and-stingers`):** adds `SETTINGS` (`UI-08`, `game/settings.py`, saved in git-ignored `settings/prefs.json`, ignored by replays and headless runs) on Title and Pause/Fuse Box hubs for Music Volume, SFX Volume, Screen Shake, Reduce Flash (steady outline cues across every flash and flicker source) and Fullscreen, plus the 32 x 32 Surge app icon (`MK-02`).
+5. **PR #68 (`feat/rival-v4-guidance`):** updates `config/tactics.json` (version 3) with power-family counter guidance for Evidence Version 4 and upgrades `eval/histories.json` (version 2) to six 10-kind Evidence Version 4 histories, verified with Worker typecheck and 38 Worker tests.
+6. **PR #69 (`docs/polish-and-renders`):** updates `README.md`, `agent-config.json`, `docs/ART_AND_AUDIO_DIRECTION.md`, `docs/HANDOFF.md`, `tools/art/contact_sheet.py`, `tools/art/ui_renders.py`, and regenerates the review renders in `docs/art/`.
 
-- Bulwark and Magnet landed in #45.
-- Evidence version 4 is live: Adit redeployed the Worker on Nov 19 and the smoke test passed ([LIVE_SMOKE_2026-11-19.md](evidence/LIVE_SMOKE_2026-11-19.md)). A cold first request and one transient 500 were seen, both falling back safely. The hardened Worker (PR #60, version bf48e333) was redeployed the same evening and both smoke tests passed on it (runs 5 and 6, the Nov 23 checkpoint).
-- #47 has the first twelve new fusion results. The final nine are on its stacked `feat/fusion-pairs-b` branch. Together they give all ten pairs and thirty results.
-- The dedicated cue pass is done (Nov 19): every fused power has its own use cue, built from its pair's voices, its verb and its rarity in `tools/audio/cues.py` (`FUSED_RECIPES`).
-
-## Pilot playtest fixes (Nov 19)
-Adit's informal pilot with a friend ([notes](evidence/PILOT_PLAYTEST_2026-11-19.md), pilot only, not study data) led to four PRs. Merge order: #52, then #54, then #55 (stacked). #53 is independent.
-- #52: a chassis phase change keeps its shots and lets an attack already striking finish. Re-pinned the campaign and full loop hashes.
-- #53: the camera keeps the Surge on screen in boss fights.
-- #54: rebindable keys (`game/keybinds.py`, saved to the git-ignored `settings/keys.json`).
-- #55: first-run hints (`game/coach.py`), the Fuse Box arrow and an obvious CONTINUE, charges flying into the Surge, the boss reward shown, and the empty LOADOUT overlap.
-
-## Next step (spec section 9)
-
-The balance pass is done (`tools/balance.py`, numbers in DECISIONS, Nov 19). Medium's `tuning_id` is 624e3a96, the freeze candidate. Once Adit merges it, that is the build for the playtest, the live suite and the recording. Any later Tuning change makes a new build, labelled by its `tuning_id`.
-
-## Decided Nov 19
-- The playtest seed rule: one seed per participant for both conditions, different seeds across participants.
-- The roll spin is quicker (1.1 to 1.5 s). Its fast first steps are accepted.
-- The boss reward stays spare charges, and the boss cut order for the G3 proposal is phase 3 first.
-
-## After the fusion work
-Development ends with the steps above. Then, one timeline (DECISIONS, Nov 19):
-1. The playtest on Nov 25 (Adit), on the frozen build.
-2. The live suite on Nov 26 to 27 (paid, Adit authorizes) and the recording on Nov 28, on the same `tuning_id`. A Tuning change from the playtest notes makes a new build, and each build's evidence is labelled with its `tuning_id`.
-3. The UPDATE documents and the G3 scope-lock proposal for Nov 30, stating the overrun (floor, bosses, fusion) and the cut orders.
+## Next steps for Adit
+1. **Merge PRs #64 to #69 in order** (merge #64 into `main`, then retarget each stacked PR to `main` and merge).
+2. **One Worker redeploy (`docs/DEPLOY.md`)** from `main` after merging #68 so the live Cloudflare Worker serves `config/tactics.json` version 3 alongside Evidence Version 4, followed by one quick smoke check (`tools/rival/smoke.py`).
+3. **Nov 25 external playtest** on the frozen build (`tuning_id` `624e3a96`, Medium difficulty): each participant plays both `live` and `fixed` conditions on one seed, with different seeds across participants.
+4. **Nov 26 to 27 live suite** (paid, Adit authorizes: `tools/rival/live_suite.py`, 6 cases x 3 repeats = 18 calls on `eval/histories.json` v2) and **Nov 28 recording** on the same `tuning_id`.
+5. **Nov 30 combined G2/G3 review:** write the `UPDATE_*` documents and G3 scope-lock proposal citing the frozen build, playtest notes, live suite report and cut orders.
 
 ## How the fusion system fits together
-- **Rules** (`sim/powers.py`):
-  - `RESULTS` maps each pair to its rare, epic and legendary ability ids.
-  - `fuse()` rolls with `roll_rarity(seed, n, guaranteed)` and replaces the pair's result in the list and in its slot.
-  - The bank holds spare charges.
-  - Every teleport shares one cooldown, every pulse another.
-- **Powers** (`sim/fusions.py`): one function per verb, plus `tick()` for lances, leaps, the aura and mines.
-  - Each power inherits the evolutions its pair's rare inherits (`INHERITS`).
-  - The Regulator is never moved.
-- **Menu** (`game/menu.py`):
-  - The logic has no pygame and is unit tested.
-  - `roll_terms()` computes what the bench shows.
-  - The spin is presentation only: the sim decides the result first and the replay records `["fuse", a, b]`.
-- **Dev mode** (`game/dev.py`): it edits the world between ticks and never touches the sim. A dev run makes no rival call and writes no trace or recording, and DEV is always on screen.
-- **Guards**:
-  - `tests/test_fusion.py` holds the power step guard: epic at most 1.35 times its rare, legendary at most 1.75, measured as damage per second of cooldown.
-  - The Bulwark + Magnet volley guard and the Blink utility cases are in `tests/test_blink_and_guard_fusions.py`. Tuning guards are in `sim/tuning.py`.
+- **Rules (`sim/powers.py`):** `RESULTS` maps each of the 10 pairs to rare, epic and legendary ability IDs. `fuse()` rolls from `(seed, fusions, guaranteed)` and replaces the pair's result. The bank holds spare charges, and cooldown families share cooldowns.
+- **Powers (`sim/fusions.py`, `sim/pairs.py`):** one deterministic verb per power, inheriting evolutions from `INHERITS`. The Regulator is never displaced.
+- **Menu (`game/menu.py`, `game/settings.py`, `game/keybinds.py`):** pure Python logic with no pygame, unit tested separately from `menu_view.py`.
+- **Dev mode (`game/dev.py`):** gated by git-ignored `.overload-dev`, edits world state between ticks, disables rival calls and traces, refuses replays/practice, and stamps `DEV` on every frame.
+- **Guards:** `tests/test_fusion.py` enforces rarity steps, `tests/test_balance.py` enforces protocol checks, `tests/test_palette.py` enforces palette tokens, and `tests/test_audio.py` enforces visual twins and cue completeness.
