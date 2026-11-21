@@ -1,7 +1,9 @@
 // Power-use evidence (evidence version 4): the service accepts the family kinds from
 // config/evidence.json and writes its own labels into the prompt.
 import { describe, expect, it } from "vitest";
+import histories from "../../eval/histories.json";
 import { buildPrompt } from "../src/prompt";
+import { estimateTokens, MAX_INPUT_TOKENS } from "../src/providers";
 import { EVIDENCE_LABELS, Summary, validateProposal } from "../src/schema";
 
 const summary = {
@@ -38,9 +40,31 @@ describe("power-use evidence", () => {
     const prompt = buildPrompt(summary as never, []);
     expect(prompt.user).toContain("- e2.teleport_uses: Teleports used = 9");
     expect(prompt.user).not.toContain("client text is ignored");
+    expect(prompt.user).toContain("Spark-type shots");
     expect(prompt.user).toContain("shields and pull fields");
     expect(prompt.user).toContain("dives in with teleports");
     expect(prompt.user).toContain("pulse blasts");
+    expect(prompt.user).toContain("power-family");
+  });
+
+  it("validates every authored v4 history case and stays under MAX_INPUT_TOKENS at encounter 3", () => {
+    expect(histories.version).toBe(2);
+    for (const c of histories.cases) {
+      const items = Object.entries(c.values).map(([kind, value]) => ({
+        id: `e1.${kind}`,
+        label: EVIDENCE_LABELS[kind] ?? kind,
+        value,
+      }));
+      const enc2 = { items, previous_tactic: "lateral" };
+      expect(Summary.safeParse(enc2).success).toBe(true);
+      const enc3 = {
+        items: items.map((item) => ({ ...item, id: item.id.replace("e1.", "e2.") })),
+        previous_tactic: c.intended,
+      };
+      expect(Summary.safeParse(enc3).success).toBe(true);
+      const prompt = buildPrompt(enc3 as never, [enc2 as never]);
+      expect(estimateTokens(prompt)).toBeLessThanOrEqual(MAX_INPUT_TOKENS);
+    }
   });
 
   it("accepts a proposal that cites power evidence that was supplied", () => {
