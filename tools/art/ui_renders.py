@@ -67,6 +67,7 @@ def main(argv: list[str]) -> int:
         world.player.slots = ["storm_aura", "bolt_lance"]
         world.player.cooldowns[COOLDOWN_KEYS["bolt_lance"]] = 36
         view = PixelView(campaign)
+        view.after_tick(campaign)
         view.draw(screen, campaign, (164, 72))
         _save(screen, out_dir / "hud_in_play.png")
 

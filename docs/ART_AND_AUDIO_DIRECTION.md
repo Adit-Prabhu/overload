@@ -92,7 +92,9 @@ The palette is organized as ramps, darkest first:
    - **Spark:** a bolt
    - **Blink:** a diamond
    - **Burst:** a ring
-4. **You can see what you will steal.** Each enemy shows its power core: the Arc Mite's bolt, the Relay's diamond window.
+   - **Bulwark:** a shield
+   - **Magnet:** a horseshoe
+4. **You can see what you will steal.** Each maintenance robot shows its power core: the Arc Drone's bolt, the Relay Bot's diamond window, the Breaker's ring, the Sentry's shield and the Sweeper's horseshoe.
 5. **A fusion looks like its ingredients combined.** Arc Trail is a yellow bolt line strung between two cyan Blink diamonds.
 6. **Telegraphs fill up.** Every hostile attack shows something that fills over the tell time: a ring of dots around a shooter, hatching inside a hazard tile, a Relay's landing diamond. Telegraphs use `hostile.danger` plus a pattern, never color alone.
 7. **Lit and emissive are separate.** Ordinary pixels are darkened by the blackout lighting. Glowing pixels (powers, cores, shots, conduits, LEDs, lamp lenses) are added after, so they always read.
@@ -119,7 +121,7 @@ Timing standards apply to both comparison conditions identically:
 | Regulator attack | ≥ 0.50 s | ≥ 0.60 s after lunges |
 | Chassis signature (ring, quake, summon, spiral) | ≥ 0.50 s, the protocol waits while it runs | the signature's own rest (4 to 7 s) |
 | Relay blink destination | 0.50 s marker before arrival | |
-| Protocol boot at encounter start | 1.5 s pose, sound and icon | |
+| Protocol boot at encounter start | 1.5 s pose, sound, protocol icon and label (revised D5) | |
 
 **Feedback:** white hit flashes on enemies, spark bursts on hits and kills, muzzle flashes, invulnerability flicker on the Surge, and screen shake at 2 px or less with a toggle.
 
@@ -154,12 +156,13 @@ Status: **done** means drawn, in the game or style frame, and on the contact she
 | AB-03 | Spark | Bolt projectile | P0 | Done |
 | AB-04 | Blink | Diamond at departure and arrival | P0 | Done |
 | AB-05 | Arc Trail | Bolt line between two Blink diamonds | P0 | Done |
-| AB-06 to 08 | Burst, Shock Cone, evolutions | Magenta ray cone (wider when evolved), Shock Cone adds yellow sparks, chain bolts between robots, Overdrive ghost trail | P2 | Done (overhaul step 4) |
+| AB-06 to 08 | Burst, Bulwark, Magnet and evolutions | Magenta ray cone (wider when evolved), shield dome with reflect flash, indigo pull field with crush arc, chain bolts between robots, Overdrive ghost trail | P2 | Done (`sim/fusions.py`, `art/pixel/effects.py`) |
+| AB-09 | 30 chance-fused powers | 10 pairs x 3 rarities (rare, epic, legendary), each combining its ingredient colors and verbs (`docs/POWERS_AND_FUSION.md`), all 35 power icons on the contact sheet | P2 | Done (`sim/powers.py`, `sim/pairs.py`, `art/pixel/effects.py`) |
 
 ### Pickups, telegraphs and icons
 | ID | Asset | Pri | Status |
 | --- | --- | --- | --- |
-| PK-01 | Charges (bolt, diamond, ring) that float and glow | P0 | Done |
+| PK-01 | Charges (bolt, diamond, ring, shield, horseshoe) that float and glow | P0 | Done |
 | PK-02, PK-03 | Unlock and fusion flashes | P0 | Done. The fusion rings and the Relay's arming lever are on the contact sheet. The unlock flash and the white fusion flash are full-screen effects, checked in play |
 | TL-01 | Aim tell (dotted line, filling ring of dots) | P0 | Done |
 | TL-02 | Relay landing diamond (hatched) | P0 | Done |
@@ -200,10 +203,10 @@ The view is only 256 x 144, so every HUD pixel competes with the fight. Rules, a
 2. **Only what matters mid-fight.** Health, power readiness, where you are, the boss. Control hints live on the title screen's controls page and in the loadout menu footer, not on screen.
 3. **Health, top left:** a battery glyph and one compact pip per point (about 50 x 10 px). Pips turn red at 2 or less and the battery glyph pulses. Dodge readiness is a 1 px line under them.
 4. **Minimap, top right:** a schematic of the 5 x 3 room grid (about 50 x 22 px), not a scaled map. Rooms appear once seen or once a door to them is known. Current room white, cleared grey, the locked room red, a dot for chambers and Fuse Boxes.
-5. **Powers, bottom right:** two 18 px slots with a small Q or E tab above each. A dark fill drains while a power cools, and the border goes bright when it is ready. Names appear in the loadout menu, not here.
+5. **Powers, bottom right:** two 18 px slots with a small Q or E tab above each. A dark fill drains while a power cools. Fused powers carry their rarity border color and 1, 2 or 3 cross marks along the bottom edge, and slots show a 6-tick ready flash when coming off cooldown (steady border under Reduce Flash). Names appear in the loadout menu, not here.
 6. **Boss, top center, only during the fight:** the name and a thin bar.
 
-**Loadout and Fuse Box screen:** one framed panel over a darkened scene, laid out like an inventory screen. A header with the title and context. Left: the stolen powers, each with pips toward its evolution. Right: the two equipped slots as cards, then one row per fusion recipe (the two ingredients and the result as icons) with a status of F FUSE, DONE or what is missing, and a brief glow around a recipe just fused. A detail line describes the selected power. One footer line of controls, which the result of the last key (a fusion, or what is missing) replaces until the next pick. The Fuse Box uses the same panel. Its detail line is always the link status (the approved D7 line when the link is down), plus Continue.
+**Tab menu, Loadout and Fuse Bench:** one framed panel over a darkened scene. Pressing Tab or Esc opens the hub (`RESUME`, `LOADOUT`, `FUSE`, `SETTINGS`, `CONTROLS`, `QUIT`), while arriving in a Fuse Box opens with `CONTINUE` plus the link status line (the approved D7 line when the live link is down). `LOADOUT` lists stolen and fused powers on the left (base powers with 3 square evolution pips, fused powers with rarity crosses and slot letters) and shows the two equipped slots plus the selected power's rarity, wrapped description (including evolved perks), cooldown, recipe ingredients and `USES` / `ACTIVE` inherited evolution badges on the right. `FUSE` is a separate crafting bench where you pick two base powers to roll a rare, epic or legendary fusion with a reveal card (`docs/POWERS_AND_FUSION.md` section 7).
 
 | ID | Asset | Pri | Status |
 | --- | --- | --- | --- |
@@ -248,17 +251,17 @@ Stems change on the next bar line. Music ducks by 6 dB during telegraph sounds s
 ### Sound effects
 All sound effects come from the same small synth as the music (saw, square, sine, noise, one resonant filter and a light bit-crush). Pitched sounds are tuned to B minor.
 
-| Group | Sounds | Pri |
+| Group | Sounds (81 approved `sfx_` cues in `assets/ASSET_MANIFEST.json`) | Pri |
 | --- | --- | --- |
 | Player | Shot, hit, dodge, death, low health | P0 |
-| Powers | Spark, Blink depart and arrive, Blink deny, Arc Trail buzz | P0 |
-| Enemies | Arc Mite tell and zap, Relay click and blink, enemy death short-circuit | P0 |
-| Regulator | Tread rumble, three protocol stings (MU-03), lunge thunk, hazard fill, orb fire, hit, defeated | P0 |
-| Regulator chassis | Signature wind-up (`boss_charge`, ducks the music like other tells), ring burst (also the spiral), quake, summon, overload alarm | P0 |
-| Progression | Charge pickup, unlock, fusion | P0 |
+| Base powers | Spark, Blink depart/arrive/deny, Bulwark up/absorb/reflect, Magnet field/crush, Burst and Arc Trail | P0 |
+| Fused powers | 30 dedicated use cues (`sfx_fused_*`), one per fused power by pair, verb and rarity (`tools/audio/cues.py`) | P2 |
+| Enemies | Arc Drone tell and zap, Relay Bot click and blink, Breaker raise and slam, Sweeper rev, Sentry fire, enemy death short-circuit | P0 |
+| Regulator | Tread rumble, three protocol stings (MU-03), lunge thunk, hazard fill, orb fire, hit, defeated (`boss_down`) | P0 |
+| Regulator chassis | Signature wind-up (`boss_charge`, ducks the music like other tells), ring burst, spiral, quake, summon, live wire, volley, charge and impact, spray, lattice, vent, phase change, overload alarm | P0 |
+| Progression | Charge pickup, unlock, fusion, evolution, fusion roll and rarity stings (rare, epic, legendary) | P0 |
 | UI | Hover, confirm, deny, link status blip | P1 |
 | Ambient | Substation hum bed, emergency lamp buzz, Fuse Box room tone | P1 |
-| Ceiling | Burst, Shock Cone, Coil, evolution | P2 |
 
 Mix priority from highest to lowest:
 1. Hostile tells
@@ -344,7 +347,7 @@ All implemented in `SETTINGS` (`game/settings.py`) and `CONTROLS` (`game/keybind
 | Shape readability | Bright-pattern comparison in `tests/shapes.py` for confusable pairs, plus the CVD contact sheet reviewed by QA |
 | Room validity | Rows match in width, wall decor sits on walls, props and decals sit on the floor, spawns are clear |
 | Tell timing | Sim tests assert every hostile attack's tell and recovery frames meet the timing standards in section 2 |
-| Mute playability | Every audio event maps to a visual event (test, once audio lands) |
+| Mute playability | Every audio event maps to a visual event (enforced by `tests/test_audio.py`, all 90 cues approved) |
 | Audio technical | Peak level ≤ -1 dBFS, seamless loops, equal stem lengths |
 | Performance | Light pools are built before the first frame. After that a full frame renders in well under 1 ms at 256 × 144 on the development laptop. Cosmetic effects advance per simulation tick, so they look the same at any display rate. Profile again before Alpha |
 | Cohesion review | Adit compares each new batch with the approved style frame. Anything off-theme gets sent back |

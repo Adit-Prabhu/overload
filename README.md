@@ -39,7 +39,7 @@ The campaign is a hand-built substation floor of three sectors (Switchyard, Cool
 
 On the title screen, use A/D or Left/Right to choose Easy, Medium, Hard, or Nightmare before Start. Medium (`tuning_id` `624e3a96`) is the formal playtest balance. Other presets adjust battery capacity, enemy health, and bolt speed. The choice stays fixed for the run and its retries. Recordings replay at their recorded difficulty.
 
-Review renders of the art live in [`docs/art/`](docs/art/): the contact sheet with color-vision simulations, boss phases, robot roster and UI screens. Regenerate them with `uv run --group tools python tools/art/contact_sheet.py` (Python 3.12), `uv run python tools/art/boss_review.py` and `uv run python tools/art/ui_renders.py`.
+Review renders of the art live in [`docs/art/`](docs/art/): the contact sheet with color-vision simulations, boss phases, robot roster and UI screens. Regenerate them with `uv run --group tools python tools/art/contact_sheet.py` (Python 3.12), `uv run python tools/art/robot_style_frame.py`, `uv run python tools/art/boss_review.py` and `uv run python tools/art/ui_renders.py`.
 
 CI runs the same checks on every pull request ([`.github/workflows/overload-checks.yml`](.github/workflows/overload-checks.yml)). Development agent roles live in [`.agents/`](.agents/) and the common manifest is [`agent-config.json`](agent-config.json).
 

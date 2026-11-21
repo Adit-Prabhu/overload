@@ -86,12 +86,24 @@ Draw = Callable[[pygame.Surface, tuple[int, int]], None]
 
 
 def centered(image: pygame.Surface) -> Draw:
+    bounds = image.get_bounding_rect()
+    if bounds.w > 0 and bounds.h > 0:
+        image = image.subsurface(bounds).copy()
     max_w, max_h = CELL[0] - 8, CELL[1] - 18
     w, h = image.get_size()
     if w > max_w or h > max_h:
-        ratio = min(max_w / w, max_h / h)
-        image = pygame.transform.scale(image, (max(1, round(w * ratio)), max(1, round(h * ratio))))
+        divisor = max(2, math.ceil(max(w / max_w, h / max_h)))
+        image = pygame.transform.scale(image, (max(1, w // divisor), max(1, h // divisor)))
     return lambda target, c: target.blit(image, image.get_rect(center=c))
+
+
+def boss_chassis_items() -> list[tuple[str, pygame.Surface]]:
+    """Three Regulator chassis rendered at true 1:1 native pixel scale in a taller strip."""
+    return [
+        ("linesman", regulators.regulator("clamp", False, -0.6, kind="linesman")),
+        ("transformer", regulators.regulator("insulate", False, -0.6, kind="transformer")),
+        ("grid core", regulators.regulator("oscillate", False, -0.6, kind="grid_core")),
+    ]
 
 
 def items() -> list[tuple[str, Draw]]:
@@ -104,19 +116,13 @@ def items() -> list[tuple[str, Draw]]:
     entries.append(("surge sockets", centered(actors.surge("idle", 0, False, ("spark", "blink")))))
     entries.append(("caster", centered(actors.caster())))
     entries.append(("app icon", centered(actors.app_icon())))
-    # Maintenance robot roster (art/pixel/robots.py) and Regulator chassis (regulators.py).
+    # Maintenance robot roster (art/pixel/robots.py). Regulator chassis sit in their own 1:1 row.
     entries += [
         ("arc drone", centered(robots.drone(0, False))),
         ("relay bot", centered(robots.relay_bot(False))),
         ("breaker", centered(robots.breaker(False))),
         ("sweeper", centered(robots.sweeper(0, False))),
         ("sentry", centered(robots.sentry(False))),
-        ("linesman", centered(regulators.regulator("clamp", False, -0.6, kind="linesman"))),
-        (
-            "transformer",
-            centered(regulators.regulator("insulate", False, -0.6, kind="transformer")),
-        ),
-        ("grid core", centered(regulators.regulator("oscillate", False, -0.6, kind="grid_core"))),
     ]
     for protocol in ("clamp", "insulate", "oscillate"):
         entries.append((f"reg {protocol}", centered(actors.regulator(protocol, False, -2.4))))
@@ -158,7 +164,7 @@ def items() -> list[tuple[str, Draw]]:
             lambda t, c: effects.aim_tell(t, scratch(), (c[0] - 22, c[1]), 0.0, 0.7, reach=40),
         ),
         ("relay target", lambda t, c: effects.relay_destination(t, c, 0.6)),
-        ("relay arming", centered(actors.relay(False, arming=True))),
+        ("relay arming", centered(robots.relay_bot(False, arming=True))),
         ("fusion rings", lambda t, c: effects.fusion_rings(t, c, 0.7)),
         ("hazard tile", lambda t, c: effects.hazard_tile(t, scratch(), (c[0] - 8, c[1] - 8), 0.7)),
         ("reticle", centered(effects.reticle())),
@@ -173,10 +179,12 @@ def items() -> list[tuple[str, Draw]]:
 
 def render_sheet() -> pygame.Surface:
     entries = items()
+    chassis = boss_chassis_items()
     rows = math.ceil(len(entries) / COLUMNS)
+    boss_h = 112
     sampler = tiles.render_room(SAMPLER)
     room_h = sampler.background.get_height() + 20
-    w, h = COLUMNS * CELL[0], rows * CELL[1] + room_h
+    w, h = COLUMNS * CELL[0], rows * CELL[1] + boss_h + room_h
     sheet = pygame.Surface((w, h))
     sheet.fill(rgb("px.floor.1"))
     for i, (label, draw) in enumerate(entries):
@@ -184,7 +192,17 @@ def render_sheet() -> pygame.Surface:
         pygame.draw.rect(sheet, rgb("px.floor.0"), (x, y, *CELL), 1)
         draw(sheet, (x + CELL[0] // 2, y + CELL[1] // 2 - 5))
         hud.text(sheet, label, (x + CELL[0] // 2, y + CELL[1] - 2), "ui.dim", "midbottom")
-    top = rows * CELL[1]
+    boss_top = rows * CELL[1]
+    boss_cell_w = CELL[0]
+    for i, (label, image) in enumerate(chassis):
+        x = i * boss_cell_w
+        pygame.draw.rect(sheet, rgb("px.floor.0"), (x, boss_top, boss_cell_w, boss_h), 1)
+        bounds = image.get_bounding_rect()
+        cropped = image.subsurface(bounds) if bounds.w > 0 and bounds.h > 0 else image
+        rect = cropped.get_rect(center=(x + boss_cell_w // 2, boss_top + (boss_h - 14) // 2 + 2))
+        sheet.blit(cropped, rect)
+        hud.text(sheet, label, (x + boss_cell_w // 2, boss_top + boss_h - 2), "ui.dim", "midbottom")
+    top = boss_top + boss_h
     hud.text(sheet, "tile sampler", (4, top + 4), "ui.text")
     background = sampler.background.copy()
     for prop in sampler.props:
