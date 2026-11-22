@@ -1,8 +1,8 @@
 {
   "schema_version": "course-1",
-  "status": "Deployed and hardened Cloudflare Worker (version bf48e333 on Nov 19, 2026) running Vertex AI Gemini 3.5 Flash-Lite on Evidence Version 4, verified by live smoke tests (docs/evidence/LIVE_SMOKE_2026-11-19.md). Local runs default to the deterministic fixture provider. Game-side boundary, validation, deadline and fallback are in src/overload/agent/. Needs one Worker redeploy after merging config/tactics.json version 3.",
+  "status": "Deployed and hardened Cloudflare Worker (version bf48e333 on Nov 19, 2026) running Vertex AI Gemini 3.5 Flash-Lite on Evidence Version 4, verified by live smoke tests (docs/evidence/LIVE_SMOKE_2026-11-19.md). Local runs default to the deterministic fixture provider. Game-side boundary, validation, deadline and fallback are in src/overload/agent/. Needs one Worker redeploy for config/tactics.json version 3 and OAuth cold-start warm-up (POST /sessions/:id/warmup).",
   "purpose": "Choose the Regulator's protocol for the next encounter from the player's observed habits.",
-  "native_artifact": "worker/src/index.ts routes POST /sessions and POST /sessions/:id/tactic, worker/src/session.ts (RivalSession, a Cloudflare Agents SDK agent), structured JSON with strict schemas in worker/src/schema.ts",
+  "native_artifact": "worker/src/index.ts routes GET /health, POST /sessions, POST /sessions/:id/warmup and POST /sessions/:id/tactic, worker/src/session.ts (RivalSession, a Cloudflare Agents SDK agent), structured JSON with strict schemas in worker/src/schema.ts",
   "tools_available": [
     "select_tactic(tactic_id, evidence_ids)"
   ],

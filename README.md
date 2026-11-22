@@ -70,7 +70,7 @@ Files named "Initial" are the G1 gate proposal. They are preserved as submitted.
 - G1 decision: Approved (Nov 16, 2026). See [decisions](docs/DECISIONS_AND_OPEN_QUESTIONS.md).
 - Nov 23 checkpoint: Met early on Nov 19 with the deployed and hardened Cloudflare Worker (`bf48e333`), live Vertex AI replies, two-session isolation and forced-timeout fallback ([LIVE_SMOKE_2026-11-19.md](docs/evidence/LIVE_SMOKE_2026-11-19.md)).
 - Freeze candidate: Medium `tuning_id` `624e3a96`, `arena_id` `cff616dc`, all 90 audio cues approved.
-- Upcoming: Worker redeploy for `config/tactics.json` v3, Nov 25 external playtest, Nov 26 to 27 live suite, Nov 28 recording, Nov 30 combined G2/G3 review.
+- Upcoming: Worker redeploy for `config/tactics.json` v3 and OAuth cold-start warm-up (`POST /sessions/:id/warmup`), Nov 25 external playtest, Nov 26 to 27 live suite, Nov 28 recording, Nov 30 combined G2/G3 review.
 - Videos are never committed. Recordings are linked above.
 
 ## License

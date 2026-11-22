@@ -1,5 +1,5 @@
 # Overload · Powers and chance fusion (spec)
-Version 0.3 · November 17, 2026 · Status: proposed, for Adit's sign-off. Production scope past the G1 ceiling, so it goes in the G3 scope-lock proposal (Nov 30) like the floor and the bosses. Version 0.2 took in the independent review of version 0.1. Version 0.3 follows Adit's play of the roll system (PR #31): every rarity becomes its own power, and the menu is rebuilt as a hub with a Fuse screen.
+Version 0.3 · November 17, 2026 (updated November 22, 2026) · Status: implemented and balanced on `main` (`tuning_id` `624e3a96`, all 30 fused powers and 30 dedicated audio cues approved). Production scope past the G1 ceiling, so it goes in the G3 scope-lock proposal (Nov 30) like the floor and the bosses. Version 0.2 took in the independent review of version 0.1. Version 0.3 follows Adit's play of the roll system (PR #31): every rarity becomes its own power, and the menu is rebuilt as a hub with a Fuse screen.
 
 ## 1. Why
 Adit, Nov 17, after playing the sector 3 build: "right now the powers feel like an addition to the action part of the game, but I wanted it to be the focus". Stealing and fusing powers is the game's hook (the GDD's one-line pitch), so the crafting gets most of the remaining production time.
@@ -119,7 +119,7 @@ An epic must beat its rare and stay at or under 1.35 times it. A legendary must 
 
 Distance shares, shots per minute and dodges stay. Uses count only when the power actually fires on screen (version 3 rule). Rarity is never sent. The tactic catalogue (pressure, spacing, lateral) does not change.
 
-This needs a Worker redeploy from main and one live smoke run, both by Adit (docs/DEPLOY.md). Until the redeploy, live requests carrying version 4 kinds fall back to the neutral tactic, labelled as fallback, as with version 3. Since step 6 (Nov 19) the trace's `config_hash` covers `config/evidence.json`, so traces from the two versions can be told apart.
+Evidence Version 4 was deployed and verified live on Worker version `bf48e333` (Nov 19, [LIVE_SMOKE_2026-11-19.md](evidence/LIVE_SMOKE_2026-11-19.md)). Only `config/tactics.json` version 3 and the OAuth cold-start warm-up (`POST /sessions/:id/warmup`) await Adit's next redeploy (`docs/DEPLOY.md`). Since step 6 (Nov 19) the trace's `config_hash` covers `config/evidence.json`, so traces from different evidence versions can be told apart.
 
 ## 7. The menu and the Fuse screen
 Adit, Nov 17, on the interim menu: "its too convoluted... all i do is press f and dont really know which one is fusing", "make it so when i click tab, i see many options and one of those is fuse and then in fuse i can go and do the rolls". The loadout and fusion stop sharing one panel. The structure follows the pause menus of action games like Hades and Dead Cells: a short list of sections, each a full screen with one job.
@@ -128,7 +128,9 @@ Adit, Nov 17, on the interim menu: "its too convoluted... all i do is press f an
 - **RESUME**, or **CONTINUE** in a Fuse Box. CONTINUE is greyed with ROUTING POWER until the 5 s hold ends (the hold that hides the condition).
 - **LOADOUT**
 - **FUSE**, with a dot when a free fusion is waiting
-- **CONTROLS**
+- **SETTINGS** (Music Volume, SFX Volume, Screen Shake, Reduce Flash, Fullscreen, saved in `settings/prefs.json`)
+- **CONTROLS** (rebindable keys, saved in `settings/keys.json`)
+- **QUIT** (asks for a second confirmation press so a stray press never ends the run)
 
 W and S (or the arrows) move, Space or Enter picks, Esc goes back one level, Tab closes the menu from anywhere. A one-line footer on every screen says which keys do what there.
 
@@ -139,7 +141,7 @@ W and S (or the arrows) move, Space or Enter picks, Esc goes back one level, Tab
 
 **FUSE** is the crafting bench.
 1. **Pick two powers.**
-   - The five base powers are shown as a row of icons, with locked ones as padlocks. Each shows its spare charges.
+   - The five base powers are shown as a row of icons, with locked ones shown as dark silhouettes rather than padlocks. Each shows its spare charges.
    - Space puts the highlighted power in the first empty socket, and Space on a socketed power takes it out.
    - The bench reads `SPARK + BLINK`.
 2. **See the three results.** With two powers socketed, three cards show the pair's rare, epic and legendary results.
@@ -149,15 +151,15 @@ W and S (or the arrows) move, Space or Enter picks, Esc goes back one level, Tab
 3. **Read the terms.** One line under the cards gives what the roll costs and how it works:
    - The cost: FREE FIRST ROLL, or REROLL: 1 SPARK + 1 BLINK.
    - A guarantee meter: two pips that fill with each rare in a row, and EPIC OR BETTER GUARANTEED when full. The rare card greys out then.
-   - With a result owned, the line warns ROLLING REPLACES STORM STEP.
+   - When rerolling over an owned epic or legendary result, the first roll press arms confirmation with a warning such as `REPLACES BOLT LANCE. ROLL AGAIN`.
    - H opens a short HOW ROLLS WORK page with the odds, the guarantee, the cost, and that the same seed rolls the same luck.
 4. **Roll.** Space rolls. The result is decided in the simulation at that moment, from the run's roll stream (section 4). The animation only reveals it, so replays never depend on it.
-   - **The spin:** a highlight frame steps across the three cards, fast at first, slowing over about 1.6 s with a tick each step, and stops on the result. The step count is worked out backwards from the result, so it always lands right.
+   - **The spin:** a highlight frame steps across the three cards, fast at first, slowing over 1.1 to 1.5 s (steps start at 35 ms and grow 16 ms each, tuned Nov 19) with a tick each step, and stops on the result. The step count is worked out backwards from the result, so it always lands right.
    - **The reveal:** the chosen card lifts to the center and turns face up, with the rarity's sting. A legendary gets three rays and an outline pulse.
    - **Then:** NEW or REPLACED, and Q, E or Space to equip to a slot or keep it in the loadout.
    - Space skips the spin to the reveal, and that press does nothing else.
 
-**Photosensitivity.** The spin moves a small outline across the cards. It never flashes the screen, and nothing flashes more than 3 times a second. Flash reduction (UI-08) is not built yet, so the reveal uses outline pulses by default and never a white flash.
+**Photosensitivity.** The spin moves a small outline across the cards (accepted by Adit on Nov 19 as a small moving outline rather than a screen flash). It never flashes the screen, and the reveal uses outline pulses rather than a white flash. Flash reduction (`UI-08`, built in `SETTINGS` on Nov 21) replaces full-screen flashes and rapid HUD/tell flicker with steady outline cues across the game.
 
 **Rarity marks (shape first, then color).**
 
@@ -201,9 +203,9 @@ The work is split so the playtest on Nov 25 plays a complete system on the three
 | 5 | Bulwark and Magnet: drops, charge cores, evolutions, effects, sounds, slotting banner (built Nov 19) | Nov 21–22 | 4 |
 | 6 | Evidence version 4 and `config_hash` covering it (built Nov 19). Adit redeploys and runs the smoke test | Nov 22 | 1.5 |
 | 7 | The Bulwark and Magnet pairs, 21 powers in two PRs (implemented Nov 19) | Nov 22–24 | 8 |
-| 8 | Balance with the bot and the protocol check, numbers in the PR | Nov 26–27 | 2 |
+| 8 | Balance with the bot and the protocol check (completed Nov 19, `tuning_id` `624e3a96`, frozen ahead of Nov 23) | Nov 19 (Nov 23 freeze) | 2 |
 
-About 30 hours in all. That is on top of the 40 hours of D3, which the floor, robots and bosses have already used, so the G3 proposal states the overrun. The small live suite (task 13, Nov 26–27) runs only after the version 4 redeploy. Recording is Nov 28 and the combined G2/G3 review is Nov 30.
+About 30 hours in all. That is on top of the 40 hours of D3, which the floor, robots and bosses have already used, so the G3 proposal states the overrun. The small live suite (task 13, Nov 26 to 27) runs on the frozen `tuning_id` after Adit's redeploy of `config/tactics.json` v3 and OAuth warm-up. Recording is Nov 28 and the combined G2/G3 review is Nov 30.
 
 **Cut order** if time runs short, first cut first. Each tier is now its own power, so cuts remove whole pairs, never single tiers:
 1. Bulwark + Magnet

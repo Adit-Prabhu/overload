@@ -123,7 +123,7 @@ Timing standards apply to both comparison conditions identically:
 | Relay blink destination | 0.50 s marker before arrival | |
 | Protocol boot at encounter start | 1.5 s pose, sound, protocol icon and label (revised D5) | |
 
-**Feedback:** white hit flashes on enemies, spark bursts on hits and kills, muzzle flashes, invulnerability flicker on the Surge, and screen shake at 2 px or less with a toggle.
+**Feedback:** white hit flashes on enemies, spark bursts on hits and kills, muzzle flashes, invulnerability flicker on the Surge, screen shake at 2 px or less with a toggle, and short cosmetic impact hitstop (2 to 4 ticks on venting boss hits, phase changes, player hits, and boss defeats, suppressed on `down` or `player_down` transitions so lethal hits never stall retry).
 
 **Determinism:** all cosmetic state (camera, animation, sparks, flashes, ghosts, lamp pulses) lives in the renderer with its own RNG. Rendering and audio never feed back into the game state.
 
@@ -233,7 +233,7 @@ One original theme, "Overload", carries the whole game. Every cue is an arrangem
 | MU-01 | Theme stems | HUM (drone and bass), PULSE (drums), ARC (arpeggio), LEAD (motif) | P0: HUM and PULSE. P1: ARC and LEAD |
 | MU-02 | Fuse Box | HUM with a low-pass filter, plus a slow pad on the same chords | P0 |
 | MU-03 | Protocol stings | 1-bar sting per protocol, matching CH-02a to CH-02c | P0 |
-| MU-04 | Victory and defeat | Victory: the motif resolved to B major with a rising sweep. Defeat: a tape-stop "power cut", silence, then the hum returns | P1 |
+| MU-04 | Victory and defeat | Consolidated into the 90 approved cues (no separate `.ogg` file): boss defeat plays `sfx_boss_down.ogg` (rolling explosions into the motif in B major), the victory ending drops `PULSE` to resolve over `HUM`, `ARC`, and `LEAD`, and player defeat plays `sfx_death.ogg` while dropping music to `HUM` alone | P1 |
 | MU-05 | Title | Built Nov 19: the HUM's mains drone without its bass, a slow pad on the theme's chords, the motif and an answer on a soft bell with a dotted-eighth echo, a quiet heartbeat and a few line crackles. Same key and tempo, so it hands over to encounter 1 on a bar line | P1 |
 
 How the music layers:
@@ -245,6 +245,8 @@ How the music layers:
 | Encounter 1 | HUM and PULSE |
 | Encounter 2 | Adds ARC |
 | Encounter 3 | Adds LEAD |
+| Ending (victory) | HUM, ARC, and LEAD (PULSE drops out) |
+| Down (defeat) | HUM alone |
 
 Stems change on the next bar line. Music ducks by 6 dB during telegraph sounds so tells always cut through.
 
@@ -261,7 +263,7 @@ All sound effects come from the same small synth as the music (saw, square, sine
 | Regulator chassis | Signature wind-up (`boss_charge`, ducks the music like other tells), ring burst, spiral, quake, summon, live wire, volley, charge and impact, spray, lattice, vent, phase change, overload alarm | P0 |
 | Progression | Charge pickup, unlock, fusion, evolution, fusion roll and rarity stings (rare, epic, legendary) | P0 |
 | UI | Hover, confirm, deny, link status blip | P1 |
-| Ambient | Substation hum bed, emergency lamp buzz, Fuse Box room tone | P1 |
+| Ambient | Consolidated into the 90 approved cues: the 60 Hz substation hum bed and Fuse Box room tone live in `music_hum.ogg`, `music_title.ogg`, and `music_fuse_box.ogg` rather than separate ambient `.ogg` files | P1 |
 
 Mix priority from highest to lowest:
 1. Hostile tells
@@ -319,7 +321,7 @@ This approach has four advantages:
    - QA checks readability and the rules in section 6.
    - A fresh read-only reviewer agent checks the code.
    - Adit approves the look and sound and merges.
-5. **Manifest.** Each file under `assets/` gets an entry in `assets/ASSET_MANIFEST.json` with these fields: id, source file, creator, tool, license, approver, date and hash.
+5. **Manifest.** Each file under `assets/` gets an entry in `assets/ASSET_MANIFEST.json` with these required fields: `id`, `path`, `kind`, `creator`, `source`, `license`, `license_file`, `sha256`, `added`, and `approval`.
 
 ### Who does what
 | Role | Owns | Approval |

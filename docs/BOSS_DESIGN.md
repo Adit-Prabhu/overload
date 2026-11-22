@@ -71,7 +71,6 @@ The study needs these, and the rework stays inside them:
   - The chassis is shielded and nothing new fires. What it already fired stays: hostile shots, hazard tiles, running shockwaves, pending warps and summoned drones. A kit attack already striking (Live Wire, a charge, a spiral, both halves of a pair) finishes first, then the change starts. A tell that has not struck is called off. Phases change one at a time, so a long attack that soaks up two thresholds still shows both changes. Until Nov 19 every hostile shot was wiped, which the pilot playtest read as the attack vanishing.
   - There is no knockback, so nothing can push the Surge onto a tile.
   - The rotation restarts for the new phase, and the protocol's rest shortens.
-  - Wiping shots helps Insulate a little more than Clamp, since Insulate's orbs linger. The protocol check covers it.
 - **A rotation of kit attacks**, patterns no robot uses, cycled in a fixed order. Some phase 1 attacks stay in later phases, as listed below.
 - **A vent window:**
   - After its biggest attack each chassis vents for 1.5 s (the Grid Core's core spiral 1.75 s). It stands still and every hit lands half again as hard, rounded up. So a 1-damage gun shot does 2, a 2 does 3 and a 6 does 9.
