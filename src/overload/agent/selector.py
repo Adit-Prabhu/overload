@@ -32,6 +32,9 @@ class Selector(Protocol):
 class NeutralSelector:
     condition = "off"
 
+    def warm(self) -> None:
+        return None
+
     def prepare(self, encounter: int, summary: dict | None) -> None:
         return None
 
@@ -45,6 +48,9 @@ class FixedSchedule:
     def __init__(self, name: str) -> None:
         self.name = name
         self.order = schedules()[name]
+
+    def warm(self) -> None:
+        return None
 
     def prepare(self, encounter: int, summary: dict | None) -> None:
         return None  # the baseline never reads observations
@@ -63,6 +69,12 @@ class LiveSelector:
         self.pending: dict[int, Pending] = {}
         self.decided: dict[int, Decision] = {}
         self.skipped: dict[int, str] = {}
+
+    def warm(self) -> None:
+        if self.session_id is not None and self.requests < MAX_REQUESTS:
+            warm_fn = getattr(self.client, "warm", None)
+            if callable(warm_fn):
+                warm_fn()
 
     def prepare(self, encounter: int, summary: dict | None) -> None:
         if encounter == 1 or encounter in self.pending or encounter in self.decided:

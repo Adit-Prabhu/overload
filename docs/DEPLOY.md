@@ -59,6 +59,9 @@ The second run forces the game's deadline below the service's reply time, so the
 ## After an evidence or tactics config change
 The Worker reads `config/evidence.json` and `config/tactics.json` at build time, so a new evidence version (version 4 on Nov 19: power uses by family) or updated tactic guidance (`config/tactics.json` version 3 on Nov 21) needs a redeploy from `main` before live play. Until then a client on a newer evidence version sends kinds the deployed Worker rejects (falling back to the neutral tactic, labelled fallback in the trace), and an outdated Worker serves older tactic guidance. After the redeploy, run the smoke test above and save its output as new checkpoint evidence.
 
+## Cold-start warm-up
+`POST /warmup` pre-fetches and caches the Vertex service account OAuth token without calling `generateContent`, reserving budget, or touching any session state (zero model calls, zero spend). `POST /sessions` triggers the same warm-up asynchronously through `waitUntil`, and the game client also sends a non-blocking `POST /warmup` on entering the Sector 1 and Sector 2 Regulator chambers so cold-start OAuth latency does not consume the 5 s Fuse Box deadline. Redeploying from `main` enables both `config/tactics.json` version 3 and the `POST /warmup` endpoint.
+
 ## Turning it off
 - `npx wrangler delete` removes the Worker.
 - Deleting the key in Google Cloud revokes access immediately.

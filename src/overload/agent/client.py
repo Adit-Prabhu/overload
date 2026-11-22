@@ -7,6 +7,7 @@ network. No credentials live here. The service holds any provider key.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import time
 import urllib.error
@@ -86,6 +87,17 @@ class TacticClient:
         future = self._pool.submit(self._timed, "POST", url, body)
         supplied = frozenset(item["id"] for item in summary["items"])
         return Pending(encounter, request_id, supplied, started, future)
+
+    def warm(self) -> None:
+        """Fire-and-forget OAuth warm-up on the background pool. Never blocks or raises."""
+        try:
+            self._pool.submit(self._warm)
+        except RuntimeError:
+            return
+
+    def _warm(self) -> None:
+        with contextlib.suppress(Exception):
+            self.transport("POST", f"{self.base_url}/warmup", None, min(3.0, self.deadline))
 
     def _timed(self, method: str, url: str, body: dict) -> tuple[int, dict, float]:
         """Run the request and note when the reply arrived, so lateness is judged by

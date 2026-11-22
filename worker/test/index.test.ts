@@ -48,6 +48,26 @@ describe("routes", () => {
     expect(await response.json()).toEqual({ ok: true, service: "overload-rival", provider: "fixture" });
   });
 
+  it("warms up cleanly on POST /warmup without consuming session attempts or budget", async () => {
+    const ledger = env.BUDGET.get(env.BUDGET.idFromName("global"));
+    const spentBefore = await ledger.spent();
+    const id = await startSession();
+
+    const response = await exports.default.fetch(`${BASE}/warmup`, { method: "POST" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, warmed: false, provider: "fixture" });
+    expect(await ledger.spent()).toEqual(spentBefore);
+
+    expect((await ask(id, request(2, summary(0.8, 0.1)))).body).toMatchObject({
+      status: "ok",
+      attempts_used: 1,
+    });
+    expect((await ask(id, request(3, summary(0.8, 0.1)))).body).toMatchObject({
+      status: "ok",
+      attempts_used: 2,
+    });
+  });
+
   it("rejects unknown sessions", async () => {
     const result = await ask("00000000-0000-0000-0000-000000000000", request(2, summary(0.8, 0.1)));
     expect(result.status).toBe(404);
