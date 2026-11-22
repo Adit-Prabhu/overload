@@ -5,6 +5,7 @@ each with three phases and a rotation of attacks no robot uses, layered on the p
 from __future__ import annotations
 
 import dataclasses
+import math
 
 import pytest
 from floorbot import enter
@@ -575,3 +576,204 @@ def test_the_protocol_keeps_its_share_in_a_long_fight(sector) -> None:
                     acting += 1
         assert world.rival is None or world.rival.health <= 0, (sector, protocol)
         assert acting / (acting + busy) >= 0.55, (sector, protocol, acting / (acting + busy))
+
+
+@pytest.mark.parametrize("degrees", [0, 30, 35, 45, 60])
+def test_a_diagonal_bull_charge_impacts_a_chamber_wall_without_sliding(degrees: int) -> None:
+    """Hitting a wall at any angle triggers charge_impact and vent right on contact."""
+    campaign = chamber(2)
+    world = campaign.world
+    room = FLOOR_ARENA.floor.get("s2_chamber")
+    ix, iy, _, _ = room.interior
+    wall_y = iy * 16.0
+    rival = start(campaign, "charge")
+    # Place the Transformer with clear horizontal runway so every angle hits the north wall first.
+    rival.x, rival.y = (ix + 5) * 16.0, wall_y + rival.radius + 45.0
+    world.player.x, world.player.y = (ix + 18) * 16.0, (iy + 12) * 16.0
+    rad = math.radians(degrees)
+    rival.aim_x, rival.aim_y = math.sin(rad), -math.cos(rad)
+    for _ in range(DEFAULT.charge_tell):
+        world.player.invulnerable = 10**9
+        campaign.step(IDLE)
+    assert rival.sig_action == "active"
+
+    expected_ticks = math.ceil(45.0 / (DEFAULT.charge_speed * math.cos(rad)))
+    ticks = 0
+    impacted = False
+    while rival.sig_action == "active":
+        ticks += 1
+        before_y = rival.y
+        world.player.invulnerable = 10**9
+        campaign.step(IDLE)
+        if any(e.kind == "charge_impact" for e in world.events):
+            impacted = True
+            break
+        assert before_y > wall_y + rival.radius + 1e-6, "never slides along the wall before impact"
+    assert impacted, f"charge at {degrees} deg never triggered charge_impact"
+    assert expected_ticks <= ticks <= expected_ticks + 1
+    assert rival.y == pytest.approx(wall_y + rival.radius)
+    assert rival.vent == DEFAULT.vent_ticks
+
+
+def test_a_diagonal_bull_charge_impacts_a_cover_obstacle_and_vents() -> None:
+    """Glancing or diagonal contact with a chamber prop triggers charge_impact and vent."""
+    campaign = chamber(2)
+    world = campaign.world
+    room = FLOOR_ARENA.floor.get("s2_chamber")
+    rx, ry, _, _ = room.rect
+    # The chamber template places an insulator prop ("I") at local tile (2, 14).
+    prop_x = (rx + 2) * 16.0 + 8.0
+    prop_y = (ry + 14) * 16.0 + 8.0
+    rival = start(campaign, "charge")
+    rival.x, rival.y = prop_x + 48.0, prop_y - 48.0
+    world.player.x, world.player.y = prop_x + 120.0, prop_y - 100.0
+    diag = math.sqrt(0.5)
+    rival.aim_x, rival.aim_y = -diag, diag
+    for _ in range(DEFAULT.charge_tell):
+        world.player.invulnerable = 10**9
+        campaign.step(IDLE)
+    assert rival.sig_action == "active"
+
+    seen = run_until(campaign, "charge_impact", limit=30)
+    assert "charge_impact" in seen
+    assert rival.vent == DEFAULT.vent_ticks
+
+
+@pytest.mark.parametrize("degrees", [35, 45])
+def test_a_diagonal_bull_charge_across_open_floor_never_falsely_impacts(degrees: int) -> None:
+    """Unobstructed diagonal travel keeps running at full speed without false wall hits."""
+    campaign = chamber(2)
+    world = campaign.world
+    room = FLOOR_ARENA.floor.get("s2_chamber")
+    ix, iy, _, ih = room.interior
+    rival = start(campaign, "charge")
+    rival.x, rival.y = (ix + 5) * 16.0, (iy + ih - 4) * 16.0
+    world.player.x, world.player.y = (ix + 18) * 16.0, (iy + ih - 3) * 16.0
+    rad = math.radians(degrees)
+    rival.aim_x, rival.aim_y = math.sin(rad), -math.cos(rad)
+    for _ in range(DEFAULT.charge_tell):
+        world.player.invulnerable = 10**9
+        campaign.step(IDLE)
+    assert rival.sig_action == "active"
+
+    vx = rival.aim_x * DEFAULT.charge_speed
+    vy = rival.aim_y * DEFAULT.charge_speed
+    for _ in range(25):
+        before = (rival.x, rival.y)
+        world.player.invulnerable = 10**9
+        campaign.step(IDLE)
+        assert rival.sig_action == "active"
+        assert rival.vent == 0
+        assert "charge_impact" not in [e.kind for e in world.events]
+        assert rival.x == pytest.approx(before[0] + vx)
+        assert rival.y == pytest.approx(before[1] + vy)
+
+
+@pytest.mark.parametrize(
+    ("phase", "name", "next_health", "tell_elapsed"),
+    [
+        (1, "lattice", 53, DEFAULT.lattice_tell // 2),
+        (1, "lattice", 53, DEFAULT.lattice_tell - 1),
+        (2, "lattice_twice", 26, DEFAULT.lattice_tell // 2),
+        (2, "lattice_twice", 26, DEFAULT.lattice_tell - 1),
+    ],
+)
+def test_grid_core_phase_change_cancels_arming_lattice_tell_cleanly(
+    phase: int, name: str, next_health: int, tell_elapsed: int
+) -> None:
+    """Cancelling an unstruck Lattice tell clears its arming tiles without wiping shots or
+    already-active hazards, so the Surge takes zero damage during the phase change."""
+    from overload.sim.state import Hazard, Projectile
+
+    campaign = chamber(3)
+    if phase > 1:
+        set_phase(campaign, phase)
+    world = campaign.world
+    rival = start(campaign, name)
+    arming_ids = {h.id for h in world.hazards if h.kind == "lattice"}
+    assert arming_ids
+
+    # Place the Surge inside one of the arming Lattice cells so any leaked tile would burn it.
+    cell = next(h for h in world.hazards if h.kind == "lattice")
+    world.player.x, world.player.y = cell.x + cell.size / 2, cell.y + cell.size / 2
+
+    # Advance through the tell (including the final tick before _strike runs).
+    for _ in range(tell_elapsed):
+        world.player.invulnerable = 10**9
+        campaign.step(IDLE)
+    assert rival.sig_action == "tell" and rival.sig_step == 0
+
+    # Add a hostile bolt and already-active hazards away from the Surge to verify preservation.
+    bolt = Projectile(
+        id=world.new_id(),
+        x=rival.x,
+        y=rival.y - 30.0,
+        vx=0.0,
+        vy=-0.1,
+        radius=DEFAULT.bolt_radius,
+        damage=DEFAULT.bolt_damage,
+        hostile=True,
+        ttl=120,
+    )
+    active_insulate = Hazard(
+        id=world.new_id(),
+        x=0.0,
+        y=0.0,
+        size=16.0,
+        arming=0,
+        active=100,
+        kind="insulate",
+    )
+    active_lattice = Hazard(
+        id=world.new_id(),
+        x=0.0,
+        y=0.0,
+        size=DEFAULT.lattice_cell,
+        arming=0,
+        active=DEFAULT.lattice_active - 10,
+        kind="lattice",
+    )
+    world.projectiles.append(bolt)
+    world.hazards.extend([active_insulate, active_lattice])
+
+    # Cross the phase threshold with the Surge vulnerable inside the cancelled Lattice cell.
+    rival.health = next_health
+    world.player.invulnerable = 0
+    world.player.charge = DEFAULT.player_max_charge
+    campaign.step(IDLE)
+    assert rival.phase == phase + 1 and rival.change > 0
+    assert "phase_change" in [e.kind for e in world.events]
+    assert "lattice" not in [e.kind for e in world.events]
+
+    remaining_ids = {h.id for h in world.hazards}
+    assert not (arming_ids & remaining_ids), "arming tiles from the cancelled tell are removed"
+    assert active_insulate.id in remaining_ids, "already-active insulate hazard stays intact"
+    assert active_lattice.id in remaining_ids, "already-burning lattice hazard stays intact"
+    assert bolt.id in {p.id for p in world.projectiles}, "hostile shots stay intact"
+
+    for _ in range(DEFAULT.phase_change):
+        world.player.invulnerable = 0
+        world.player.x, world.player.y = cell.x + cell.size / 2, cell.y + cell.size / 2
+        campaign.step(IDLE)
+        assert "lattice" not in [e.kind for e in world.events]
+        assert world.player.charge == DEFAULT.player_max_charge
+
+
+def test_grid_core_phase_change_waits_for_an_already_striking_lattice() -> None:
+    """Once Lattice has struck (sig_action == active), the phase change waits until it ends."""
+    campaign = chamber(3)
+    world = campaign.world
+    rival = start(campaign, "lattice")
+    run_until(campaign, "lattice", limit=DEFAULT.lattice_tell + 2)
+    assert rival.sig_action == "active"
+    active_ids = {h.id for h in world.hazards if h.kind == "lattice"}
+    assert active_ids
+
+    rival.health = 53
+    world.player.invulnerable = 10**9
+    campaign.step(IDLE)
+    assert rival.phase == 1 and rival.sig_action == "active"
+    assert active_ids <= {h.id for h in world.hazards}
+
+    run_until(campaign, "phase_change", limit=DEFAULT.lattice_active + 5)
+    assert rival.phase == 2

@@ -112,6 +112,18 @@ def phase_change(world: World, rival: Rival, boss: Boss, tuning: Tuning) -> bool
     target = min(phase_for(boss, rival.health, rival.max_health), rival.phase + 1)
     striking = rival.sig_action == "active" or (rival.sig_action == "tell" and rival.sig_step)
     if target > rival.phase and rival.health > 0 and not striking:
+        if rival.sig_action == "tell" and rival.sig_name.startswith("lattice"):
+            # Clear only the unstruck Lattice tell's arming tiles (keep already-burning tiles).
+            world.hazards = [
+                h
+                for h in world.hazards
+                if not (
+                    h.kind == "lattice"
+                    and (
+                        h.arming > 0 or (rival.sig_timer <= 1 and h.active == tuning.lattice_active)
+                    )
+                )
+            ]
         rival.phase = target
         rival.change = tuning.phase_change
         if rival.vent:
@@ -344,15 +356,14 @@ def _charge(world: World, rival: Rival, tuning: Tuning, arena) -> None:
     """Run down the locked lane. A wall stops it hard and stuns it (its vent window). A
     second charge (phase 3) re-aims first, and its wall impact also drops debris."""
     vx, vy = rival.aim_x * tuning.charge_speed, rival.aim_y * tuning.charge_speed
-    before = (rival.x, rival.y)
+    target_x, target_y = rival.x + vx, rival.y + vy
     rival.x, rival.y = move_body(rival.x, rival.y, vx, vy, rival.radius, arena, world)
     player = world.player
     if circles_overlap(
         (rival.x, rival.y), rival.radius, (player.x, player.y), tuning.player_radius
     ):
         hurt_player(world, tuning.rival_contact_damage, tuning)
-    moved = length(rival.x - before[0], rival.y - before[1])
-    hit_wall = moved < tuning.charge_speed * 0.5
+    hit_wall = length(rival.x - target_x, rival.y - target_y) > 1e-6
     if not hit_wall and rival.sig_timer > 0:
         return
     if hit_wall:
