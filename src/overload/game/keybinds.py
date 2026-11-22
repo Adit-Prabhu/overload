@@ -43,7 +43,11 @@ DEFAULTS = {
     "menu": "tab",
 }
 ARROWS = {"up": "up", "down": "down", "left": "left", "right": "right"}
-UNBINDABLE = {"escape"}
+# Esc, Enter and Backspace are reserved for menus so no binding can break navigation.
+UNBINDABLE = {"escape", "return", "enter", "kp_enter", "backspace"}
+# Space is menu select, so actions that must also fire inside menus cannot hold Space.
+# Dodge (default Space) and Retry are gameplay-only and keep Space fully valid.
+MENU_ACTIONS = {"up", "down", "left", "right", "power_q", "power_e", "menu"}
 PATH = ROOT / "settings" / "keys.json"
 # Short labels for long key names, for the 3 by 5 glyphs over the power slots.
 _SHORT = {
@@ -55,11 +59,26 @@ _SHORT = {
     "left alt": "LAL",
     "right alt": "RAL",
     "return": "ENT",
+    "enter": "ENT",
     "backspace": "BSP",
     "caps lock": "CAP",
 }
-_LABEL = {"return": "ENTER", "left": "LEFT ARROW", "right": "RIGHT ARROW"}
-_LABEL |= {"up": "UP ARROW", "down": "DOWN ARROW"}
+_LABEL = {
+    "return": "ENTER",
+    "enter": "ENTER",
+    "kp_enter": "ENTER",
+    "left": "LEFT ARROW",
+    "right": "RIGHT ARROW",
+    "up": "UP ARROW",
+    "down": "DOWN ARROW",
+}
+
+
+def allowed(action: str, name: str) -> bool:
+    """True if `name` can legally be bound to `action` without conflicting with menus."""
+    if action not in DEFAULTS or not name or name in UNBINDABLE:
+        return False
+    return not (name == "space" and action in MENU_ACTIONS)
 
 
 def key_label(name: str) -> str:
@@ -92,7 +111,7 @@ class Keybinds:
         if (
             isinstance(saved, dict)
             and set(saved) == set(DEFAULTS)
-            and all(isinstance(v, str) and v and v not in UNBINDABLE for v in saved.values())
+            and all(isinstance(v, str) and allowed(k, v) for k, v in saved.items())
             and len(set(saved.values())) == len(saved)
         ):
             binds.keys = dict(saved)
@@ -108,13 +127,17 @@ class Keybinds:
             pass  # a read-only checkout still plays, with the bindings for this run only
 
     def bind(self, action: str, name: str) -> bool:
-        """Put `name` on `action`. A key already on another action swaps over to it, so
-        no key is ever used twice and no action is left without one."""
-        if action not in DEFAULTS or not name or name in UNBINDABLE:
+        """Put `name` on `action`. A key already on another action swaps over to it when
+        both actions legally accept their new keys, so no key is ever used twice and no
+        menu action ever receives a reserved menu key."""
+        if not allowed(action, name):
             return False
         for other, key in self.keys.items():
             if key == name and other != action:
+                if not allowed(other, self.keys[action]):
+                    return False
                 self.keys[other] = self.keys[action]
+                break
         self.keys[action] = name
         self.save()
         return True
@@ -134,8 +157,10 @@ class Keybinds:
         return f"{self.short(a)}/{self.short(b)}"
 
     def move_label(self) -> str:
-        """The four move keys as one word when they spell one, like WASD."""
+        """The four move keys as one word when they spell one, like WASD or ARROWS."""
         keys = [self.keys[a] for a in ("up", "left", "down", "right")]
+        if keys == ["up", "left", "down", "right"]:
+            return "ARROWS"
         if all(len(k) == 1 for k in keys):
             return "".join(keys).upper()
         return "/".join(short_label(k) for k in keys)
@@ -182,12 +207,21 @@ class RebindPage:
         return None
 
     def capture(self, name: str) -> str:
-        """The key pressed while waiting. Esc cancels. Returns a sound."""
+        """The key pressed while waiting. Esc cancels. Reserved menu keys are refused with
+        a notice and a deny cue. Returns a sound."""
         self.capturing = False
-        if name in UNBINDABLE:
+        if not name or name == "escape":
             self.notice = ""
             return "move"
         action, title = ACTIONS[self.row]
+        if not allowed(action, name):
+            self.notice = f"{key_label(name)} RESERVED FOR MENUS"
+            return "deny"
+        for other, key in self.binds.keys.items():
+            if key == name and other != action and not allowed(other, self.binds.keys[action]):
+                other_title = dict(ACTIONS)[other]
+                self.notice = f"REBIND {other_title} FIRST"
+                return "deny"
         if not self.binds.bind(action, name):
             self.notice = ""
             return "move"

@@ -210,21 +210,76 @@ def test_a_forced_rarity_with_no_chance_leaves_the_roll_alone() -> None:
     assert "NO CHANCE" in tools.notice and session.campaign.world.fusions == 0
 
 
+def test_skip_sector_clears_lingering_hazards_and_projectiles() -> None:
+    from overload.sim.state import Device, Hazard, Projectile, Shockwave, Trail
+
+    campaign = Campaign(1)
+    world = campaign.world
+    px, py = world.player.x, world.player.y
+    world.projectiles.append(Projectile(1, px, py, 0.0, 0.0, 4.0, 10, True, 30))
+    world.hazards.append(Hazard(2, px, py, 16.0, 0, 30))
+    world.shockwaves.append(Shockwave(3, px, py, 4.0, False, 60.0))
+    world.trails.append(Trail(4, px, py, px + 10, py, 20))
+    world.devices.append(Device(5, "mine", px, py, px, py, 20))
+    world.player.charge = 1  # GOD MODE = OFF must survive the next tick after skipping
+    assert devmode.skip_sector(campaign) == "SKIPPED TO THE FUSE BOX"
+    assert not world.projectiles
+    assert not world.hazards
+    assert not world.shockwaves
+    assert not world.trails
+    assert not world.devices
+    campaign.step(IDLE)
+    assert campaign.stage == "fuse_box" and world.outcome == "playing"
+
+
 def test_dev_stays_visible_over_every_menu(monkeypatch) -> None:
     import pygame
 
     from overload.art.palette import rgb
     from overload.art.pixel import hud
-    from overload.game.app import draw_dev_tag
+    from overload.game.app import draw_dev_overlay, draw_dev_tag
 
     monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
     pygame.init()  # the play() tests above shut pygame down
     hud.forget()
 
+    # In play: DEV sits below the minimap (y >= 28), never covering y < 27.
     screen = pygame.Surface((256, 144))
-    screen.fill(rgb("px.outline"))  # whatever a menu or the ending drew
-    draw_dev_tag(screen)
-    lit = sum(
-        screen.get_at((x, y))[:3] == rgb("px.hazard.1") for x in range(226, 256) for y in range(12)
+    screen.fill(rgb("px.outline"))
+    draw_dev_tag(screen, in_menu=False)
+    minimap_overlap = sum(
+        screen.get_at((x, y))[:3] == rgb("px.hazard.1") for x in range(198, 256) for y in range(27)
     )
-    assert lit > 20
+    play_lit = sum(
+        screen.get_at((x, y))[:3] == rgb("px.hazard.1")
+        for x in range(226, 256)
+        for y in range(28, 40)
+    )
+    assert minimap_overlap == 0 and play_lit > 20
+
+    # In menus: DEV sits inside the header gap (y = 9..19), clear of the PANEL top border (y = 6).
+    screen.fill(rgb("px.outline"))
+    draw_dev_tag(screen, in_menu=True)
+    border_overlap = sum(screen.get_at((x, 6))[:3] == rgb("px.hazard.1") for x in range(8, 248))
+    menu_lit = sum(
+        screen.get_at((x, y))[:3] == rgb("px.hazard.1")
+        for x in range(104, 128)
+        for y in range(9, 20)
+    )
+    assert border_overlap == 0 and menu_lit > 20
+
+    # Debug overlay stays above the coach hint panel (y = 128).
+    drawn: list[tuple[str, pygame.Rect]] = []
+    original = hud.text
+
+    def record(target, message, pos, *args, **kwargs):
+        rect = original(target, message, pos, *args, **kwargs)
+        drawn.append((message, rect))
+        return rect
+
+    hud.text = record
+    try:
+        draw_dev_overlay(screen, devmode.DevTools(), Campaign(1), 60.0)
+    finally:
+        hud.text = original
+    assert drawn and max(rect.bottom for _, rect in drawn) <= 126

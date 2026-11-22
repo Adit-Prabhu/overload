@@ -607,3 +607,234 @@ def test_fuse_reveal_fits_all_thirty_fused_powers_without_overlap() -> None:
         for msg, rect in drawn:
             assert box.left <= rect.left and rect.right <= box.right, f"{power}: {msg} {rect}"
             assert box.top <= rect.top and rect.bottom <= box.bottom, f"{power}: {msg} {rect}"
+
+
+@pytest.mark.usefixtures("headless_pygame")
+def test_fuse_terms_never_overlap_guaranteed_across_all_pairs() -> None:
+    import pygame
+
+    from overload.game import menu_view
+    from overload.sim.powers import RECIPE_ORDER
+
+    screen = pygame.Surface((256, 144))
+    original = menu_view.hud.text
+    for a, b in RECIPE_ORDER:
+        for bank in ({a: 2, b: 2}, {a: 1, b: 0}):
+            session, menu = bench(a, b, bank=bank)
+            owned = RESULTS[frozenset((a, b))][0]
+            session.campaign.world.unlocked.append(owned)
+            session.campaign.world.streak = session.campaign.tuning.fuse_guarantee_after
+            menu.sockets = [a, b]
+            drawn: list[tuple[str, pygame.Rect]] = []
+
+            def record(target, message, pos, *args, out=drawn, fn=original, **kwargs):
+                rect = fn(target, message, pos, *args, **kwargs)
+                out.append((message, rect))
+                return rect
+
+            menu_view.hud.text = record
+            try:
+                menu_view.draw_fuse(screen, menu, session)
+            finally:
+                menu_view.hud.text = original
+            guar = next(rect for msg, rect in drawn if msg == "EPIC+ GUARANTEED")
+            left_terms = [
+                (msg, rect) for msg, rect in drawn if rect.y == guar.y and msg != "EPIC+ GUARANTEED"
+            ]
+            assert len(left_terms) == 1, (a, b, bank, left_terms)
+            msg, rect = left_terms[0]
+            assert rect.right <= guar.left - 4, f"{a}+{b} ({bank}): {msg!r} overlapped EPIC+"
+
+
+@pytest.mark.usefixtures("headless_pygame")
+def test_fuse_box_continue_pulses_and_respects_reduce_flash(monkeypatch) -> None:
+    import pygame
+
+    from overload.game import menu_view
+    from overload.game.settings import Settings
+
+    session = fuse_box_with("spark")
+    menu = Menu()
+    menu.show(in_fuse_box=True)
+    screen = pygame.Surface((256, 144))
+    original = menu_view.hud.text
+
+    def capture_tokens(ticks: int, reduce_flash: bool, ready: bool = True) -> dict[str, str]:
+        menu.settings_page.settings = Settings(reduce_flash=reduce_flash)
+        monkeypatch.setattr(pygame.time, "get_ticks", lambda: ticks)
+        seen: dict[str, str] = {}
+
+        def record(target, message, pos, token, *args, **kwargs):
+            seen[message] = token
+            return original(target, message, pos, token, *args, **kwargs)
+
+        menu_view.hud.text = record
+        try:
+            menu_view.draw_hub(screen, menu, session, ready, None, 2)
+        finally:
+            menu_view.hud.text = original
+        return seen
+
+    t0 = capture_tokens(0, reduce_flash=False, ready=True)
+    t1 = capture_tokens(400, reduce_flash=False, ready=True)
+    assert t0["CONTINUE >>"] == "px.hazard.1" and t1["CONTINUE >>"] == "ui.text"
+    assert t0["SPACE ON CONTINUE: ENTER SECTOR 2"] == "px.hazard.1"
+    assert t1["SPACE ON CONTINUE: ENTER SECTOR 2"] == "ui.text"
+
+    r0 = capture_tokens(0, reduce_flash=True, ready=True)
+    r1 = capture_tokens(400, reduce_flash=True, ready=True)
+    assert r0["CONTINUE >>"] == r1["CONTINUE >>"] == "px.hazard.1"
+    assert (
+        r0["SPACE ON CONTINUE: ENTER SECTOR 2"]
+        == r1["SPACE ON CONTINUE: ENTER SECTOR 2"]
+        == "px.hazard.1"
+    )
+
+    waiting = capture_tokens(0, reduce_flash=False, ready=False)
+    assert waiting["CONTINUE"] == "px.wall.4", "selected disabled CONTINUE stays legible"
+    menu.hub = menu.hub_items.index("QUIT")
+    menu.quitting = True
+    quitting = capture_tokens(0, reduce_flash=False, ready=True)
+    assert quitting["QUIT? SPACE AGAIN"] == "px.lamp"
+
+
+@pytest.mark.usefixtures("headless_pygame")
+def test_menu_polish_loadout_help_reveal_controls_and_dev() -> None:
+    import pygame
+
+    from overload.art.palette import rgb
+    from overload.game import dev as devmode
+    from overload.game import menu_view
+    from overload.game.menu import Roll
+    from overload.game.settings import Settings
+
+    screen = pygame.Surface((256, 144))
+    session, menu = bench(*BASE_POWERS)
+    world = session.campaign.world
+    devmode.grant(world, "capacitor_armor")
+    devmode.grant(world, "bolt_lance")
+    devmode.grant(world, "storm_aura")
+    devmode.grant(world, "meteor")
+    world.player.slots = ["capacitor_armor", "bolt_lance"]
+    menu.keys_page.binds.bind("power_q", "left shift")
+    menu.keys_page.binds.bind("power_e", "right shift")
+    menu.keys_page.binds.bind("up", "left ctrl")
+    menu.keys_page.binds.bind("down", "right ctrl")
+    menu.keys_page.binds.bind("left", "left alt")
+    menu.keys_page.binds.bind("right", "right alt")
+
+    original = menu_view.hud.text
+
+    def capture(draw_fn) -> list[tuple[str, pygame.Rect, str]]:
+        drawn: list[tuple[str, pygame.Rect, str]] = []
+
+        def record(target, message, pos, token, *args, **kwargs):
+            rect = original(target, message, pos, token, *args, **kwargs)
+            drawn.append((message, rect, token))
+            return rect
+
+        menu_view.hud.text = record
+        try:
+            draw_fn()
+        finally:
+            menu_view.hud.text = original
+        return drawn
+
+    # LOADOUT: scrolled list clears ^ from row 0 and keeps full ARMOR with 3-char keys.
+    menu.screen = "loadout"
+    menu.row = len(loadout_rows(world.unlocked)) - 2
+    drawn = capture(lambda: menu_view.draw_loadout(screen, menu, session, session.campaign.tuning))
+    up_marker = next(rect for msg, rect, _ in drawn if msg == "^")
+    first_row_y = menu_view.PANEL.y + 4 + 19
+    assert up_marker.y + 5 <= first_row_y - 2, f"^ touches row 0: {up_marker}"
+    assert any(msg == "ARMOR" for msg, _, _ in drawn), "ARMOR must not truncate to ARMO"
+
+    # FUSE disabled ROLL contrast and help overlay covering legendary rays.
+    menu.screen = "fuse"
+    menu.sockets = ["spark", "blink"]
+    menu.cursor = ROLL
+    world.unlocked.append("arc_trail")
+    world.bank = {}
+    drawn = capture(lambda: menu_view.draw_fuse(screen, menu, session))
+    assert any(msg == "ROLL" and token == "px.wall.4" for msg, _, token in drawn)
+    menu.help = True
+    screen.fill(rgb("px.void"))
+    menu_view.draw_fuse(screen, menu, session)
+    help_box = menu_view.PANEL.inflate(-2, -2)
+    leaked = [
+        (x, y)
+        for x in range(menu_view.PANEL.left, menu_view.PANEL.right)
+        for y in range(menu_view.PANEL.top, menu_view.PANEL.bottom)
+        if not help_box.collidepoint(x, y)
+        and screen.get_at((x, y))[:3] == rgb("px.rarity.legendary")
+    ]
+    assert not leaked, f"legendary rays peeked past FUSE help box: {leaked[:5]}"
+    menu.help = False
+
+    # Legendary reveal pulse: symmetric, clear of corner rays, steady under Reduce Flash.
+    menu.roll = Roll(
+        pair=("spark", "burst"),
+        result="storm_aura",
+        replaced="",
+        steps=[2],
+        delays=[50],
+        clock=0,
+        phase="reveal",
+    )
+    menu.settings_page.settings = Settings(reduce_flash=True)
+    s0 = pygame.Surface((256, 144))
+    s1 = pygame.Surface((256, 144))
+    menu_view._reveal(s0, menu)
+    menu.roll.clock = 200
+    menu_view._reveal(s1, menu)
+    assert pygame.image.tobytes(s0, "RGB") == pygame.image.tobytes(s1, "RGB")
+
+    # In-game CONTROLS footer uses ui.dim idle and px.hazard.1 on capture or notice.
+    menu.roll = None
+    menu.screen = "controls"
+    menu.keys_page.capturing, menu.keys_page.notice = False, ""
+    idle = capture(lambda: menu_view.draw_controls(screen, menu))
+    assert any("ESC BACK" in msg and token == "ui.dim" for msg, _, token in idle)
+    menu.keys_page.capturing = True
+    cap = capture(lambda: menu_view.draw_controls(screen, menu))
+    assert any(msg == "ESC CANCELS" and token == "px.hazard.1" for msg, _, token in cap)
+    menu.keys_page.capturing, menu.keys_page.notice = False, "SPACE RESERVED FOR MENUS"
+    note = capture(lambda: menu_view.draw_controls(screen, menu))
+    assert any(
+        msg == "SPACE RESERVED FOR MENUS" and token == "px.hazard.1" for msg, _, token in note
+    )
+
+    # DEV page footer stays inside PANEL even with 3-char move keys.
+    menu.dev = devmode.DevTools()
+    menu.screen = "dev"
+    dev_drawn = capture(lambda: menu_view.draw_dev(screen, menu))
+    for msg, rect, _ in dev_drawn:
+        assert rect.right <= menu_view.PANEL.right - 2, f"DEV clipped: {msg!r} {rect}"
+
+
+def test_rebound_power_keys_equip_in_loadout_and_fuse_reveal() -> None:
+    import pygame
+
+    from overload.game.app import menu_frame
+
+    session, menu, reader, recording = live_setup()
+    session.campaign.world.unlocked = ["spark", "blink"]
+    binds = reader.binds
+    assert binds.bind("power_q", "1") and binds.bind("power_e", "2")
+    reader.rebind()
+    menu.keys_page.binds = binds
+    menu.show(in_fuse_box=False)
+    menu.hub = HUB_PAUSED.index("LOADOUT")
+    press_keys(reader, pygame.K_RETURN, pygame.K_1, pygame.K_s, pygame.K_2)
+    menu_frame(session, menu, reader, recording, 16)
+    assert session.campaign.world.player.slots == ["spark", "blink"]
+
+    # Equipping straight from a FUSE reveal uses the rebound key and names it in the notice.
+    menu.screen = "fuse"
+    socket(session, menu, "spark", "blink")
+    roll_through(session, menu)
+    rolled = menu.roll.result
+    press_keys(reader, pygame.K_1)
+    menu_frame(session, menu, reader, recording, 16)
+    assert session.campaign.world.player.slots[0] == rolled
+    assert menu.notice.endswith(" ON 1")

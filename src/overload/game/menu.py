@@ -299,7 +299,8 @@ class Menu:
             slot = 0 if key == "q" else 1
             session.equip(slot, roll.result)
             self.roll = None
-            self.notice = f"{owned_name(roll.result)} ON {key.upper()}"
+            slot_key = self.keys_page.binds.short(("power_q", "power_e")[slot])
+            self.notice = f"{owned_name(roll.result)} ON {slot_key}"
             return ["equip", slot, roll.result], ["confirm"]
         if key in ("select", "back"):
             self.roll = None

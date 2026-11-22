@@ -212,6 +212,11 @@ def skip_sector(campaign) -> str:
     player.history.clear()
     world.decoy = None
     world.fields.clear()
+    world.projectiles.clear()
+    world.hazards.clear()
+    world.shockwaves.clear()
+    world.trails.clear()
+    world.devices.clear()
     floor = campaign.arena.floor
     sector = campaign.encounter
     for room in floor.rooms:

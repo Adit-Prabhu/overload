@@ -220,7 +220,8 @@ def menu_frame(
     cues: list[str] = []
     for key, raw in keys:
         if menu.capturing:  # CONTROLS waits for a key: any key but Esc binds
-            cues.append(menu.keys_page.capture(raw if keybinds.known(raw) else "escape"))
+            sound = menu.keys_page.capture(raw if keybinds.known(raw) else "escape")
+            cues.append(MENU_SOUNDS.get(sound, sound))
             reader.rebind()
             continue
         if key is None:
@@ -259,16 +260,17 @@ def draw_dev_overlay(screen: pygame.Surface, tools, run, fps: float) -> None:
     """The debug overlay, over play (menus cover it)."""
     if tools.overlay:
         for i, line in enumerate(devmode.overlay_lines(run, fps)):
-            hud.text(screen, line, (4, VIEW[1] - 58 + i * 9), "ui.dim")
+            hud.text(screen, line, (4, VIEW[1] - 70 + i * 9), "ui.dim")
 
 
-def draw_dev_tag(screen: pygame.Surface) -> None:
-    """DEV in the top right corner on a backing box, drawn last in every frame (over menus,
-    the Fuse Box and the ending), so no dev capture can pass for real play (AGENTS.md)."""
-    rect = pygame.Rect(VIEW[0] - 23, 0, 21, 10)
+def draw_dev_tag(screen: pygame.Surface, in_menu: bool = False) -> None:
+    """DEV badge on a backing box, drawn last in every frame (over menus, the Fuse Box
+    and the ending), so no dev capture can pass for real play (AGENTS.md). Placed below
+    the minimap during play and inside the menu header gap when a menu is open."""
+    rect = pygame.Rect(105, 9, 22, 11) if in_menu else pygame.Rect(VIEW[0] - 26, 28, 22, 11)
     screen.fill(rgb("px.outline"), rect)
     pygame.draw.rect(screen, rgb("px.hazard.1"), rect, 1)
-    hud.text(screen, "DEV", rect.center, "px.hazard.1", "center")
+    hud.text(screen, "DEV", (rect.centerx, rect.y - 1), "px.hazard.1", "midtop")
 
 
 def _open_window(headless: bool, fullscreen: bool = False) -> pygame.Surface:
@@ -394,20 +396,17 @@ def play(options: Options) -> int:
     binds = Keybinds() if options.replay or options.headless else Keybinds.load()
     settings = Settings() if options.replay or options.headless else Settings.load()
     show_title = not (options.headless or options.replay or options.skip_title)
-    can_return = show_title and not (options.practice or options.record)
-    replay: Recording | None = Recording.load(options.replay) if options.replay else None
-    if replay is not None:
+    can_return = show_title and not (options.practice or options.record or options.trace)
+    replay: Recording | None = None
+    if options.replay:
         try:
+            replay = Recording.load(options.replay)
             recorded_tuning(replay.tuning_id)
-        except ValueError as error:
+            if replay.mode != "practice":
+                check_campaign(replay)
+        except (OSError, ValueError, KeyError, TypeError) as error:
             print(f"Replay rejected: {error}")
             return 2
-        if replay.mode != "practice":
-            try:
-                check_campaign(replay)
-            except ValueError as error:
-                print(f"Replay rejected: {error}")
-                return 2
 
     def on_display(fullscreen: bool) -> pygame.Surface:
         nonlocal screen
@@ -656,7 +655,7 @@ def play(options: Options) -> int:
                         if view.boss_banner is None:
                             ending_shown = True
                     if dev_tools is not None:
-                        draw_dev_tag(screen)
+                        draw_dev_tag(screen, in_menu=menu.open and session is not None)
                     pygame.display.flip()
                     frames += 1
                     if options.frames and frames >= options.frames:

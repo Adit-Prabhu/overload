@@ -548,3 +548,97 @@ def test_sector_arrival_banners_and_fuse_box_charging_bay(display) -> None:
         }
         assert rgb("power.spark") in light_colors and rgb("power.blink") in light_colors
         assert rgb("px.rarity.epic") not in light_colors
+
+
+def test_move_hint_fits_with_arrow_and_three_char_keys(display) -> None:
+    from overload.art.pixel import hud
+    from overload.game.view import HINT_RIGHT, PixelView
+
+    # Arrow-bound move keys display compact ARROWS label inside the panel.
+    arrow_binds = Keybinds()
+    for action in ("up", "down", "left", "right"):
+        assert arrow_binds.bind(action, action)
+    campaign = Campaign(1)
+    view = PixelView(campaign)
+    view.binds = view.coach.binds = arrow_binds
+    assert view.coach.hint(campaign) == "ARROWS TO MOVE  MOUSE TO AIM"
+
+    # Worst-case four 3-char keys fall back to the short move hint and stay inside HINT_RIGHT.
+    long_binds = Keybinds()
+    for action, key in (
+        ("up", "left shift"),
+        ("down", "right shift"),
+        ("left", "left ctrl"),
+        ("right", "right ctrl"),
+    ):
+        assert long_binds.bind(action, key)
+    view.binds = view.coach.binds = long_binds
+    drawn: list[tuple[str, pygame.Rect]] = []
+    original = hud.text
+
+    def record(target, message, pos, *args, **kwargs):
+        rect = original(target, message, pos, *args, **kwargs)
+        drawn.append((message, rect))
+        return rect
+
+    hud.text = record
+    try:
+        view._coach(display, campaign, view.camera_offset())
+    finally:
+        hud.text = original
+    ((message, rect),) = drawn
+    assert message == "LSH/LCT/RSH/RCT MOVE  MOUSE AIM"
+    assert rect.left >= 4 and rect.right <= HINT_RIGHT - 2
+
+
+def test_short_circuit_and_ending_stamp_stay_clear_of_slots_and_edges(display) -> None:
+    from overload.art.pixel import hud
+    from overload.game.view import HINT_RIGHT, PixelView
+
+    campaign = Campaign(1)
+    view = PixelView(campaign)
+    for prefix in ("", "DEV "):
+        view.stamp = f"{prefix}overload 0.1.0 624e3a96 cff616dc"
+        for render in (
+            lambda: view._banner(display, "down"),
+            lambda: view.draw_ending(display, 120.0, 0, 50, {}, {}, can_return=True),
+        ):
+            drawn: list[tuple[str, pygame.Rect]] = []
+            original = hud.text
+
+            def record(target, message, pos, *args, out=drawn, fn=original, **kwargs):
+                rect = fn(target, message, pos, *args, **kwargs)
+                out.append((message, rect))
+                return rect
+
+            hud.text = record
+            try:
+                render()
+            finally:
+                hud.text = original
+            stamp_rect = next(rect for msg, rect in drawn if msg == view.stamp)
+            assert stamp_rect.left >= 0 and stamp_rect.right <= HINT_RIGHT, (
+                f"{view.stamp!r} crossed power slots or edge: {stamp_rect}"
+            )
+
+
+def test_mutual_kill_suppresses_room_clear_and_boss_reward_visuals(display) -> None:
+    from overload.game.view import PixelView
+    from overload.sim.state import Event
+
+    campaign = Campaign(1)
+    world = campaign.world
+    world.unlocked.extend(["spark", "blink"])
+    view = PixelView(campaign)
+    world.outcome = "down"
+    world.events = [
+        Event("rival_destroyed", 100.0, 100.0),
+        Event("boss_reward", 100.0, 100.0),
+        Event("room_clear", 100.0, 100.0),
+        Event("player_down", 80.0, 80.0),
+    ]
+    view.after_tick(campaign)
+    assert view.boss_banner is None
+    assert view.reward == []
+    assert view.flyers == []
+    assert view.notice is None

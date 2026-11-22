@@ -37,8 +37,10 @@ BEAT_TICKS = 60 * 60 / 124  # the title music's beat (124 BPM) in 60 Hz ticks
 
 def controls(binds: Keybinds) -> tuple[tuple[str, str], ...]:
     """Every control with its current key, for the help pages."""
+    move = binds.move_label()
+    move_text = move if move == "ARROWS" else f"{move} OR ARROWS"
     return (
-        ("MOVE", f"{binds.move_label()} OR ARROWS"),
+        ("MOVE", move_text),
         ("AIM", "MOUSE"),
         ("FIRE", "HOLD LEFT CLICK"),
         ("DODGE", binds.label("dodge")),
@@ -80,6 +82,11 @@ def rebind_footer(page: RebindPage, nav: str = "W/S") -> str:
     if page.capturing:
         return "ESC CANCELS"
     return page.notice or f"{nav} MOVE  ENTER CHANGE  ESC BACK"
+
+
+def rebind_footer_token(page: RebindPage) -> str:
+    """Highlight active capture and notices in hazard gold, idle footers in dim grey."""
+    return "px.hazard.1" if (page.capturing or page.notice) else "ui.dim"
 
 
 def draw_settings(
@@ -219,9 +226,15 @@ class TitleScreen:
         if self.page == "controls":
             if self.keys.capturing:
                 name = keybinds.key_name(key)
-                self.keys.capture(name if keybinds.known(name) else "escape")
-            elif self.keys.nav(TITLE_KEYS.get(key, "")) == "back":
-                self.page = "menu"
+                sound = self.keys.capture(name if keybinds.known(name) else "escape")
+            else:
+                sound = self.keys.nav(TITLE_KEYS.get(key, ""))
+                if sound == "back":
+                    self.page = "menu"
+            if sound in ("back", "move"):
+                self.sounds.append("menu_move")
+            elif sound in ("confirm", "deny"):
+                self.sounds.append(sound)
             return
         if self.page == "settings":
             sound, display_changed = self.settings_page.nav(TITLE_KEYS.get(key, ""))
@@ -387,7 +400,7 @@ class TitleScreen:
         hud.text(screen, "MOUSE AIMS AND FIRES", (right, panel.y + 4), "ui.dim", "topright")
         screen.fill(rgb("px.wall.1"), (left, panel.y + 14, right - left, 1))
         draw_rebind(screen, self.keys, left, right, panel.y + 18)
-        token = "px.hazard.1" if self.keys.capturing or not self.keys.notice else "px.lamp"
+        token = rebind_footer_token(self.keys)
         hud.text(screen, rebind_footer(self.keys), (right, panel.bottom - 11), token, "topright")
 
     def _settings(self, screen: pygame.Surface) -> None:

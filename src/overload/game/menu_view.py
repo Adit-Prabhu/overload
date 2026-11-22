@@ -15,7 +15,13 @@ from overload.game.menu import (
     percentages,
     roll_terms,
 )
-from overload.game.title import draw_rebind, draw_settings, rebind_footer, settings_footer
+from overload.game.title import (
+    draw_rebind,
+    draw_settings,
+    rebind_footer,
+    rebind_footer_token,
+    settings_footer,
+)
 from overload.sim.fusions import INHERITS
 from overload.sim.powers import (
     BASE_POWERS,
@@ -178,23 +184,28 @@ def draw_hub(screen, menu: Menu, session, ready: bool, message: str | None, sect
         a in world.unlocked and b in world.unlocked and not owned_result(world.unlocked, a, b)
         for a, b in RECIPE_ORDER
     )
-    pulse = (pygame.time.get_ticks() // 400) % 2 == 0  # cosmetic only
+    reduce_flash = menu.settings_page.settings.reduce_flash
+    pulse = not reduce_flash and (pygame.time.get_ticks() // 400) % 2 == 0  # cosmetic only
     step = 11 if len(menu.hub_items) > 6 else 12
     for i, item in enumerate(menu.hub_items):
         y = top + 16 + i * step  # room for 7 items (dev mode adds DEV) above the fallback line
         chosen = i == menu.hub
         waiting = item == "CONTINUE" and not ready
         go = item == "CONTINUE" and ready  # pilot playtest: make the way on obvious
+        quitting = item == "QUIT" and menu.quitting
         if chosen:
             screen.fill(rgb("px.wall.1"), (left - 2, y - 1, 104, step - 1))
             hud.text(screen, ">", (left, y), "px.hazard.1")
-        token = "px.floor.3" if waiting else ("ui.text" if chosen else "ui.dim")
-        if go:
-            token = "px.hazard.1" if pulse else "ui.text"
-        label = "QUIT? SPACE AGAIN" if item == "QUIT" and menu.quitting else item
-        if go:
-            label = "CONTINUE >>"
-        hud.text(screen, label, (left + 8, y), "px.lamp" if label != item else token)
+        if waiting:
+            token = "px.wall.4" if chosen else "px.floor.3"
+        else:
+            token = "ui.text" if chosen else "ui.dim"
+        if quitting:
+            token = "px.lamp"
+        elif go:
+            token = "px.hazard.1" if (reduce_flash or pulse) else "ui.text"
+        label = "QUIT? SPACE AGAIN" if quitting else ("CONTINUE >>" if go else item)
+        hud.text(screen, label, (left + 8, y), token)
         if item == "FUSE" and free:  # a free first roll is waiting
             screen.fill(rgb("px.rarity.legendary"), (left + 40, y + 2, 3, 3))
     # Right: what is equipped, always in view.
@@ -227,7 +238,7 @@ def draw_hub(screen, menu: Menu, session, ready: bool, message: str | None, sect
     keys = menu.keys_page.binds
     if menu.in_fuse_box and ready:
         prompt = f"SPACE ON CONTINUE: ENTER SECTOR {sector}"
-        _footer(screen, prompt, left, "px.hazard.1" if pulse else "ui.text")
+        _footer(screen, prompt, left, "px.hazard.1" if (reduce_flash or pulse) else "ui.text")
         return
     resume = "" if menu.in_fuse_box else f"  {keys.short('menu')} RESUME"
     _footer(screen, f"{keys.pair('up', 'down')} MOVE  SPACE PICK{resume}", left)
@@ -280,7 +291,7 @@ def draw_loadout(screen, menu: Menu, session, tuning) -> None:
     binds = menu.keys_page.binds
     font = hud.pixel_font()
     for i, ability in enumerate(rows[first : first + LOADOUT_ROWS]):
-        y = top + 16 + i * 12
+        y = top + 19 + i * 12
         chosen = first + i == pick
         if chosen:
             screen.fill(rgb("px.wall.1"), (left - 2, y - 2, 108, 12))
@@ -302,19 +313,19 @@ def draw_loadout(screen, menu: Menu, session, tuning) -> None:
                 screen, ability, world.fragments.get(ability, 0), tuning.evolve_at, left + 93, y + 3
             )
     if first > 0:
-        hud.text(screen, "^", (left + 50, top + 12), "ui.dim")
+        hud.text(screen, "^", (left + 50, top + 10), "ui.dim")
     if first + LOADOUT_ROWS < len(rows):
-        hud.text(screen, "v", (left + 50, top + 16 + LOADOUT_ROWS * 12 - 3), "ui.dim")
-    screen.fill(rgb("px.wall.1"), (left + 110, top + 14, 1, 92))
+        hud.text(screen, "v", (left + 50, top + 19 + LOADOUT_ROWS * 12 - 2), "ui.dim")
+    screen.fill(rgb("px.wall.1"), (left + 110, top + 14, 1, 98))
     rx = left + 116
     for i, ability in enumerate(world.player.slots):
-        card = pygame.Rect(rx + i * 57, top + 15, 54, 16)
+        card = pygame.Rect(rx + i * 57, top + 15, 55, 16)
         pygame.draw.rect(screen, rgb("px.wall.2"), card, 1)
         shift = _slot_key(screen, menu, i, card)
         if ability:
-            screen.blit(_icon(ability), (card.x + 9 + shift, card.y + 5))
-            label = _power_label(ability, card.width - 20 - shift)
-            hud.text(screen, label, (card.x + 18 + shift, card.y + 4), "ui.text")
+            screen.blit(_icon(ability), (card.x + 6 + shift, card.y + 5))
+            label = _power_label(ability, card.width - 15 - shift)
+            hud.text(screen, label, (card.x + 14 + shift, card.y + 4), "ui.text")
     if pick >= 0:
         ability = rows[pick]
         y = top + 36
@@ -428,7 +439,12 @@ def draw_fuse(screen, menu: Menu, session) -> None:
     fill = "px.hazard.1" if on and ready else "px.wall.1"
     screen.fill(rgb(fill), button)
     pygame.draw.rect(screen, rgb("px.hazard.1" if on else "px.wall.2"), button, 1)
-    label_token = "px.outline" if on and ready else ("ui.text" if ready else "px.floor.3")
+    if on and ready:
+        label_token = "px.outline"
+    elif ready:
+        label_token = "ui.text"
+    else:
+        label_token = "px.wall.4" if on else "ui.dim"
     hud.text(screen, "ROLL", button.center, label_token, "center")
 
     # The three possible results.
@@ -490,12 +506,31 @@ def _terms(screen, menu: Menu, terms: dict, left: int, right: int, y: int) -> No
     if menu.notice:  # a notice takes the whole line, the meter comes back after
         hud.text(screen, menu.notice, (left, y), "px.lamp")
         return
+    font = hud.pixel_font()
+    if terms["guaranteed"]:
+        right_w = font.size("EPIC+ GUARANTEED")[0]
+    else:
+        right_w = 4 * terms["streak_max"] + 2 + font.size("LUCK")[0]
+    max_left = right - left - right_w - 6
     if terms["blocked"]:
-        hud.text(screen, terms["blocked"], (left, y), "px.floor.3")
+        text = terms["blocked"]
+        if (
+            font.size(text)[0] > max_left
+            and text.startswith("NEED A SPARE ")
+            and text.endswith(" CHARGE")
+        ):
+            text = text.replace("NEED A SPARE ", "NEED SPARE ").removesuffix(" CHARGE")
+        hud.text(screen, text, (left, y), "px.floor.3")
     elif terms["cost"]:
         a, b = menu.sockets
         cost = terms["cost"]
         text = f"REROLL: {cost} {a.upper()} + {cost} {b.upper()}"
+        if font.size(text)[0] > max_left:
+            ca = _COMPACT_NAMES.get(a, a.upper())
+            cb = _COMPACT_NAMES.get(b, b.upper())
+            text = f"REROLL: {cost} {ca} + {cost} {cb}"
+            if font.size(text)[0] > max_left:
+                text = f"{cost} {ca}+{cb}"
         hud.text(screen, text, (left, y), "ui.text")
     else:
         hud.text(screen, "FIRST ROLL FREE", (left, y), "px.rarity.epic")
@@ -515,13 +550,19 @@ def _terms(screen, menu: Menu, terms: dict, left: int, right: int, y: int) -> No
 def _reveal(screen, menu: Menu) -> None:
     roll = menu.roll
     rarity = rarity_of(roll.result)
+    inner = PANEL.inflate(-2, -2)
+    veil = pygame.Surface(inner.size, pygame.SRCALPHA)
+    veil.fill(rgba("px.outline", 185))
+    screen.blit(veil, inner.topleft)
     box = pygame.Rect(0, 0, 198, 98)
     box.center = (PANEL.centerx, PANEL.centery - 2)
     screen.fill(rgb("px.outline"), box)
     rarity_frame(screen, box, rarity, f"px.rarity.{rarity}")
-    if rarity == "legendary":  # an outline pulse, never a white flash
-        pulse = (roll.clock // 200) % 2
-        pygame.draw.rect(screen, rgb("px.rarity.legendary"), box.inflate(4 + 2 * pulse, 4), 1)
+    if rarity == "legendary":  # an outline pulse clear of corner rays, steady under Reduce Flash
+        reduce_flash = menu.settings_page.settings.reduce_flash
+        pulse = 0 if reduce_flash else (roll.clock // 200) % 2
+        pad = 8 + 2 * pulse
+        pygame.draw.rect(screen, rgb("px.rarity.legendary"), box.inflate(pad, pad), 1)
     icon = _icon(roll.result, 3)
     screen.blit(icon, icon.get_rect(midtop=(box.centerx, box.y + 4)))
     hud.text(screen, NAMES[roll.result], (box.centerx, box.y + 33), "ui.text", "midtop")
@@ -566,7 +607,7 @@ def help_lines(tuning) -> list[str]:
 
 
 def _help(screen, session) -> None:
-    box = PANEL.inflate(-8, -4)
+    box = PANEL.inflate(-2, -2)
     screen.fill(rgb("px.outline"), box)
     pygame.draw.rect(screen, rgb("px.rarity.epic"), box, 1)
     for i, line in enumerate(help_lines(session.campaign.tuning)):
@@ -594,7 +635,12 @@ def draw_controls(screen, menu: Menu) -> None:
     _header(screen, "CONTROLS", "MOUSE AIMS AND FIRES", left, right, top)
     page = menu.keys_page
     draw_rebind(screen, page, left, right, top + 14)
-    _footer(screen, rebind_footer(page, page.binds.pair("up", "down")), left)
+    _footer(
+        screen,
+        rebind_footer(page, page.binds.pair("up", "down")),
+        left,
+        rebind_footer_token(page),
+    )
 
 
 def draw_dev(screen, menu: Menu) -> None:
@@ -604,7 +650,7 @@ def draw_dev(screen, menu: Menu) -> None:
         y = top + 14 + i * 9
         chosen = i == menu.dev_row
         if chosen:
-            screen.fill(rgb("px.wall.1"), (left - 2, y, right - left + 4, 9))
+            screen.fill(rgb("px.wall.1"), (left - 2, y + 2, right - left + 4, 9))
         hud.text(screen, label, (left, y), "ui.text" if chosen else "ui.dim")
         if value:
             cycle = label in ("NEXT ROLL", "GRANT POWER")
@@ -614,7 +660,10 @@ def draw_dev(screen, menu: Menu) -> None:
         hud.text(screen, menu.dev.notice, (left, PANEL.bottom - 21), "px.lamp")
     keys = menu.keys_page.binds
     nav, side = keys.pair("up", "down"), keys.pair("left", "right")
-    _footer(screen, f"{nav} MOVE  {side} CHANGE  SPACE DO  ESC BACK", left)
+    footer = f"{nav} MOVE  {side} CHANGE  SPACE DO  ESC BACK"
+    if hud.pixel_font().size(footer)[0] > right - left:
+        footer = f"{nav} MOVE  {side} EDIT  SPACE DO  ESC"
+    _footer(screen, footer, left)
 
 
 def draw_menu(screen, menu: Menu, session, tuning, ready: bool, message, sector: int) -> None:
