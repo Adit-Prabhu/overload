@@ -17,6 +17,7 @@ export interface Provider {
   readonly source: "fixture" | "live";
   readonly requestedModel: string;
   propose(prompt: PromptInput, summary: Summary, signal: AbortSignal): Promise<ProviderResult>;
+  warm?(signal: AbortSignal): Promise<boolean>;
 }
 
 export class ProviderNotConfigured extends Error {}
@@ -39,6 +40,10 @@ export class FixtureProvider implements Provider {
   readonly requestedModel = "fixture-rule-v1";
 
   constructor(private readonly delayMs = 0) {}
+
+  async warm(): Promise<boolean> {
+    return false;
+  }
 
   async propose(prompt: PromptInput, summary: Summary, signal: AbortSignal): Promise<ProviderResult> {
     if (this.delayMs > 0) await sleep(this.delayMs, signal);
@@ -116,6 +121,12 @@ export class VertexProvider implements Provider {
     };
   }
 
+  /** Pre-fetch and cache the service account OAuth token without calling generateContent. */
+  async warm(signal: AbortSignal): Promise<boolean> {
+    await accessToken(this.account, this.fetcher, Date.now, signal);
+    return true;
+  }
+
   async propose(prompt: PromptInput, _summary: Summary, signal: AbortSignal): Promise<ProviderResult> {
     if (estimateTokens(prompt) > MAX_INPUT_TOKENS) throw new Error("prompt over the input ceiling");
     const token = await accessToken(this.account, this.fetcher, Date.now, signal);
@@ -144,7 +155,7 @@ export class VertexProvider implements Provider {
   }
 }
 
-export function makeProvider(env: Env, tacticIds: string[] = []): Provider {
+export function makeProvider(env: Env, tacticIds: string[] = [], fetcher?: Fetcher): Provider {
   const name = env.PROVIDER ?? "fixture";
   if (name === "fixture") return new FixtureProvider(Number(env.FIXTURE_DELAY_MS ?? 0));
   if (name === "vertex") {
@@ -158,7 +169,31 @@ export function makeProvider(env: Env, tacticIds: string[] = []): Provider {
       throw new ProviderNotConfigured(String(error));
     }
     const budget = env.THINKING_BUDGET === undefined || env.THINKING_BUDGET === "" ? null : Number(env.THINKING_BUDGET);
-    return new VertexProvider(account, env.GOOGLE_CLOUD_PROJECT, env.GOOGLE_CLOUD_LOCATION ?? "global", env.MODEL, tacticIds, budget);
+    return new VertexProvider(
+      account,
+      env.GOOGLE_CLOUD_PROJECT,
+      env.GOOGLE_CLOUD_LOCATION ?? "global",
+      env.MODEL,
+      tacticIds,
+      budget,
+      fetcher,
+    );
   }
   throw new ProviderNotConfigured(`unknown provider ${name}`);
+}
+
+/** Best-effort cold-start OAuth warm-up. Never calls a model, never spends budget, and
+ *  returns false cleanly if the provider is fixture, unconfigured, or unreachable. */
+export async function warmProvider(
+  env: Env,
+  signal?: AbortSignal,
+  fetcher?: Fetcher,
+): Promise<boolean> {
+  try {
+    const provider = makeProvider(env, [], fetcher);
+    if (provider.source !== "live" || !provider.warm) return false;
+    return await provider.warm(signal ?? AbortSignal.timeout(3000));
+  } catch {
+    return false;
+  }
 }

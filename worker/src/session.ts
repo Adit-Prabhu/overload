@@ -4,7 +4,7 @@
 import { Agent } from "agents";
 import { liveBudget, reserveWithRetry } from "./budget";
 import { buildPrompt } from "./prompt";
-import { ProviderNotConfigured, makeProvider } from "./providers";
+import { ProviderNotConfigured, makeProvider, warmProvider } from "./providers";
 import {
   HISTORY_LIMIT,
   MAX_ATTEMPTS_PER_SESSION,
@@ -50,6 +50,12 @@ export class RivalSession extends Agent<Env, SessionState> {
 
   history(): Summary[] {
     return this.state.history;
+  }
+
+  /** Pre-warm the provider's OAuth token inside this Durable Object isolate. Never mutates
+   *  session state, expiry, attempts, or budget, and never calls a model. */
+  async warm(): Promise<boolean> {
+    return warmProvider(this.env);
   }
 
   /** Scheduled after 30 minutes without a request. Wipes history, counters and request IDs,

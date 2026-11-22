@@ -44,6 +44,7 @@ class Session:
         self.fuse_ticks = 0
         self.summaries: dict[int, dict] = {}
         self.decisions: dict[int, Decision] = {}
+        self._warmed: set[int] = set()
         first = selector.poll(1)
         if first is None or first.tactic != campaign.protocols[1]:
             raise ValueError("encounter 1 must start on the neutral protocol in every condition")
@@ -69,6 +70,17 @@ class Session:
             observe_world(self.log, campaign.world)
             if campaign.stage != "encounter":
                 self._encounter_cleared(encounter)
+            elif (
+                encounter < 3
+                and encounter not in self._warmed
+                and campaign.world.outcome == "playing"
+                and campaign.world.rival is not None
+                and campaign.world.rival.health > 0
+            ):
+                self._warmed.add(encounter)
+                warm_fn = getattr(self.selector, "warm", None)
+                if callable(warm_fn):
+                    warm_fn()
         else:
             campaign.step(frame)  # the Surge stands still in the Fuse Box while the menu is open
             if campaign.stage == "fuse_box":

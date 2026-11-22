@@ -67,7 +67,33 @@ interface CachedToken {
   expiresAt: number;
 }
 
+interface InFlightToken {
+  email: string;
+  promise: Promise<string>;
+  signal?: AbortSignal;
+}
+
 let cached: CachedToken | null = null;
+let inFlight: InFlightToken | null = null;
+
+function raceSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
 
 /** Access token for the service account, reused until a minute before it expires. */
 export async function accessToken(
@@ -79,27 +105,55 @@ export async function accessToken(
   if (cached && cached.email === account.client_email && cached.expiresAt - 60_000 > now()) {
     return cached.token;
   }
-  const assertion = await signedAssertion(account, Math.floor(now() / 1000));
-  const response = await fetcher(account.token_uri ?? DEFAULT_TOKEN_URI, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion,
-    }).toString(),
-    signal,
-  });
-  if (!response.ok) throw new Error(`token exchange failed with HTTP ${response.status}`);
-  const body = (await response.json()) as { access_token?: string; expires_in?: number };
-  if (!body.access_token) throw new Error("token exchange returned no access_token");
-  cached = {
+  if (signal?.aborted) {
+    throw signal.reason;
+  }
+  if (inFlight && inFlight.email === account.client_email && !inFlight.signal?.aborted) {
+    return raceSignal(inFlight.promise, signal);
+  }
+  const issuedAt = Math.floor(now() / 1000);
+  const flight: InFlightToken = {
     email: account.client_email,
-    token: body.access_token,
-    expiresAt: now() + (body.expires_in ?? 3600) * 1000,
+    promise: null as unknown as Promise<string>,
+    signal,
   };
-  return cached.token;
+  const run = (async () => {
+    try {
+      const assertion = await signedAssertion(account, issuedAt);
+      const response = await fetcher(account.token_uri ?? DEFAULT_TOKEN_URI, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+          assertion,
+        }).toString(),
+        signal,
+      });
+      if (!response.ok) throw new Error(`token exchange failed with HTTP ${response.status}`);
+      const body = (await response.json()) as { access_token?: string; expires_in?: number };
+      if (!body.access_token) throw new Error("token exchange returned no access_token");
+      const entry: CachedToken = {
+        email: account.client_email,
+        token: body.access_token,
+        expiresAt: now() + (body.expires_in ?? 3600) * 1000,
+      };
+      if (inFlight === flight) {
+        cached = entry;
+      }
+      return entry.token;
+    } finally {
+      if (inFlight === flight) {
+        inFlight = null;
+      }
+    }
+  })();
+  flight.promise = run;
+  inFlight = flight;
+  void run.catch(() => undefined);
+  return raceSignal(run, signal);
 }
 
 export function forgetToken(): void {
   cached = null;
+  inFlight = null;
 }

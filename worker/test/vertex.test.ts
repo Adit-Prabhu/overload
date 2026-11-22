@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { type ServiceAccount, forgetToken } from "../src/google";
 import { buildPrompt } from "../src/prompt";
-import { ProviderNotConfigured, VertexProvider, makeProvider } from "../src/providers";
+import { ProviderNotConfigured, VertexProvider, makeProvider, warmProvider } from "../src/providers";
 import type { Summary } from "../src/schema";
 
 const SUMMARY: Summary = {
@@ -130,6 +130,111 @@ describe("Vertex provider", () => {
     expect(() =>
       makeProvider({ PROVIDER: "vertex", GOOGLE_CLOUD_PROJECT: "p", MODEL: "m", GCP_SERVICE_ACCOUNT_JSON: "{}" } as Env),
     ).toThrow(ProviderNotConfigured);
+  });
+
+  it("warms and caches the OAuth token without calling generateContent", async () => {
+    const { account } = await testAccount();
+    const google = fakeGoogle(OK_REPLY);
+    const provider = new VertexProvider(
+      account,
+      "course-project",
+      "global",
+      "gemini-3.5-flash-lite",
+      ["pressure", "spacing", "lateral"],
+      0,
+      google.fetcher,
+    );
+    expect(await provider.warm(AbortSignal.timeout(1000))).toBe(true);
+    expect(google.calls).toHaveLength(1);
+    expect(google.calls[0].url).toContain("oauth2.googleapis.com");
+    expect(google.calls.some((c) => c.url.includes("generateContent"))).toBe(false);
+
+    const result = await provider.propose(buildPrompt(SUMMARY, []), SUMMARY, AbortSignal.timeout(1000));
+    expect(google.calls.filter((c) => c.url.includes("oauth2")).length).toBe(1);
+    expect(google.calls.filter((c) => c.url.includes("generateContent")).length).toBe(1);
+    expect(result.resolvedModel).toBe("gemini-3.5-flash-lite-001");
+  });
+
+  it("fails safe when warm encounters an HTTP error or missing config", async () => {
+    const { account } = await testAccount();
+    const calls: Call[] = [];
+    const failingFetcher = async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      return new Response("service unavailable", { status: 503 });
+    };
+    const provider = new VertexProvider(
+      account,
+      "course-project",
+      "global",
+      "gemini-3.5-flash-lite",
+      ["pressure", "spacing", "lateral"],
+      0,
+      failingFetcher,
+    );
+    await expect(provider.warm(AbortSignal.timeout(1000))).rejects.toThrow("HTTP 503");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toContain("oauth2.googleapis.com");
+
+    const vertexEnv = {
+      PROVIDER: "vertex",
+      GOOGLE_CLOUD_PROJECT: "course-project",
+      GOOGLE_CLOUD_LOCATION: "global",
+      MODEL: "gemini-3.5-flash-lite",
+      GCP_SERVICE_ACCOUNT_JSON: JSON.stringify(account),
+    } as Env;
+    expect(await warmProvider(vertexEnv, AbortSignal.timeout(1000), failingFetcher)).toBe(false);
+    expect(calls.every((c) => !c.url.includes("generateContent"))).toBe(true);
+    expect(await warmProvider({ PROVIDER: "vertex" } as Env)).toBe(false);
+    expect(await warmProvider({ PROVIDER: "fixture" } as Env)).toBe(false);
+
+    // Failed warm-up never caches a broken token, so a subsequent healthy propose still succeeds.
+    const healthy = fakeGoogle(OK_REPLY);
+    const recovered = new VertexProvider(
+      account,
+      "course-project",
+      "global",
+      "gemini-3.5-flash-lite",
+      ["pressure", "spacing", "lateral"],
+      0,
+      healthy.fetcher,
+    );
+    const result = await recovered.propose(buildPrompt(SUMMARY, []), SUMMARY, AbortSignal.timeout(1000));
+    expect(result.resolvedModel).toBe("gemini-3.5-flash-lite-001");
+    expect(healthy.calls.filter((c) => c.url.includes("oauth2")).length).toBe(1);
+  });
+
+  it("deduplicates concurrent in-flight OAuth token exchanges", async () => {
+    const { account } = await testAccount();
+    const calls: Call[] = [];
+    let releaseToken!: () => void;
+    const tokenGate = new Promise<void>((resolve) => {
+      releaseToken = resolve;
+    });
+    const fetcher = async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url.includes("oauth2.googleapis.com")) {
+        await tokenGate;
+        return Response.json({ access_token: "token-shared", expires_in: 3600 });
+      }
+      return Response.json(OK_REPLY);
+    };
+    const provider = new VertexProvider(
+      account,
+      "course-project",
+      "global",
+      "gemini-3.5-flash-lite",
+      ["pressure", "spacing", "lateral"],
+      0,
+      fetcher,
+    );
+    const warmPromise = provider.warm(AbortSignal.timeout(1000));
+    const proposePromise = provider.propose(buildPrompt(SUMMARY, []), SUMMARY, AbortSignal.timeout(1000));
+    releaseToken();
+    const [warmed, result] = await Promise.all([warmPromise, proposePromise]);
+    expect(warmed).toBe(true);
+    expect(result.resolvedModel).toBe("gemini-3.5-flash-lite-001");
+    expect(calls.filter((c) => c.url.includes("oauth2")).length).toBe(1);
+    expect(calls.filter((c) => c.url.includes("generateContent")).length).toBe(1);
   });
 });
 
