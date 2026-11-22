@@ -187,13 +187,14 @@ def test_ending_space_returns_to_title_reusing_the_window(monkeypatch, tmp_path)
             # Space pressed after the ending has rendered returns to title.
             pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE))
 
+    monkeypatch.setattr(app, "ROOT", tmp_path)
     monkeypatch.setattr(app, "_open_window", open_window)
     monkeypatch.setattr(app, "build_selector", fake_build_selector)
     monkeypatch.setattr(app, "run_title", fake_run_title)
     monkeypatch.setattr(app.Session, "close", close_session)
     monkeypatch.setattr(app.PixelView, "draw", drive_run)
     monkeypatch.setattr(app.PixelView, "draw_campaign_ending", record_ending)
-    options = app.Options(condition="off", mute=True, trace=tmp_path / "trace.jsonl")
+    options = app.Options(condition="off", mute=True)
     assert app.play(options) == 0
     assert len(windows) == 1
     assert len(title_calls) == 2
@@ -375,3 +376,97 @@ def test_menu_stamp_tracks_difficulty_tuning_id_and_stays_clear_of_modals(displa
                 assert display.get_at((x, 133))[:3] == border, (page, x)
     finally:
         hud.text = original
+
+
+def test_explicit_trace_disables_return_to_title(monkeypatch, tmp_path) -> None:
+    from overload.game import app
+
+    real_draw = app.PixelView.draw
+    real_ending = app.PixelView.draw_campaign_ending
+    seen_can_return: list[bool] = []
+    title_calls = 0
+
+    def fake_run_title(*args, **kwargs):
+        nonlocal title_calls
+        title_calls += 1
+        return "medium"
+
+    def drive_ending(self, screen, run, cursor):
+        if run.stage != "ending":
+            run.stage = "ending"
+            self.boss_banner = None
+        else:
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE))
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+        real_draw(self, screen, run, cursor)
+
+    def record_ending(self, screen, run, can_return=False):
+        seen_can_return.append(can_return)
+        real_ending(self, screen, run, can_return)
+
+    monkeypatch.setattr(app, "_open_window", lambda _: pygame.display.set_mode(app.VIEW))
+    monkeypatch.setattr(app, "run_title", fake_run_title)
+    monkeypatch.setattr(app.PixelView, "draw", drive_ending)
+    monkeypatch.setattr(app.PixelView, "draw_campaign_ending", record_ending)
+    trace_path = tmp_path / "playtest.jsonl"
+    assert app.play(app.Options(condition="off", mute=True, trace=trace_path)) == 0
+    assert title_calls == 1
+    assert seen_can_return and all(flag is False for flag in seen_can_return)
+
+
+def test_title_controls_page_emits_sounds_and_footer_colors(display, tmp_path) -> None:
+    from overload.art.pixel import hud
+
+    title = TitleScreen(binds=Keybinds(path=tmp_path / "keys.json"))
+    title.page = "controls"
+    title.press(pygame.K_s)  # move down
+    title.press(pygame.K_RETURN)  # start capture on MOVE DOWN
+    title.press(pygame.K_ESCAPE)  # cancel capture
+    title.press(pygame.K_RETURN)  # start capture again
+    title.press(pygame.K_BACKSPACE)  # reserved menu key refused
+    title.press(pygame.K_RETURN)  # start capture again
+    title.press(pygame.K_k)  # valid bind
+    title.press(pygame.K_ESCAPE)  # leave controls page
+    assert title.page == "menu"
+    assert title.sounds == [
+        "menu_move",
+        "confirm",
+        "menu_move",
+        "confirm",
+        "deny",
+        "confirm",
+        "confirm",
+        "menu_move",
+    ]
+
+    # Verify footer color tokens: idle = ui.dim, capturing = px.hazard.1, notice = px.hazard.1.
+    captured: list[tuple[str, str]] = []
+    original = hud.text
+
+    def record(target, message, pos, token, *args, **kwargs):
+        captured.append((message, token))
+        return original(target, message, pos, token, *args, **kwargs)
+
+    hud.text = record
+    try:
+        title.page = "controls"
+        title.keys.capturing, title.keys.notice = False, ""
+        title.draw(display)
+        assert ("W/S MOVE  ENTER CHANGE  ESC BACK", "ui.dim") in captured
+        captured.clear()
+        title.keys.capturing = True
+        title.draw(display)
+        assert ("ESC CANCELS", "px.hazard.1") in captured
+        captured.clear()
+        title.keys.capturing, title.keys.notice = False, "MOVE DOWN: K"
+        title.draw(display)
+        assert ("MOVE DOWN: K", "px.hazard.1") in captured
+    finally:
+        hud.text = original
+
+
+def test_controls_summary_formats_arrow_move_keys_cleanly() -> None:
+    binds = Keybinds()
+    for action in ("up", "down", "left", "right"):
+        assert binds.bind(action, action)
+    assert ("MOVE", "ARROWS") in controls(binds)

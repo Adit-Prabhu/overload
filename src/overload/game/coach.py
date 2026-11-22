@@ -64,7 +64,10 @@ class Coach:
         if self.target is not None:
             return "FOLLOW THE ARROW TO THE FUSE BOX"
         if "move" not in self.learned:
-            return f"{keys.move_label()} TO MOVE  MOUSE TO AIM"
+            move = keys.move_label()
+            if short:
+                return f"{move} MOVE  MOUSE AIM"
+            return f"{move} TO MOVE  MOUSE TO AIM"
         if "fire" not in self.learned:
             return "HOLD LEFT CLICK TO FIRE"
         if "dodge" not in self.learned and self.fight:

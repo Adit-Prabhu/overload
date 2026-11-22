@@ -68,6 +68,7 @@ def test_music_layers_follow_the_campaign() -> None:
     assert stems_for("ending", 3, "clear") == {"hum", "arc", "lead"}
     assert stems_for("ending", 3, "playing") == {"hum", "arc", "lead"}
     assert stems_for(None, 1, "playing") == {"hum", "pulse"}  # practice
+    assert stems_for(None, 1, "clear") == {"hum", "arc", "lead"}  # practice victory resolves
 
 
 def test_muted_audio_is_inert() -> None:
@@ -257,3 +258,43 @@ def test_vent_window_rival_hit_layers_spark_cue(live_audio, monkeypatch) -> None
     played.clear()
     live_audio.events([Event("rival_hit", 0, 0, 5, "vent")], Quiet())
     assert played == [("regulator_hit", 0.7), ("spark", 0.45)]
+
+
+def test_impact_cues_and_mutual_kill_audio_suppression(live_audio, monkeypatch) -> None:
+    from overload.sim.state import Event
+
+    played: list[tuple[str, float]] = []
+    monkeypatch.setattr(live_audio, "play", lambda name, volume=0.7: played.append((name, volume)))
+
+    class Quiet:
+        rival = None
+        outcome = "playing"
+
+    world = Quiet()
+    live_audio.events(
+        [
+            Event("armor_absorb", 0, 0),
+            Event("rival_shielded", 0, 0),
+            Event("slammed", 0, 0),
+        ],
+        world,
+    )
+    assert played == [
+        ("bulwark_absorb", 0.7),
+        ("bulwark_absorb", 0.45),
+        ("charge_impact", 0.7),
+    ]
+
+    # Mutual kill suppresses rival_destroyed, boss_reward and room_clear while keeping death.
+    played.clear()
+    world.outcome = "down"
+    live_audio.events(
+        [
+            Event("rival_destroyed", 0, 0),
+            Event("boss_reward", 0, 0),
+            Event("room_clear", 0, 0),
+            Event("player_down", 0, 0),
+        ],
+        world,
+    )
+    assert played == [("death", 0.7)]

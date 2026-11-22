@@ -470,9 +470,7 @@ class PixelView:
         player = run.world.player
         self.camera = [player.x - VIEW[0] / 2, player.y - VIEW[1] / 2]
         self._clamp_camera()
-        self.stamp = (
-            f"overload {__version__} tuning {run.tuning.tuning_id()} arena {arena_id(run.arena)}"
-        )
+        self.stamp = f"overload {__version__} {run.tuning.tuning_id()} {arena_id(run.arena)}"
         prewarm_lights()
 
     # Camera ---------------------------------------------------------------------------
@@ -838,7 +836,7 @@ class PixelView:
             elif event.kind == "vent":
                 self._burst(event.x, event.y - 6, 12, "px.wall.4", 1.4)
                 self.toast("VENTING. HIT IT NOW", 50)
-            elif event.kind == "boss_reward":
+            elif event.kind == "boss_reward" and run.world.outcome != "down":
                 # One spare of every stolen base power (sim/floorplay.py), flying from the
                 # wreck into the Surge, and named under the DOWN banner.
                 self.reward = [p for p in BASE_POWERS if p in run.world.unlocked]
@@ -858,7 +856,11 @@ class PixelView:
                 self._burst(event.x, event.y + 6, 8, "px.dial.0", 1.2)
             elif event.kind == "room_lock":
                 self.toast("LOCKDOWN", 60)
-            elif event.kind == "room_clear" and self.boss_banner is None:
+            elif (
+                event.kind == "room_clear"
+                and self.boss_banner is None
+                and run.world.outcome != "down"
+            ):
                 pulled = any(f[3] <= 0 for f in self.flyers)
                 self.toast("ROOM CLEAR. CHARGES PULLED IN" if pulled else "ROOM CLEAR", 90)
             elif event.kind == "warp_in":
@@ -1786,7 +1788,7 @@ class PixelView:
         panel.right = min(panel.right, HINT_RIGHT)
         panel.left = max(panel.left, 2)
         screen.blit(_dim(panel.size, 200), panel)
-        token = "px.hazard.1" if (self.frames // 30) % 2 else "ui.text"
+        token = "px.hazard.1" if (self.reduce_flash or (self.frames // 30) % 2) else "ui.text"
         hud.text(screen, message, (panel.centerx, panel.y - 2), token, "midtop")
         target = self.coach.target
         if target is not None:
