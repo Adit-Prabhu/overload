@@ -778,6 +778,36 @@ def test_fuse_box_energize_animation_refills_battery_and_works_in_replays(displa
         hud.text = original
     joined = " ".join(msg for msg, _ in drawn_fb)
     assert "SECTOR 2 OPEN" in joined and FALLBACK_LINE.upper() in joined
+
+    # Once the open toast expires, the D7 fallback card clears all three minimap rows (y <= 25).
+    view.notice = None
+    view.sector_banner = None
+    view.seen = {r.id for r in campaign.arena.floor.rooms}
+    fb_tops: list[int] = []
+    orig_fb = view._fallback_banner
+
+    def record_fb_top(surface, top: int) -> None:
+        fb_tops.append(top)
+        orig_fb(surface, top)
+
+    view._fallback_banner = record_fb_top
+    try:
+        view.draw(display, campaign, (128, 72))
+    finally:
+        view._fallback_banner = orig_fb
+    assert fb_tops == [28]
+    minimap_only = pygame.Surface(VIEW, pygame.SRCALPHA)
+    fallback_only = pygame.Surface(VIEW, pygame.SRCALPHA)
+    view._minimap(minimap_only, campaign)
+    view._fallback_banner(fallback_only, fb_tops[0])
+    overlap = [
+        (x, y)
+        for x in range(VIEW[0])
+        for y in range(VIEW[1])
+        if minimap_only.get_at((x, y)).a > 0 and fallback_only.get_at((x, y)).a > 0
+    ]
+    assert not overlap, f"D7 fallback banner overlapped 3-row minimap: {overlap[:5]}"
+
     campaign.world.outcome = "down"
     view.after_tick(campaign)
     assert view.fuse_fallback is None

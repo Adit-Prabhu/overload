@@ -1814,7 +1814,7 @@ class PixelView:
             and world.outcome == "playing"
             and stage != "ending"
         ):
-            fb_y = notice_y + 12 if self.notice else (50 if sector_visible else 24)
+            fb_y = notice_y + 12 if self.notice else (50 if sector_visible else 28)
             self._fallback_banner(screen, fb_y)
         if world.outcome == "down" or (stage is None and world.outcome == "clear"):
             self._banner(screen, world.outcome)
