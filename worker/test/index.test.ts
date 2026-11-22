@@ -48,14 +48,23 @@ describe("routes", () => {
     expect(await response.json()).toEqual({ ok: true, service: "overload-rival", provider: "fixture" });
   });
 
-  it("warms up cleanly on POST /warmup without consuming session attempts or budget", async () => {
+  it("warms up cleanly on POST /sessions/:id/warmup without changing state, attempts, or budget", async () => {
     const ledger = env.BUDGET.get(env.BUDGET.idFromName("global"));
     const spentBefore = await ledger.spent();
     const id = await startSession();
+    const stub = env.RIVAL_SESSION.get(env.RIVAL_SESSION.idFromName(id));
+    const stateBefore = await runInDurableObject(stub, async (instance) => {
+      return { ...(instance as unknown as { state: Record<string, unknown> }).state };
+    });
 
-    const response = await exports.default.fetch(`${BASE}/warmup`, { method: "POST" });
+    const response = await exports.default.fetch(`${BASE}/sessions/${id}/warmup`, { method: "POST" });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true, warmed: false, provider: "fixture" });
+
+    const stateAfter = await runInDurableObject(stub, async (instance) => {
+      return { ...(instance as unknown as { state: Record<string, unknown> }).state };
+    });
+    expect(stateAfter).toEqual(stateBefore);
     expect(await ledger.spent()).toEqual(spentBefore);
 
     expect((await ask(id, request(2, summary(0.8, 0.1)))).body).toMatchObject({
@@ -66,6 +75,20 @@ describe("routes", () => {
       status: "ok",
       attempts_used: 2,
     });
+  });
+
+  it("rejects warmup for unknown sessions and non-POST methods", async () => {
+    const unknown = await exports.default.fetch(
+      `${BASE}/sessions/00000000-0000-0000-0000-000000000000/warmup`,
+      { method: "POST" },
+    );
+    expect(unknown.status).toBe(404);
+    expect(await unknown.json()).toEqual({ error: "unknown_session" });
+
+    const id = await startSession();
+    const wrongMethod = await exports.default.fetch(`${BASE}/sessions/${id}/warmup`, { method: "GET" });
+    expect(wrongMethod.status).toBe(404);
+    expect(await wrongMethod.json()).toEqual({ error: "not_found" });
   });
 
   it("rejects unknown sessions", async () => {

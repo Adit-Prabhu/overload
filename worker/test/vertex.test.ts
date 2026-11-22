@@ -202,5 +202,39 @@ describe("Vertex provider", () => {
     expect(result.resolvedModel).toBe("gemini-3.5-flash-lite-001");
     expect(healthy.calls.filter((c) => c.url.includes("oauth2")).length).toBe(1);
   });
+
+  it("deduplicates concurrent in-flight OAuth token exchanges", async () => {
+    const { account } = await testAccount();
+    const calls: Call[] = [];
+    let releaseToken!: () => void;
+    const tokenGate = new Promise<void>((resolve) => {
+      releaseToken = resolve;
+    });
+    const fetcher = async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url.includes("oauth2.googleapis.com")) {
+        await tokenGate;
+        return Response.json({ access_token: "token-shared", expires_in: 3600 });
+      }
+      return Response.json(OK_REPLY);
+    };
+    const provider = new VertexProvider(
+      account,
+      "course-project",
+      "global",
+      "gemini-3.5-flash-lite",
+      ["pressure", "spacing", "lateral"],
+      0,
+      fetcher,
+    );
+    const warmPromise = provider.warm(AbortSignal.timeout(1000));
+    const proposePromise = provider.propose(buildPrompt(SUMMARY, []), SUMMARY, AbortSignal.timeout(1000));
+    releaseToken();
+    const [warmed, result] = await Promise.all([warmPromise, proposePromise]);
+    expect(warmed).toBe(true);
+    expect(result.resolvedModel).toBe("gemini-3.5-flash-lite-001");
+    expect(calls.filter((c) => c.url.includes("oauth2")).length).toBe(1);
+    expect(calls.filter((c) => c.url.includes("generateContent")).length).toBe(1);
+  });
 });
 

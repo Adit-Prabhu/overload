@@ -1,17 +1,17 @@
 // Overload rival service.
 //   GET  /health                         liveness and configured provider
-//   POST /warmup                         pre-warm the provider's OAuth token (no model call)
 //   POST /sessions                       start a session, returns an opaque session_id
+//   POST /sessions/:id/warmup            pre-warm the session's OAuth token (no model call)
 //   POST /sessions/:id/tactic            propose the Regulator's next protocol
 // The game validates every response again and falls back to the neutral tactic itself.
 
 import { getAgentByName } from "agents";
-import { warmProvider } from "./providers";
 import { TacticRequest } from "./schema";
 
 export { BudgetLedger } from "./budget";
 export { RivalSession } from "./session";
 
+const WARMUP_PATH = /^\/sessions\/([0-9a-f-]{36})\/warmup$/;
 const TACTIC_PATH = /^\/sessions\/([0-9a-f-]{36})\/tactic$/;
 
 function json(body: unknown, status = 200): Response {
@@ -35,16 +35,19 @@ async function route(request: Request, env: Env, ctx?: ExecutionContext): Promis
   if (request.method === "GET" && url.pathname === "/health") {
     return json({ ok: true, service: "overload-rival", provider: env.PROVIDER ?? "fixture" });
   }
-  if (request.method === "POST" && url.pathname === "/warmup") {
-    const warmed = await warmProvider(env);
-    return json({ ok: true, warmed, provider: env.PROVIDER ?? "fixture" });
-  }
   if (request.method === "POST" && url.pathname === "/sessions") {
     const sessionId = crypto.randomUUID();
     const session = await getAgentByName(env.RIVAL_SESSION, sessionId);
     await session.begin();
-    ctx?.waitUntil(warmProvider(env).catch(() => false));
+    ctx?.waitUntil(session.warm().catch(() => false));
     return json({ session_id: sessionId }, 201);
+  }
+  const warmMatch = WARMUP_PATH.exec(url.pathname);
+  if (request.method === "POST" && warmMatch) {
+    const session = await getAgentByName(env.RIVAL_SESSION, warmMatch[1]);
+    if (!(await session.isStarted())) return json({ error: "unknown_session" }, 404);
+    const warmed = await session.warm();
+    return json({ ok: true, warmed, provider: env.PROVIDER ?? "fixture" });
   }
   const match = TACTIC_PATH.exec(url.pathname);
   if (request.method === "POST" && match) {

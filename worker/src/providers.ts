@@ -186,12 +186,13 @@ export function makeProvider(env: Env, tacticIds: string[] = [], fetcher?: Fetch
  *  returns false cleanly if the provider is fixture, unconfigured, or unreachable. */
 export async function warmProvider(
   env: Env,
-  signal: AbortSignal = AbortSignal.timeout(3000),
+  signal?: AbortSignal,
   fetcher?: Fetcher,
 ): Promise<boolean> {
   try {
     const provider = makeProvider(env, [], fetcher);
-    return (await provider.warm?.(signal)) ?? false;
+    if (provider.source !== "live" || !provider.warm) return false;
+    return await provider.warm(signal ?? AbortSignal.timeout(3000));
   } catch {
     return false;
   }

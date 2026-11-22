@@ -71,7 +71,11 @@ class Session:
             if campaign.stage != "encounter":
                 self._encounter_cleared(encounter)
             elif (
-                encounter < 3 and encounter not in self._warmed and campaign.world.rival is not None
+                encounter < 3
+                and encounter not in self._warmed
+                and campaign.world.outcome == "playing"
+                and campaign.world.rival is not None
+                and campaign.world.rival.health > 0
             ):
                 self._warmed.add(encounter)
                 warm_fn = getattr(self.selector, "warm", None)
