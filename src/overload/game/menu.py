@@ -1,11 +1,12 @@
-"""The menu (docs/POWERS_AND_FUSION.md section 7): a hub with RESUME (CONTINUE in a Fuse
-Box), LOADOUT, FUSE, SETTINGS and CONTROLS, each a screen with one job. No pygame:
-menu_view.py draws it, app.py feeds it keys and time.
+"""The menu (docs/POWERS_AND_FUSION.md section 7): a hub with RESUME, LOADOUT, FUSE,
+SETTINGS and CONTROLS, each a screen with one job. No pygame: menu_view.py draws it, app.py
+feeds it keys and time.
 
 Keys arrive as names: up, down, left, right, select (Space or Enter), back (Esc or
 Backspace), q, e, help (H), roll (F). The menu key (Tab by default) is handled by the
-caller (it closes the menu). CONTROLS rebinds keys (game/keybinds.py): while it waits for a
-key, the caller feeds the raw key to `keys_page.capture` instead.
+caller (it opens or closes the menu, both mid-sector and in a Fuse Box). CONTROLS rebinds
+keys (game/keybinds.py): while it waits for a key, the caller feeds the raw key to
+`keys_page.capture` instead.
 
 FUSE is the crafting bench:
 1. Pick two base powers into the sockets. Left and right move along the powers and the
@@ -37,7 +38,7 @@ from overload.sim.powers import (
     rarity_of,
 )
 
-HUB_FUSE_BOX = ("CONTINUE", "LOADOUT", "FUSE", "SETTINGS", "CONTROLS", "QUIT")
+HUB_FUSE_BOX = ("RESUME", "LOADOUT", "FUSE", "SETTINGS", "CONTROLS", "QUIT")
 HUB_PAUSED = ("RESUME", "LOADOUT", "FUSE", "SETTINGS", "CONTROLS", "QUIT")
 LOADOUT_ROWS = 7  # rows visible at once in the loadout list
 # The spin: at least this many steps, each a little longer than the last.
@@ -123,8 +124,8 @@ class Menu:
 
     def press(self, session: Session, key: str) -> tuple[list | None, list[str]]:
         """Handle one key. Returns the simulation action to record (or None) and the
-        interface sounds to play. CONTINUE, RESUME and QUIT are reported as the sounds
-        "continue", "resume" and "quit" for the caller to act on."""
+        interface sounds to play. RESUME and QUIT are reported as the sounds "resume" and
+        "quit" for the caller to act on."""
         if not self.open:
             return None, []
         if self.roll is None:  # mid-spin, the result stays a silhouette until the reveal
@@ -147,14 +148,10 @@ class Menu:
             self.quitting = False
             return None, ["move"]
         if key == "back":
-            if self.in_fuse_box:
-                return None, ["deny"]
             return None, ["resume"]
         if key != "select":
             return None, []
         item = items[self.hub]
-        if item == "CONTINUE":
-            return None, ["continue"]
         if item == "QUIT":
             if not self.quitting:  # quitting ends the run: ask once more
                 self.quitting = True

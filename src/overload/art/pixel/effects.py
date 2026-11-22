@@ -1091,3 +1091,223 @@ def fusion_orbit(
         points = [(px, py - 2), (px + 2, py), (px, py + 2), (px - 2, py)]
         for surface in (target, light):
             pygame.draw.polygon(surface, rgb("px.bulwark.light"), points)
+
+
+def _bezier(p0: Point, p1: Point, p2: Point, u: float) -> Point:
+    inv = 1.0 - u
+    return (
+        inv * inv * p0[0] + 2.0 * inv * u * p1[0] + u * u * p2[0],
+        inv * inv * p0[1] + 2.0 * inv * u * p1[1] + u * u * p2[1],
+    )
+
+
+def fuse_energize(
+    target: pygame.Surface,
+    light: pygame.Surface,
+    left_socket: Point,
+    right_socket: Point,
+    surge_pos: Point,
+    wall_bottom_y: float,
+    bay_top_y: float,
+    progress: float,
+    tick: int,
+    reduce_flash: bool = False,
+) -> None:
+    """Twin yellow and blue energy arcs flowing from the Fuse Box charging bay into Surge.
+
+    Under reduce_flash, flickering lightning jitter and pulsing rings are replaced by smooth
+    steady twin conduit beams, steady rings and calmly gliding energy beads.
+    """
+    progress = max(0.0, min(1.0, progress))
+    bay_cx = (left_socket[0] + right_socket[0]) * 0.5
+    bay_cy = (left_socket[1] + right_socket[1]) * 0.5
+    sx, sy = surge_pos
+
+    # Pulses gliding down the twin wall monitor conduit cables into the charging bay.
+    cable_span = max(1.0, bay_top_y - wall_bottom_y)
+    for cx, main, bright, phase in (
+        (round(bay_cx) - 4, "power.spark", "px.spark.light", 0.0),
+        (round(bay_cx) + 3, "power.blink", "px.blink.light", 0.5),
+    ):
+        if reduce_flash:
+            for surface in (target, light):
+                pygame.draw.line(
+                    surface, rgb(main), (cx, round(wall_bottom_y)), (cx, round(bay_top_y)), 1
+                )
+        for k in range(2):
+            u = (tick * 0.018 + phase + k * 0.5) % 1.0
+            py = round(wall_bottom_y + u * cable_span)
+            for surface in (target, light):
+                surface.fill(rgb(main), (cx - 1, py - 1, 3, 2))
+                surface.fill(rgb(bright), (cx, py, 1, 1))
+
+    # Brighten the live bus bar connecting the twin sockets.
+    mid_x, mid_y = round(bay_cx), round(bay_cy)
+    for surface in (target, light):
+        surface.fill(rgb("power.spark"), (mid_x - 5, mid_y - 1, 5, 2))
+        surface.fill(rgb("power.blink"), (mid_x, mid_y - 1, 5, 2))
+        surface.fill(rgb("player.core"), (mid_x - 1, mid_y - 1, 2, 2))
+
+    # Pulsing concentric socket rings and glowing cores.
+    for idx, (socket, main, bright) in enumerate(
+        (
+            (left_socket, "power.spark", "px.spark.light"),
+            (right_socket, "power.blink", "px.blink.light"),
+        )
+    ):
+        ox, oy = round(socket[0]), round(socket[1])
+        for surface in (target, light):
+            pygame.draw.circle(surface, rgb(bright), (ox, oy), 3)
+            if reduce_flash:
+                pygame.draw.circle(surface, rgb(main), (ox, oy), 6, 1)
+                if progress > 0.35:
+                    pygame.draw.circle(surface, rgb(bright), (ox, oy), 9, 1)
+            else:
+                r1 = 5 + ((tick // 3 + idx * 3) % 7)
+                r2 = 5 + ((tick // 3 + idx * 3 + 4) % 7)
+                pygame.draw.circle(surface, rgb(main), (ox, oy), r1, 1)
+                pygame.draw.circle(surface, rgb(bright), (ox, oy), r2, 1)
+
+    reach = min(1.0, progress / 0.06) if progress > 0.0 else 0.05
+    targets = ((sx - 2.0, sy - 2.0), (sx + 2.0, sy + 1.0))
+    # Non-crossing Bezier control points so the far socket lifts cleanly above the near socket.
+    dx_bay = sx - bay_cx
+    if abs(dx_bay) < 16.0:
+        ctrls = (
+            ((left_socket[0] + targets[0][0]) * 0.5 - 11.0, (left_socket[1] + targets[0][1]) * 0.5),
+            (
+                (right_socket[0] + targets[1][0]) * 0.5 + 11.0,
+                (right_socket[1] + targets[1][1]) * 0.5,
+            ),
+        )
+    elif dx_bay < 0:
+        ctrls = (
+            (
+                left_socket[0] * 0.45 + targets[0][0] * 0.55,
+                (left_socket[1] + targets[0][1]) * 0.5 + 9.0,
+            ),
+            (
+                right_socket[0] * 0.62 + targets[1][0] * 0.38,
+                min(right_socket[1], targets[1][1]) - 15.0,
+            ),
+        )
+    else:
+        ctrls = (
+            (
+                left_socket[0] * 0.62 + targets[0][0] * 0.38,
+                min(left_socket[1], targets[0][1]) - 15.0,
+            ),
+            (
+                right_socket[0] * 0.45 + targets[1][0] * 0.55,
+                (right_socket[1] + targets[1][1]) * 0.5 + 9.0,
+            ),
+        )
+
+    specs = (
+        (0, left_socket, ctrls[0], targets[0], "power.spark", "px.spark.light"),
+        (1, right_socket, ctrls[1], targets[1], "power.blink", "px.blink.light"),
+    )
+
+    for beam_id, start, ctrl, end, main, bright in specs:
+        steps = 12
+        rng = random.Random((tick // 3) * 31 + beam_id * 131)
+        pts: list[tuple[int, int]] = []
+        pts_alt: list[tuple[int, int]] = []
+        for i in range(steps + 1):
+            u = reach * i / steps
+            bx, by = _bezier(start, ctrl, end, u)
+            if reduce_flash or i in (0, steps):
+                pts.append((round(bx), round(by)))
+                continue
+            # Perpendicular to local chord for crisp lightning crackle.
+            nx = -(end[1] - start[1])
+            ny = end[0] - start[0]
+            norm = math.hypot(nx, ny) or 1.0
+            nx, ny = nx / norm, ny / norm
+            envelope = math.sin(math.pi * i / steps)
+            amp = (1.6 + 2.2 * progress) * envelope
+            off = rng.uniform(-amp, amp)
+            pts.append((round(bx + nx * off), round(by + ny * off)))
+            if progress > 0.5:
+                off2 = rng.uniform(-amp * 0.9, amp * 0.9)
+                pts_alt.append((round(bx + nx * off2), round(by + ny * off2)))
+        for surface in (target, light):
+            if len(pts) >= 2:
+                pygame.draw.lines(surface, rgb(main), False, pts, 2)
+                pygame.draw.lines(surface, rgb(bright), False, pts, 1)
+            if not reduce_flash and len(pts_alt) >= 2:
+                alt = [pts[0], *pts_alt, pts[-1]]
+                pygame.draw.lines(surface, rgb(main), False, alt, 1)
+
+        # Energy motes traveling along the beam from socket into Surge.
+        mote_count = 4
+        speed = 0.013 if reduce_flash else (0.016 + 0.008 * progress)
+        for m in range(mote_count):
+            u = (tick * speed + m / mote_count + beam_id * 0.17) % 1.0
+            if u < 0.04 or u > reach:
+                continue
+            mx, my = _bezier(start, ctrl, end, u)
+            ix, iy = round(mx), round(my)
+            for surface in (target, light):
+                if beam_id == 0:
+                    # Yellow bolt cross shape (distinct in grayscale from blue diamond).
+                    surface.fill(rgb(main), (ix - 1, iy, 3, 1))
+                    surface.fill(rgb(main), (ix, iy - 1, 1, 3))
+                    surface.fill(rgb(bright), (ix, iy, 1, 1))
+                else:
+                    # Blue diamond mote shape.
+                    diamond = [(ix, iy - 2), (ix + 2, iy), (ix, iy + 2), (ix - 2, iy)]
+                    pygame.draw.polygon(surface, rgb(main), diamond)
+                    surface.fill(rgb(bright), (ix, iy, 1, 1))
+
+    # Building golden-and-cyan energizing aura around Surge once beams connect.
+    if reach >= 0.85:
+        feet_x, feet_y = round(sx), round(sy + 7)
+        rx = 10 + round(2 * progress)
+        ry = 5 + round(2 * progress)
+        if reduce_flash:
+            outer = pygame.Rect(feet_x - rx, feet_y - ry, rx * 2, ry * 2)
+            inner = pygame.Rect(feet_x - rx + 2, feet_y - ry + 1, (rx - 2) * 2, (ry - 1) * 2)
+            for surface in (target, light):
+                pygame.draw.ellipse(surface, rgb("power.spark"), outer, 1)
+                pygame.draw.ellipse(surface, rgb("power.blink"), inner, 1)
+        else:
+            dashes = 16
+            for i in range(dashes):
+                a = math.tau * i / dashes + tick * 0.05
+                px = round(feet_x + math.cos(a) * rx)
+                py = round(feet_y + math.sin(a) * ry)
+                token = "power.spark" if i % 2 == 0 else "power.blink"
+                for surface in (target, light):
+                    surface.fill(rgb(token), (px - 1, py, 2, 2))
+        if progress > 0.5:
+            tight = (progress - 0.5) / 0.5
+            hr = max(8, round(15 - 5 * tight))
+            ring_token = (
+                "px.spark.light" if (reduce_flash or (tick // 8) % 2 == 0) else "px.blink.light"
+            )
+            for surface in (target, light):
+                pygame.draw.circle(surface, rgb(ring_token), (round(sx), round(sy)), hr, 1)
+
+
+def fuse_complete_burst(
+    target: pygame.Surface,
+    light: pygame.Surface,
+    center: Point,
+    age: float,
+    reduce_flash: bool = False,
+) -> None:
+    """Expanding golden-and-cyan completion rings when the Fuse Box recharge finishes."""
+    age = max(0.0, min(1.0, age))
+    cx, cy = round(center[0]), round(center[1])
+    outer_r = max(2, round(7 + age * 34))
+    inner_r = max(1, round(4 + age * 25))
+    outer_w = 1 if (reduce_flash or age > 0.55) else 2
+    for surface in (target, light):
+        pygame.draw.circle(surface, rgb("power.spark"), (cx, cy), outer_r, outer_w)
+        pygame.draw.circle(surface, rgb("power.blink"), (cx, cy), inner_r, 1)
+        if age < 0.35:
+            ray = round(6 + age * 24)
+            token = "px.spark.light" if reduce_flash else "player.core"
+            pygame.draw.line(surface, rgb(token), (cx - ray, cy), (cx + ray, cy), 1)
+            pygame.draw.line(surface, rgb("px.blink.light"), (cx, cy - ray), (cx, cy + ray), 1)

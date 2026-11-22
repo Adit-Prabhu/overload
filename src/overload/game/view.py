@@ -15,13 +15,14 @@ import pygame
 
 from overload import __version__
 from overload.art.palette import rgb, rgba
-from overload.art.pixel import actors, effects, hud, rig, tiles
+from overload.art.pixel import actors, dressing, effects, hud, rig, tiles
 from overload.art.pixel import regulators as regulators_art
 from overload.art.pixel import robots as robots_art
 from overload.art.pixel.light import Glow
 from overload.art.pixel.lighting import Lighting, pool, quantize
 from overload.floor import CELL, GRID, TILE
 from overload.game.coach import Coach
+from overload.game.flow import MIN_FUSE_TICKS
 from overload.game.keybinds import Keybinds
 from overload.sim import aiming, bosskit, floorplay
 from overload.sim import world as rules
@@ -190,6 +191,9 @@ INTRO_SLIDE = 18  # ticks the name card takes to slide in during the boot
 BEAM_TICKS = 10
 DEFLECT_TICKS = 7
 SECTOR_BANNER_TICKS = 90
+FUSE_COMPLETE_TICKS = 36
+FUSE_FALLBACK_TICKS = 300
+FUSE_CELL_FLASH_TICKS = 16
 SECTOR_TITLES = {
     "s2_entry": (2, "SECTOR 2", "COOLING PLANT", "px.jacket.2"),
     "s3_entry": (3, "SECTOR 3", "GRID CORE", "px.core.3"),
@@ -367,6 +371,8 @@ def prewarm_lights() -> None:
     for radius, token, strength in (
         (64, "px.lamp.light", 75),
         (40, "px.lamp.light", 70),
+        (40, "power.spark", 50),
+        (40, "power.blink", 50),
         (12, "px.hostile.2", 45),
         (12, "player.halo", 45),
         (40, "px.hostile.2", 25),
@@ -467,6 +473,20 @@ class PixelView:
         self.ready_flash = [0, 0]
         self.screen_shake = True
         self.reduce_flash = False
+        stage = getattr(run, "stage", None)
+        self.prev_stage: str | None = stage
+        self.last_charge: int = run.world.player.charge
+        self.fuse_active: bool = stage == "fuse_box"
+        self.fuse_anim_ticks: int = 0
+        self.fuse_room_id: str | None = f"fuse_{run.encounter}" if stage == "fuse_box" else None
+        self.fuse_start_charge: int = min(run.world.player.charge, run.tuning.player_max_charge)
+        self.fuse_shown_charge: int = self.fuse_start_charge
+        self.fuse_cell_progress: float = 0.0
+        self.fuse_cell_flash: list[int] = [0] * run.tuning.player_max_charge
+        self.fuse_complete_ticks: int = 0
+        self.fuse_complete_at: tuple[float, float] | None = None
+        self.fuse_fallback: tuple[str, int] | None = None
+        self.pending_cues: list[tuple[str, float]] = []
         player = run.world.player
         self.camera = [player.x - VIEW[0] / 2, player.y - VIEW[1] / 2]
         self._clamp_camera()
@@ -604,6 +624,7 @@ class PixelView:
         before the next input is read)."""
         self.consume(run, run.world.events)
         self._tick_cosmetics()
+        self._tick_fuse_box(run)
         self._tick_flyers(run)
         self._tick_slot_ready(run.world)
         self.coach.update(run)
@@ -644,17 +665,158 @@ class PixelView:
             target = rgb(f"px.tint.{self.sector}")
             self.tint = [c + (t - c) * 0.04 for c, t in zip(self.tint, target, strict=True)]
 
+    def take_audio_cues(self) -> list[tuple[str, float]]:
+        """Cosmetic sound cues queued by the view (Fuse Box charge ticks and unlock)."""
+        cues, self.pending_cues = self.pending_cues, []
+        return cues
+
+    def _fuse_sockets(
+        self, run: Run | Campaign
+    ) -> tuple[tuple[int, int], tuple[int, int], int, int] | None:
+        """(yellow_socket, blue_socket, wall_bottom_y, bay_top_y) for the current Fuse Box."""
+        floor = run.arena.floor
+        if floor is None:
+            return None
+        room_id = self.fuse_room_id
+        if not room_id and getattr(run, "stage", None) == "fuse_box":
+            room_id = f"fuse_{run.encounter}"
+        if not room_id:
+            return None
+        room = floor.get(room_id)
+        left_sock, right_sock = dressing.fuse_pad_sockets(room.rect)
+        wall_bottom = (room.rect[1] + 2) * TILE
+        bay_top = left_sock[1] - 12
+        return (left_sock, right_sock, wall_bottom, bay_top)
+
+    def trigger_fuse_complete(
+        self, run: Run | Campaign, fallback_message: str | None = None
+    ) -> None:
+        """Trigger the Fuse Box completion burst, toast and optional D7 fallback banner.
+
+        Guarded by fuse_active so live confirm and replay transition never fire twice.
+        """
+        if not self.fuse_active:
+            return
+        self.fuse_active = False
+        player = run.world.player
+        self.fuse_shown_charge = run.tuning.player_max_charge
+        self.fuse_cell_progress = 1.0
+        self.fuse_complete_ticks = FUSE_COMPLETE_TICKS
+        self.fuse_complete_at = (player.x, player.y)
+        self.unlock_flash = 8
+        self._burst(player.x, player.y, 16, "power.spark", 2.0)
+        self._burst(player.x, player.y, 16, "power.blink", 1.9)
+        self._burst(player.x, player.y, 10, "px.spark.light", 1.5)
+        self._burst(player.x, player.y, 10, "px.blink.light", 1.5)
+        sockets = self._fuse_sockets(run)
+        if sockets is not None:
+            left_sock, right_sock, _, _ = sockets
+            self._burst(left_sock[0], left_sock[1], 8, "power.spark", 1.3)
+            self._burst(right_sock[0], right_sock[1], 8, "power.blink", 1.3)
+        sector = getattr(run, "encounter", 2)
+        self.toast(f"SECTOR {sector} OPEN", 150)
+        if fallback_message:
+            self.fuse_fallback = (fallback_message, FUSE_FALLBACK_TICKS)
+        self.pending_cues.append(("unlock", 0.7))
+
+    def _tick_fuse_box(self, run: Run | Campaign) -> None:
+        """Advance cosmetic Fuse Box recharge state for both live play and replays."""
+        stage = getattr(run, "stage", None)
+        max_charge = run.tuning.player_max_charge
+        if len(self.fuse_cell_flash) != max_charge:
+            self.fuse_cell_flash = [0] * max_charge
+        self.fuse_cell_flash = [max(0, ticks - 1) for ticks in self.fuse_cell_flash]
+        if self.fuse_complete_ticks > 0:
+            self.fuse_complete_ticks -= 1
+            if self.fuse_complete_ticks == 0:
+                self.fuse_complete_at = None
+        if self.fuse_fallback is not None:
+            msg, ticks = self.fuse_fallback
+            self.fuse_fallback = (msg, ticks - 1) if ticks > 1 else None
+        if run.world.outcome == "down":
+            self.fuse_active = False
+            self.fuse_complete_ticks = 0
+            self.fuse_complete_at = None
+            self.fuse_fallback = None
+            self.last_charge = run.world.player.charge
+            self.prev_stage = stage
+            return
+        if stage == "fuse_box":
+            if self.prev_stage != "fuse_box" or not self.fuse_active:
+                self.fuse_active = True
+                self.fuse_anim_ticks = 0
+                self.fuse_room_id = f"fuse_{run.encounter}"
+                self.fuse_start_charge = max(0, min(self.last_charge, max_charge))
+                self.fuse_shown_charge = self.fuse_start_charge
+                self.fuse_cell_progress = 0.0
+                self.fuse_cell_flash = [0] * max_charge
+                self.fuse_complete_ticks = 0
+                self.fuse_complete_at = None
+                self.pending_cues.append(("spark", 0.22))
+            self.fuse_anim_ticks += 1
+            progress = min(1.0, self.fuse_anim_ticks / MIN_FUSE_TICKS)
+            missing = max_charge - self.fuse_start_charge
+            if missing > 0:
+                span = 0.83
+                scaled = max(0.0, min(float(missing), (progress - 0.12) / span * missing))
+                gained = min(missing, int(scaled + 1e-9))
+                target_charge = self.fuse_start_charge + gained
+                if target_charge > self.fuse_shown_charge:
+                    for idx in range(self.fuse_shown_charge, target_charge):
+                        self.fuse_cell_flash[idx] = FUSE_CELL_FLASH_TICKS
+                    self.fuse_shown_charge = target_charge
+                    player = run.world.player
+                    self._burst(player.x, player.y, 6, "power.spark", 1.1)
+                    self._burst(player.x, player.y, 6, "power.blink", 1.1)
+                    self.pending_cues.append(("pickup", 0.35))
+                self.fuse_cell_progress = (
+                    1.0 if self.fuse_shown_charge >= max_charge else max(0.0, scaled - gained)
+                )
+            else:
+                self.fuse_shown_charge = max_charge
+                self.fuse_cell_progress = progress
+            if not self.reduce_flash and self.fuse_anim_ticks % 6 == 0:
+                player = run.world.player
+                token = "power.spark" if (self.fuse_anim_ticks // 6) % 2 == 0 else "power.blink"
+                self.sparks.append(
+                    Spark(
+                        player.x + self.cosmetic.uniform(-8, 8),
+                        player.y + self.cosmetic.uniform(-4, 7),
+                        self.cosmetic.uniform(-0.2, 0.2),
+                        self.cosmetic.uniform(-0.9, -0.4),
+                        self.cosmetic.randint(10, 18),
+                        token,
+                    )
+                )
+        else:
+            if self.fuse_active:
+                self.trigger_fuse_complete(run, None)
+            self.last_charge = run.world.player.charge
+        self.prev_stage = stage
+
     def follow(self, run: Run | Campaign, cursor: tuple[int, int]) -> None:
         """Ease toward the player, nudged a little toward where they are aiming. In a fight
         the camera frames the player and the Regulator together, so the Regulator's tells
-        stay on screen at the distances the fight is played at."""
+        stay on screen at the distances the fight is played at. In a Fuse Box the camera
+        biases toward the twin charging bay so both sockets and the Surge stay framed."""
         player = run.world.player
+        stage = getattr(run, "stage", None)
+        if stage != "fuse_box":
+            self.last_charge = player.charge
         lead_x = (cursor[0] - VIEW[0] / 2) * 0.15
         lead_y = (cursor[1] - VIEW[1] / 2) * 0.15
         rival = run.world.rival
         if rival is not None and rival.health > 0:
             lead_x = (rival.x - player.x) * 0.5
             lead_y = (rival.y - player.y) * 0.5
+        elif stage == "fuse_box":
+            sockets = self._fuse_sockets(run)
+            if sockets is not None:
+                left_sock, right_sock, _, _ = sockets
+                pad_x = (left_sock[0] + right_sock[0]) * 0.5
+                pad_y = (left_sock[1] + right_sock[1]) * 0.5
+                lead_x = (pad_x - player.x) * 0.65
+                lead_y = (pad_y - player.y) * 0.65
         # Far from the Regulator, the midpoint would push the Surge off screen: the lead
         # never takes the Surge closer than SURGE_MARGIN to an edge.
         lead_x = max(-LEAD_LIMIT[0], min(LEAD_LIMIT[0], lead_x))
@@ -1499,6 +1661,31 @@ class PixelView:
             )
         for a, b, _life, cable in self.chains:
             effects.chain_bolt(screen, self.glow.layer, v(*a), v(*b), cable)
+        stage = getattr(run, "stage", None)
+        fuse_sockets = self._fuse_sockets(run) if stage == "fuse_box" else None
+        if stage == "fuse_box" and fuse_sockets is not None:
+            left_sock, right_sock, wall_bottom, bay_top = fuse_sockets
+            fuse_progress = min(1.0, self.fuse_anim_ticks / MIN_FUSE_TICKS)
+            effects.fuse_energize(
+                screen,
+                self.glow.layer,
+                v(*left_sock),
+                v(*right_sock),
+                v(player.x, player.y),
+                wall_bottom - cam[1],
+                bay_top - cam[1],
+                fuse_progress,
+                self.frames,
+                self.reduce_flash,
+            )
+        if self.fuse_complete_ticks > 0 and self.fuse_complete_at is not None:
+            effects.fuse_complete_burst(
+                screen,
+                self.glow.layer,
+                v(*self.fuse_complete_at),
+                1.0 - self.fuse_complete_ticks / FUSE_COMPLETE_TICKS,
+                self.reduce_flash,
+            )
         for x, y, radius, life, power in self.blasts:
             effects.blast_ring(screen, self.glow.layer, v(x, y), radius, life / BLAST_TICKS, power)
         for x, y, life in self.deflects:
@@ -1528,6 +1715,11 @@ class PixelView:
             self.lighting.add(v(x, y), 64, "px.lamp.light", 75)
         head = v(player.x + player.aim_x * 16, player.y + player.aim_y * 16)
         self.lighting.add(head, 40, "px.lamp.light", 70)
+        if stage == "fuse_box" and fuse_sockets is not None:
+            left_sock, right_sock, _, _ = fuse_sockets
+            self.lighting.add(v(*left_sock), 40, "power.spark", 50)
+            self.lighting.add(v(*right_sock), 40, "power.blink", 50)
+            self.lighting.add(v(player.x, player.y), 40, "px.lamp.light", 70)
         for shot in world.projectiles:
             token = "px.hostile.2" if shot.hostile else "player.halo"
             self.lighting.add(v(shot.x, shot.y), 12, token, 45)
@@ -1546,14 +1738,14 @@ class PixelView:
         if tint != (255, 255, 255):
             screen.fill(tint, special_flags=pygame.BLEND_RGB_MULT)
         self.glow.apply(screen)
-        stage = getattr(run, "stage", None)
         self._draw_vignette(screen, player, world.outcome, stage)
 
         dodge_total = tuning.dodge_ticks + tuning.dodge_cooldown
+        charging = stage == "fuse_box" and self.fuse_active
         hud.draw(
             screen,
             hud.Hud(
-                charge=player.charge,
+                charge=self.fuse_shown_charge if charging else player.charge,
                 max_charge=tuning.player_max_charge,
                 dodge_ready=1.0 - player.dodge_cooldown / dodge_total,
                 sockets=tuple(slot or None for slot in player.slots),
@@ -1573,13 +1765,18 @@ class PixelView:
                 rival_phase=rival.phase if rival else 1,
                 rival_changing=bool(rival and rival.change > 0),
                 rival_venting=bool(rival and rival.vent > 0),
-                tick=tick,
+                tick=self.frames if charging else tick,
                 keys=(self.binds.short("power_q"), self.binds.short("power_e")),
                 ready_flash=(self.ready_flash[0], self.ready_flash[1]),
                 reduce_flash=self.reduce_flash,
+                charging=charging,
+                charge_progress=self.fuse_cell_progress if charging else 0.0,
+                cell_flash=tuple(self.fuse_cell_flash),
             ),
         )
         self._minimap(screen, run)
+        if stage == "fuse_box":
+            self._fuse_bar(screen)
         if rival is not None and rival.health > 0 and rival.boot > 0:
             self._intro_card(screen, rival, tuning)
         sector_visible = (
@@ -1600,16 +1797,25 @@ class PixelView:
             else:
                 screen.blit(_flash(VIEW, self.unlock_flash * 8), (0, 0))
         self._coach(screen, run, cam)
+        if sector_visible:
+            notice_y = 50
+        elif rival and BY_KIND[rival.kind].phases:
+            notice_y = 33
+        else:
+            notice_y = 26
         if self.notice:
             message, ticks = self.notice
             if self.reduce_flash or ticks > 8 or ticks % 2:
-                if sector_visible:
-                    y = 50
-                elif rival and BY_KIND[rival.kind].phases:
-                    y = 33
-                else:
-                    y = 26
-                hud.text(screen, message, (VIEW[0] // 2, y), "power.spark", "midtop")
+                hud.text(screen, message, (VIEW[0] // 2, notice_y), "power.spark", "midtop")
+        if (
+            self.fuse_fallback is not None
+            and self.boss_banner is None
+            and rival is None
+            and world.outcome == "playing"
+            and stage != "ending"
+        ):
+            fb_y = notice_y + 12 if self.notice else (50 if sector_visible else 28)
+            self._fallback_banner(screen, fb_y)
         if world.outcome == "down" or (stage is None and world.outcome == "clear"):
             self._banner(screen, world.outcome)
         reticle = effects.reticle()
@@ -1682,7 +1888,7 @@ class PixelView:
         self, screen: pygame.Surface, player, outcome: str, stage: str | None = None
     ) -> None:
         """Danger-red perimeter border on player damage or when down to the last battery cell."""
-        if stage == "ending" or outcome != "playing":
+        if stage in ("ending", "fuse_box") or outcome != "playing":
             return
         if self.hit_vignette > 0:
             if self.reduce_flash:
@@ -1700,6 +1906,57 @@ class PixelView:
                 raw = round(38 + 26 * math.sin(self.frames * 0.12))
                 alpha = max(16, (raw // 8) * 8)
                 screen.blit(_edge_vignette(screen.get_size(), alpha, 3), (0, 0))
+
+    def _fuse_bar(self, screen: pygame.Surface) -> None:
+        """Non-blocking bottom HUD status strip during the 5.0 s Fuse Box recharge, kept
+        clear of the battery HUD, minimap and bottom-right power slots."""
+        h = screen.get_height()
+        progress = min(1.0, self.fuse_anim_ticks / MIN_FUSE_TICKS)
+        panel = pygame.Rect(6, h - 23, HINT_RIGHT - 10, 20)
+        screen.blit(_dim(panel.size, 210), panel)
+        border = "power.spark" if progress >= 1.0 else "px.wall.2"
+        pygame.draw.rect(screen, rgb(border), panel, 1)
+        label = "SUIT CHARGED" if progress >= 1.0 else "RECHARGING SUIT"
+        label_token = "px.spark.light" if progress >= 1.0 else "ui.text"
+        hud.text(screen, label, (panel.x + 5, panel.y + 1), label_token)
+        menu_hint = f"[{self.binds.short('menu')}] MENU"
+        hud.text(screen, menu_hint, (panel.right - 5, panel.y + 1), "px.blink.light", "topright")
+        bar_x, bar_y, bar_w, bar_h = panel.x + 5, panel.y + 13, panel.width - 10, 4
+        screen.fill(rgb("px.outline"), (bar_x - 1, bar_y - 1, bar_w + 2, bar_h + 2))
+        screen.fill(rgb("px.floor.0"), (bar_x, bar_y, bar_w, bar_h))
+        fill_w = round(bar_w * progress)
+        if fill_w > 0:
+            screen.fill(rgb("power.spark"), (bar_x, bar_y, fill_w, 2))
+            screen.fill(rgb("px.spark.light"), (bar_x, bar_y, fill_w, 1))
+            screen.fill(rgb("power.blink"), (bar_x, bar_y + 2, fill_w, 2))
+            screen.fill(rgb("px.blink.light"), (bar_x, bar_y + 3, fill_w, 1))
+            tip_x = min(bar_x + bar_w - 1, bar_x + fill_w - 1)
+            tip_token = (
+                "player.core" if (self.reduce_flash or (self.frames // 4) % 2) else "fx.flash"
+            )
+            screen.fill(rgb(tip_token), (tip_x, bar_y, 1, bar_h))
+
+    def _fallback_banner(self, screen: pygame.Surface, top: int) -> None:
+        """Non-blocking readable notice for the approved D7 live fallback line after a Fuse
+        Box completes."""
+        if self.fuse_fallback is None:
+            return
+        message, ticks = self.fuse_fallback
+        lines = _wrap(message.upper(), 30)[:2]
+        w = screen.get_width()
+        font = hud.pixel_font()
+        text_w = max(font.size(line)[0] for line in lines)
+        card_w = min(w - 16, text_w + 14)
+        card_h = 6 + len(lines) * 9
+        card = pygame.Surface((card_w, card_h), pygame.SRCALPHA)
+        card.blit(_dim(card.get_size(), 215), (0, 0))
+        card.fill(rgb("px.lamp"), (0, 0, card_w, 1))
+        card.fill(rgb("px.lamp"), (0, card_h - 1, card_w, 1))
+        for i, line in enumerate(lines):
+            hud.text(card, line, (card_w // 2, 2 + i * 9), "px.lamp", "midtop")
+        if ticks < 20:
+            card.set_alpha(max(0, ticks * 12))
+        screen.blit(card, card.get_rect(midtop=(w // 2, top)))
 
     def _sector_banner(self, screen: pygame.Surface) -> None:
         """Non-blocking arrival card when stepping into Sector 2 or Sector 3."""

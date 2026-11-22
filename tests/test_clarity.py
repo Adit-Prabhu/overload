@@ -173,12 +173,12 @@ def test_the_fuse_box_hub_shows_ready_and_the_spares(display) -> None:
     menu_view.hud.text = record
     try:
         menu_view.draw_hub(display, menu, session, True, None, 2)
-        assert "READY" in texts and "CONTINUE >>" in texts
-        assert "SPACE ON CONTINUE: ENTER SECTOR 2" in texts
+        assert "SUIT CHARGED" in texts and "RESUME" in texts and "CONTINUE" not in texts
+        assert "RESUME TO ENTER SECTOR 2" in texts
         assert "SPARE CHARGES" in texts and "2" in texts
         texts.clear()
         menu_view.draw_hub(display, menu, session, False, None, 2)
-        assert "ROUTING POWER..." in texts and "CONTINUE" in texts
+        assert "RECHARGING SUIT..." in texts and "RESUME" in texts and "CONTINUE" not in texts
     finally:
         menu_view.hud.text = original
 
@@ -642,3 +642,172 @@ def test_mutual_kill_suppresses_room_clear_and_boss_reward_visuals(display) -> N
     assert view.reward == []
     assert view.flyers == []
     assert view.notice is None
+
+
+def test_fuse_box_energize_animation_refills_battery_and_works_in_replays(display) -> None:
+    from overload.art.palette import rgb
+    from overload.art.pixel import dressing, hud
+    from overload.game.flow import FALLBACK_LINE, MIN_FUSE_TICKS
+    from overload.game.view import HINT_RIGHT, VIEW, PixelView
+
+    # Test both fuse_1 (entered from west) and fuse_2 (entered from east) with partial charge.
+    for sector, pre_charge, entry_x_offset in ((1, 2, 18.0), (2, 1, 14 * 16 - 20.0)):
+        campaign = Campaign(1)
+        if sector == 2:
+            campaign.world.cleared = ["s1_chamber"]
+            room1 = campaign.arena.floor.get("fuse_1")
+            campaign.world.player.x = (room1.rect[0] + 7) * 16.0
+            campaign.world.player.y = (room1.rect[1] + 6) * 16.0
+            campaign.step(IDLE)
+            campaign.begin_next("lateral")
+        campaign.world.cleared = [*campaign.world.cleared, f"s{sector}_chamber"]
+        room = campaign.arena.floor.get(f"fuse_{sector}")
+        campaign.world.player.x = room.rect[0] * 16.0 + entry_x_offset
+        campaign.world.player.y = (room.rect[1] + 6) * 16.0
+        campaign.world.player.charge = pre_charge
+        view = PixelView(campaign)
+        assert view.last_charge == pre_charge
+
+        # Step onto the Fuse Box entry tile: sim sets full charge, view preserves pre_charge.
+        campaign.step(IDLE)
+        assert campaign.stage == "fuse_box"
+        assert campaign.world.player.charge == campaign.tuning.player_max_charge
+        view.update(campaign, (128, 72))
+        assert view.fuse_active and view.fuse_start_charge == pre_charge
+        assert view.fuse_shown_charge == pre_charge
+        assert view.coach.hint(campaign) is None, "coach hints stay clear of Fuse Box bar"
+
+        cues = [name for name, _ in view.take_audio_cues()]
+        assert "spark" in cues
+        seen_charges = [view.fuse_shown_charge]
+        pickup_count = 0
+        for _ in range(MIN_FUSE_TICKS - 1):
+            campaign.step(IDLE)
+            view.update(campaign, (128, 72))
+            seen_charges.append(view.fuse_shown_charge)
+            pickup_count += sum(1 for name, _ in view.take_audio_cues() if name == "pickup")
+            if view.fuse_anim_ticks == MIN_FUSE_TICKS // 2:
+                # Mid-recharge: camera frames both sockets and Surge inside 256 x 144.
+                cam = view.camera_offset()
+                left_sock, right_sock = dressing.fuse_pad_sockets(room.rect)
+                for pt in (
+                    left_sock,
+                    right_sock,
+                    (campaign.world.player.x, campaign.world.player.y),
+                ):
+                    vx, vy = pt[0] - cam[0], pt[1] - cam[1]
+                    assert 12 <= vx <= VIEW[0] - 12 and 12 <= vy <= VIEW[1] - 24, (sector, pt, cam)
+                # Bottom status strip stays clear of power slots and draws yellow + blue arcs.
+                drawn: list[tuple[str, pygame.Rect]] = []
+                original = hud.text
+
+                def record(target, message, pos, *args, out=drawn, fn=original, **kwargs):
+                    rect = fn(target, message, pos, *args, **kwargs)
+                    out.append((message, rect))
+                    return rect
+
+                hud.text = record
+                try:
+                    view.draw(display, campaign, (128, 72))
+                finally:
+                    hud.text = original
+                assert any(msg == "RECHARGING SUIT" for msg, _ in drawn)
+                for msg, rect in drawn:
+                    if msg in ("RECHARGING SUIT", "[TAB] MENU"):
+                        assert rect.right <= HINT_RIGHT, f"{msg} crossed power slots: {rect}"
+                glow_colors = {
+                    view.glow.layer.get_at((x, y))[:3] for x in range(256) for y in range(24, 120)
+                }
+                assert rgb("power.spark") in glow_colors and rgb("power.blink") in glow_colors
+                bar_colors = {
+                    display.get_at((x, y))[:3] for x in range(6, 202) for y in range(121, 141)
+                }
+                assert rgb("power.spark") in bar_colors and rgb("power.blink") in bar_colors
+
+        assert seen_charges == sorted(seen_charges), "animated battery fills monotonically"
+        assert seen_charges[-1] == campaign.tuning.player_max_charge
+        assert pickup_count == campaign.tuning.player_max_charge - pre_charge
+
+        # Replay path: calling begin_next directly triggers completion burst, toast and unlock cue.
+        campaign.begin_next("lateral")
+        campaign.step(IDLE)
+        view.update(campaign, (128, 72))
+        assert not view.fuse_active and view.fuse_complete_ticks > 0
+        assert view.notice is not None and view.notice[0] == f"SECTOR {sector + 1} OPEN"
+        assert any(name == "unlock" for name, _ in view.take_audio_cues())
+
+    # Reduce Flash draws steady beams and steady HUD without flickering jitter or white flash.
+    campaign = Campaign(1)
+    campaign.world.cleared = ["s1_chamber"]
+    room = campaign.arena.floor.get("fuse_1")
+    campaign.world.player.x = room.rect[0] * 16.0 + 18.0
+    campaign.world.player.y = (room.rect[1] + 6) * 16.0
+    campaign.world.player.charge = campaign.tuning.player_max_charge  # already full: overcharge
+    view = PixelView(campaign)
+    view.reduce_flash = True
+    campaign.step(IDLE)
+    view.update(campaign, (128, 72))
+    assert view.fuse_start_charge == campaign.tuning.player_max_charge
+    view.take_audio_cues()
+    for _ in range(30):
+        campaign.step(IDLE)
+        view.update(campaign, (128, 72))
+    assert not any(name == "pickup" for name, _ in view.take_audio_cues())
+    s0 = pygame.Surface(VIEW)
+    s1 = pygame.Surface(VIEW)
+    view.draw(s0, campaign, (128, 72))
+    view.draw(s1, campaign, (128, 72))
+    assert pygame.image.tobytes(s0, "RGB") == pygame.image.tobytes(s1, "RGB")
+
+    # D7 fallback notice renders cleanly inside the viewport without overlapping the open toast.
+    campaign.begin_next("lateral")
+    view.trigger_fuse_complete(campaign, FALLBACK_LINE)
+    assert view.fuse_fallback is not None and view.fuse_fallback[0] == FALLBACK_LINE
+    drawn_fb: list[tuple[str, pygame.Rect]] = []
+    original = hud.text
+
+    def record_fb(target, message, pos, *args, **kwargs):
+        rect = original(target, message, pos, *args, **kwargs)
+        drawn_fb.append((message, rect))
+        return rect
+
+    hud.text = record_fb
+    try:
+        view.draw(display, campaign, (128, 72))
+    finally:
+        hud.text = original
+    joined = " ".join(msg for msg, _ in drawn_fb)
+    assert "SECTOR 2 OPEN" in joined and FALLBACK_LINE.upper() in joined
+
+    # Once the open toast expires, the D7 fallback card clears all three minimap rows (y <= 25).
+    view.notice = None
+    view.sector_banner = None
+    view.seen = {r.id for r in campaign.arena.floor.rooms}
+    fb_tops: list[int] = []
+    orig_fb = view._fallback_banner
+
+    def record_fb_top(surface, top: int) -> None:
+        fb_tops.append(top)
+        orig_fb(surface, top)
+
+    view._fallback_banner = record_fb_top
+    try:
+        view.draw(display, campaign, (128, 72))
+    finally:
+        view._fallback_banner = orig_fb
+    assert fb_tops == [28]
+    minimap_only = pygame.Surface(VIEW, pygame.SRCALPHA)
+    fallback_only = pygame.Surface(VIEW, pygame.SRCALPHA)
+    view._minimap(minimap_only, campaign)
+    view._fallback_banner(fallback_only, fb_tops[0])
+    overlap = [
+        (x, y)
+        for x in range(VIEW[0])
+        for y in range(VIEW[1])
+        if minimap_only.get_at((x, y)).a > 0 and fallback_only.get_at((x, y)).a > 0
+    ]
+    assert not overlap, f"D7 fallback banner overlapped 3-row minimap: {overlap[:5]}"
+
+    campaign.world.outcome = "down"
+    view.after_tick(campaign)
+    assert view.fuse_fallback is None

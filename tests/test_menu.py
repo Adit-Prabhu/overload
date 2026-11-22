@@ -66,13 +66,14 @@ def roll_through(session: Session, menu: Menu) -> list[str]:
 # The hub -------------------------------------------------------------------------------------
 
 
-def test_the_hub_offers_continue_in_a_fuse_box_and_resume_mid_sector() -> None:
+def test_the_hub_offers_resume_mid_sector_and_in_a_fuse_box() -> None:
     session = fuse_box_with("spark")
     menu = Menu()
     menu.show(in_fuse_box=True)
-    assert menu.hub_items == HUB_FUSE_BOX and HUB_FUSE_BOX[0] == "CONTINUE"
-    assert menu.press(session, "select") == (None, ["continue"])
-    assert menu.press(session, "back") == (None, ["deny"]), "a Fuse Box is left by CONTINUE"
+    assert menu.hub_items == HUB_FUSE_BOX and HUB_FUSE_BOX[0] == "RESUME"
+    assert "CONTINUE" not in menu.hub_items
+    assert menu.press(session, "select") == (None, ["resume"])
+    assert menu.press(session, "back") == (None, ["resume"]), "Esc closes freely in a Fuse Box"
     menu.show(in_fuse_box=False)
     assert menu.hub_items == HUB_PAUSED and HUB_PAUSED[0] == "RESUME"
     assert menu.press(session, "back") == (None, ["resume"])
@@ -242,23 +243,57 @@ def live_setup():
     return session, Menu(), InputReader(), recording
 
 
-def test_continue_waits_for_the_hold_then_starts_the_next_sector() -> None:
+def test_fuse_box_auto_confirms_when_ready_and_waits_while_menu_is_open() -> None:
     import pygame
+    from test_flow import Service, live_session
 
-    from overload.game.app import menu_frame
+    from overload.game.app import complete_fuse_box, menu_frame, open_menu
+    from overload.game.flow import FALLBACK_LINE
 
     session, menu, reader, recording = live_setup()
+    session.campaign.world.unlocked.extend(["spark", "blink"])
     clear_encounter(session)
-    menu.show(in_fuse_box=True)
-    press_keys(reader, pygame.K_q, pygame.K_RETURN)
-    assert "deny" in menu_frame(session, menu, reader, recording, 16), "still routing power"
+    assert session.campaign.stage == "fuse_box" and not menu.open
+    assert complete_fuse_box(session, menu, recording) == (None, None)
+
+    # Opening and closing the menu during recharge never traps the player or denies Esc.
+    open_menu(menu, reader, in_fuse_box=True)
+    press_keys(reader, pygame.K_q, pygame.K_ESCAPE)
+    cues = menu_frame(session, menu, reader, recording, 16)
+    assert "deny" not in cues and "confirm" in cues
+    assert not menu.open and not reader._power_q
     assert session.campaign.stage == "fuse_box"
+
+    # Reopen the menu and let the 5.0 s hold complete: auto-confirm waits until menu closes.
+    open_menu(menu, reader, in_fuse_box=True)
     for _ in range(MIN_FUSE_TICKS):
         session.tick(IDLE)
-    press_keys(reader, pygame.K_q, pygame.K_RETURN)
+    assert session.ready()
+    assert complete_fuse_box(session, menu, recording) == (None, None)
+    assert session.campaign.stage == "fuse_box"
+
+    # Fuse and equip inside the menu after the hold finished: preserved in sector 2 checkpoint.
+    session.fuse("spark", "blink")
+    fused = owned_result(session.campaign.world.unlocked, "spark", "blink")
+    session.equip(0, fused)
+    press_keys(reader, pygame.K_q, pygame.K_RETURN)  # RESUME closes menu
     menu_frame(session, menu, reader, recording, 16)
+    assert not menu.open and not reader._power_q
+    decision, fallback = complete_fuse_box(session, menu, recording)
+    assert decision is not None and fallback is None
     assert session.campaign.stage == "encounter" and session.campaign.encounter == 2
-    assert not menu.open and not reader._power_q, "Q from the menu never fires a power"
+    assert session.campaign.checkpoint.player.slots[0] == fused
+
+    # Live fallback captures and returns the approved D7 line on auto-confirm.
+    live = live_session(Service())
+    clear_encounter(live)
+    live.selector.pending[2].future.result(timeout=5)
+    for _ in range(MIN_FUSE_TICKS):
+        live.tick(IDLE)
+    live_menu = Menu()
+    decision, fallback = complete_fuse_box(live, live_menu, recording)
+    assert decision is not None and decision.tactic == "lateral"
+    assert fallback == FALLBACK_LINE
 
 
 def test_keys_while_the_menu_is_closed_are_dropped() -> None:
@@ -325,31 +360,37 @@ def test_odds_always_add_up_to_a_hundred() -> None:
     assert percentages((0, 30, 10)) == [0, 75, 25]
 
 
-def test_tab_opens_the_hub_only_mid_sector_with_the_surge_up() -> None:
-    from overload.game.app import ticks_due, toggle_menu
+def test_tab_opens_and_closes_the_hub_mid_sector_and_in_a_fuse_box() -> None:
+    from overload.game.app import can_open_menu, ticks_due, toggle_menu
 
     assert ticks_due(True, False, 0.05, 0.5) == (0, 0.0)
     assert ticks_due(False, True, 0.0, 0.0)[0] == 1
     menu = Menu()
     fresh = Campaign(1)
+    assert can_open_menu(fresh)
     toggle_menu(menu, fresh)
     assert menu.open and not menu.in_fuse_box
     toggle_menu(menu, fresh)
     assert not menu.open
     fresh.world.player.charge = 0
     fresh.step(IDLE)
+    assert not can_open_menu(fresh)
     toggle_menu(menu, fresh)
     assert not menu.open, "not while down"
     boxed = fuse_box_with("spark")
-    menu.show(in_fuse_box=True)
+    assert can_open_menu(boxed.campaign)
     toggle_menu(menu, boxed.campaign)
-    assert menu.open, "Tab never closes the Fuse Box menu"
+    assert menu.open and menu.in_fuse_box, "Tab opens the Fuse Box menu freely"
+    toggle_menu(menu, boxed.campaign)
+    assert not menu.open, "Tab closes the Fuse Box menu freely"
+    boxed.campaign.stage = "ending"
+    assert not can_open_menu(boxed.campaign)
 
 
 def test_a_session_with_menu_rolls_replays_exactly() -> None:
     import pygame
 
-    from overload.game.app import menu_frame
+    from overload.game.app import complete_fuse_box, menu_frame
     from overload.session.replay import play
 
     session, menu, reader, recording = live_setup()
@@ -369,20 +410,25 @@ def test_a_session_with_menu_rolls_replays_exactly() -> None:
         for _ in range(MIN_FUSE_TICKS):
             session.tick(IDLE)
             recording.frames.append(IDLE)
-        menu.show(in_fuse_box=True)
 
+    # Sector 1 Fuse Box: auto-confirm directly without opening the menu.
     play_to_fuse_box(1)
-    press_keys(reader, pygame.K_RETURN)  # CONTINUE
-    menu_frame(session, menu, reader, recording, 16)
+    decision, _ = complete_fuse_box(session, menu, recording)
+    assert decision is not None and campaign.encounter == 2
+
+    # Sector 2 Fuse Box: open the menu optionally, fuse + equip, close, then auto-confirm.
     play_to_fuse_box(2)  # sector 2 steals Blink and Burst
     assert {"spark", "blink"} <= set(campaign.world.unlocked)
+    menu.show(in_fuse_box=True)
     keys = (pygame.K_s, pygame.K_s, pygame.K_SPACE)  # FUSE
     keys += (pygame.K_SPACE, pygame.K_d, pygame.K_SPACE, pygame.K_f, pygame.K_SPACE)
     press_keys(reader, *keys)  # spark + blink, roll, skip the spin
     menu_frame(session, menu, reader, recording, 16)
-    press_keys(reader, pygame.K_e, pygame.K_ESCAPE, pygame.K_ESCAPE, pygame.K_w, pygame.K_w)
-    press_keys(reader, pygame.K_RETURN)  # equip to E, back to the hub, CONTINUE
-    menu_frame(session, menu, reader, recording, 16)
+    press_keys(reader, pygame.K_e, pygame.K_ESCAPE, pygame.K_ESCAPE, pygame.K_ESCAPE)
+    menu_frame(session, menu, reader, recording, 16)  # equip to E, back to hub, close menu
+    assert not menu.open
+    decision, _ = complete_fuse_box(session, menu, recording)
+    assert decision is not None
     assert [entry[1] for entry in recording.menu] == ["fuse", "equip"]
     assert campaign.encounter == 3 and len(recording.starts) == 2
     for _ in range(30):
@@ -647,7 +693,7 @@ def test_fuse_terms_never_overlap_guaranteed_across_all_pairs() -> None:
 
 
 @pytest.mark.usefixtures("headless_pygame")
-def test_fuse_box_continue_pulses_and_respects_reduce_flash(monkeypatch) -> None:
+def test_fuse_box_hub_status_pulses_and_respects_reduce_flash(monkeypatch) -> None:
     import pygame
 
     from overload.game import menu_view
@@ -677,21 +723,19 @@ def test_fuse_box_continue_pulses_and_respects_reduce_flash(monkeypatch) -> None
 
     t0 = capture_tokens(0, reduce_flash=False, ready=True)
     t1 = capture_tokens(400, reduce_flash=False, ready=True)
-    assert t0["CONTINUE >>"] == "px.hazard.1" and t1["CONTINUE >>"] == "ui.text"
-    assert t0["SPACE ON CONTINUE: ENTER SECTOR 2"] == "px.hazard.1"
-    assert t1["SPACE ON CONTINUE: ENTER SECTOR 2"] == "ui.text"
+    assert t0["SUIT CHARGED"] == "px.hazard.1" and t1["SUIT CHARGED"] == "ui.text"
+    assert t0["RESUME TO ENTER SECTOR 2"] == "px.hazard.1"
+    assert t1["RESUME TO ENTER SECTOR 2"] == "ui.text"
+    assert t0["RESUME"] == "ui.text" and "CONTINUE" not in t0
 
     r0 = capture_tokens(0, reduce_flash=True, ready=True)
     r1 = capture_tokens(400, reduce_flash=True, ready=True)
-    assert r0["CONTINUE >>"] == r1["CONTINUE >>"] == "px.hazard.1"
-    assert (
-        r0["SPACE ON CONTINUE: ENTER SECTOR 2"]
-        == r1["SPACE ON CONTINUE: ENTER SECTOR 2"]
-        == "px.hazard.1"
-    )
+    assert r0["SUIT CHARGED"] == r1["SUIT CHARGED"] == "px.hazard.1"
+    assert r0["RESUME TO ENTER SECTOR 2"] == r1["RESUME TO ENTER SECTOR 2"] == "px.hazard.1"
 
     waiting = capture_tokens(0, reduce_flash=False, ready=False)
-    assert waiting["CONTINUE"] == "px.wall.4", "selected disabled CONTINUE stays legible"
+    assert waiting["RESUME"] == "ui.text", "RESUME stays active and pressable while recharging"
+    assert waiting["RECHARGING SUIT..."] == "px.blink.light"
     menu.hub = menu.hub_items.index("QUIT")
     menu.quitting = True
     quitting = capture_tokens(0, reduce_flash=False, ready=True)

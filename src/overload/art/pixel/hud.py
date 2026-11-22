@@ -139,6 +139,9 @@ class Hud:
     keys: tuple[str, str] = ("Q", "E")  # the power keys' short labels (game/keybinds.py)
     ready_flash: tuple[int, int] = (0, 0)  # ticks left to pulse a slot border when ready
     reduce_flash: bool = False  # steady bar highlight instead of rapid venting flicker
+    charging: bool = False  # Fuse Box suit recharge animation active
+    charge_progress: float = 0.0  # fraction filled inside the next empty battery cell
+    cell_flash: tuple[int, ...] = ()  # per-cell highlight ticks after a cell clicks in
 
 
 def draw(target: pygame.Surface, hud: Hud) -> None:
@@ -149,18 +152,51 @@ def draw(target: pygame.Surface, hud: Hud) -> None:
     pulse = (hud.tick // 8) % 2 == 0
 
     # Health: a battery glyph and one pip per point, red and pulsing when low.
-    body = "hostile.danger" if low and (hud.reduce_flash or pulse) else "player.core"
+    if hud.charging:
+        if hud.reduce_flash:
+            body = "power.spark"
+        else:
+            body = "power.spark" if (hud.tick // 16) % 2 == 0 else "power.blink"
+    else:
+        body = "hostile.danger" if low and (hud.reduce_flash or pulse) else "player.core"
     target.fill(rgb("px.outline"), (3, 3, 7, 11))
     pygame.draw.rect(target, rgb(body), (4, 5, 5, 8), 1)
     target.fill(rgb(body), (5, 4, 3, 1))
+    overcharge = hud.charging and hud.charge >= hud.max_charge
+    wave = (hud.tick // 8) % (hud.max_charge + 3) if overcharge else -1
     for i in range(hud.max_charge):
         x = 12 + i * 6
+        flash = hud.cell_flash[i] if i < len(hud.cell_flash) else 0
         if i < hud.charge:
             _outlined_rect(target, (x, 5, 5, 7), "hostile.danger" if low else "player.core")
             target.fill(rgb("px.hostile.3" if low else "player.halo"), (x, 10, 5, 2))
+            if flash > 0:
+                if hud.reduce_flash:
+                    pygame.draw.rect(target, rgb("power.spark"), (x - 1, 4, 7, 9), 1)
+                    target.fill(rgb("px.spark.light"), (x, 5, 5, 2))
+                else:
+                    rim = "power.spark" if flash > 8 else "power.blink"
+                    glint = "px.spark.light" if flash > 8 else "px.blink.light"
+                    pygame.draw.rect(target, rgb(rim), (x - 1, 4, 7, 9), 1)
+                    target.fill(rgb(glint), (x, 5, 5, 2))
+            elif overcharge:
+                if hud.reduce_flash:
+                    target.fill(rgb("px.spark.light"), (x, 5, 5, 1))
+                elif i == wave:
+                    pygame.draw.rect(target, rgb("power.spark"), (x - 1, 4, 7, 9), 1)
+                    target.fill(rgb("px.spark.light"), (x, 5, 5, 3))
+                elif i == wave - 1:
+                    target.fill(rgb("px.blink.light"), (x, 5, 5, 2))
         else:
             target.fill(rgb("px.outline"), (x - 1, 4, 7, 9))
             pygame.draw.rect(target, rgb("px.floor.3"), (x, 5, 5, 7), 1)
+            if hud.charging and i == hud.charge:
+                frac = max(0.0, min(1.0, hud.charge_progress))
+                fill_h = max(1, round(5 * frac))
+                rim = "power.spark" if frac >= 0.6 else "power.blink"
+                pygame.draw.rect(target, rgb(rim), (x, 5, 5, 7), 1)
+                target.fill(rgb("power.blink"), (x + 1, 11 - fill_h, 3, fill_h))
+                target.fill(rgb("power.spark"), (x + 1, 11 - fill_h, 3, 1))
     width = hud.max_charge * 6 - 1
     target.fill(rgb("px.outline"), (11, 14, width + 2, 3))
     target.fill(rgb("power.blink"), (12, 15, round(width * hud.dodge_ready), 1))
