@@ -20,9 +20,10 @@ from overload.game import keybinds
 from overload.game.keybinds import ACTIONS, Keybinds, RebindPage
 from overload.game.settings import ROWS as SETTING_ROWS
 from overload.game.settings import Settings, SettingsPage
-from overload.sim.difficulty import DIFFICULTIES
+from overload.sim.difficulty import DIFFICULTIES, PRESETS
 
 ITEMS = ("START", "SETTINGS", "CONTROLS", "QUIT")
+TUNING_IDS = {name: preset.tuning_id().upper() for name, preset in PRESETS.items()}
 # One line on what each preset changes (sim/difficulty.py). Medium is the formal playtest's.
 ABOUT = {
     "easy": "MORE CELLS, SOFTER BOTS",
@@ -304,7 +305,6 @@ class TitleScreen:
             self._settings(screen)
         else:
             self._menu(screen)
-        hud.text(screen, f"OVERLOAD {__version__}", (4, h - 3), "px.floor.3", "bottomleft")
 
     def _beat(self) -> float:
         """1 on the music's beat, falling to 0 before the next."""
@@ -339,7 +339,9 @@ class TitleScreen:
         name = self.difficulty.upper()
         hud.text(screen, f"< {name} >", (left - 2, y + 10), "ui.text")
         hud.text(screen, ABOUT[self.difficulty], (left - 2, y + 20), "px.floor.3")
-        hud.text(screen, "A/D DIFFICULTY  W/S ENTER", (w - 4, h - 3), "px.floor.3", "bottomright")
+        stamp = f"OVERLOAD {__version__} {TUNING_IDS[self.difficulty]}"
+        hud.text(screen, stamp, (4, h - 3), "px.floor.3", "bottomleft")
+        hud.text(screen, "A/D DIFF  W/S ENTER", (w - 4, h - 3), "px.floor.3", "bottomright")
 
     def _standoff(self, screen: pygame.Surface) -> None:
         """Right of the menu: the Surge squares up to a looming chassis, red eyes lit on

@@ -249,18 +249,21 @@ def boot_sting(world) -> str | None:
 def stems_for(stage: str | None, encounter: int, outcome: str) -> set[str]:
     """Which stems play: the Fuse Box loop between encounters, HUM and PULSE in a fight,
     ARC from encounter 2 and LEAD in encounter 3. Practice plays like encounter 1. While
-    the Surge is down only the HUM is left, and the ending keeps the full theme. The title
-    screen plays its own loop (MU-05), which hands over to the first sector on a bar line."""
+    the Surge is down only the HUM is left. On the victory ending PULSE drops out so the
+    theme resolves over HUM, ARC and LEAD. The title screen plays its own loop (MU-05),
+    which hands over to the first sector on a bar line."""
     if stage == "title":
         return {"title"}
     if stage == "fuse_box":
         return {"fuse_box"}
     if outcome == "down":
         return {"hum"}
+    if stage == "ending":
+        return {"hum", "arc", "lead"}
     layers = {"hum", "pulse"}
-    if encounter >= 2 or stage == "ending":
+    if encounter >= 2:
         layers.add("arc")
-    if encounter >= 3 or stage == "ending":
+    if encounter >= 3:
         layers.add("lead")
     return layers
 

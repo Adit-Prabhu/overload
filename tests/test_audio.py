@@ -65,6 +65,8 @@ def test_music_layers_follow_the_campaign() -> None:
     assert stems_for("encounter", 2, "playing") == {"hum", "pulse", "arc"}
     assert stems_for("encounter", 3, "playing") == {"hum", "pulse", "arc", "lead"}
     assert stems_for("encounter", 3, "down") == {"hum"}
+    assert stems_for("ending", 3, "clear") == {"hum", "arc", "lead"}
+    assert stems_for("ending", 3, "playing") == {"hum", "arc", "lead"}
     assert stems_for(None, 1, "playing") == {"hum", "pulse"}  # practice
 
 

@@ -333,3 +333,45 @@ def test_the_menu_text_stays_clear_of_the_surge(display) -> None:
     surge_left = display.get_width() - SURGE_FROM_RIGHT - surge.get_width() // 2
     for line in (*ABOUT.values(), "< NIGHTMARE >", "DIFFICULTY", *ITEMS):
         assert 20 + hud.pixel_font().size(line)[0] < surge_left - 2, line
+
+
+def test_menu_stamp_tracks_difficulty_tuning_id_and_stays_clear_of_modals(display) -> None:
+    from overload import __version__
+    from overload.art.palette import rgb
+    from overload.art.pixel import hud
+    from overload.sim.difficulty import DIFFICULTIES, PRESETS
+
+    drawn: list[tuple[str, pygame.Rect]] = []
+    original = hud.text
+
+    def record(target, message, pos, *args, **kwargs):
+        rect = original(target, message, pos, *args, **kwargs)
+        drawn.append((message, rect))
+        return rect
+
+    stamps = set()
+    hud.text = record
+    try:
+        for difficulty in DIFFICULTIES:
+            drawn.clear()
+            title = TitleScreen(difficulty=difficulty)
+            title.draw(display)
+            expected = f"OVERLOAD {__version__} {PRESETS[difficulty].tuning_id().upper()}"
+            stamps.add(expected)
+            stamp_rect = next(rect for msg, rect in drawn if msg == expected)
+            hint_rect = next(rect for msg, rect in drawn if "ENTER" in msg)
+            assert stamp_rect.right < hint_rect.left - 4, (difficulty, stamp_rect, hint_rect)
+        assert len(stamps) == len(DIFFICULTIES)
+
+        for page in ("controls", "settings"):
+            drawn.clear()
+            title = TitleScreen()
+            title.page = page
+            title.draw(display)
+            assert not any(msg.startswith("OVERLOAD ") for msg, _ in drawn), page
+            # Bottom modal border at y = 144 - 10 - 1 = 133 stays uninterrupted.
+            border = rgb("px.wall.2")
+            for x in range(18, 120):
+                assert display.get_at((x, 133))[:3] == border, (page, x)
+    finally:
+        hud.text = original
