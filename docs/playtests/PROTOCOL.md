@@ -39,6 +39,8 @@ If additional participants join (`P3`, `P4`, ...), continue alternating starting
 ## 4. Blind Launch Commands
 Keep the terminal out of the participant's sight and refer to the two sessions only as **Run 1** and **Run 2**. Never tell the participant which run is `live` and which is `fixed` until all post-run questions are answered. Both conditions hold the Fuse Box for the same 5 s window (`MIN_FUSE_TICKS`) and use identical arenas, moves, stats, unlocks, and protocol boot cards.
 
+**One session per trace file:** at the ending screen, exit the process with `Esc` or the window close button rather than pressing `Space` or `Enter` to return to the title screen, because `--trace` appends to the target path. If you ever restart a run, always pass a fresh `--trace` filename (for example `logs/p1-live-r2.jsonl`) so two sessions are never concatenated into one file.
+
 ### Participant P1 (seed `101`, `live` first, then `fixed` schedule `A`)
 ```sh
 # Run 1 (blind to participant)

@@ -26,10 +26,11 @@ from typing import Any
 TICK_RATE = 60
 MIN_FUSE_TICKS = 300  # 5.0 s hold at 60 Hz, matching src/overload/game/flow.py
 RARITIES = ("rare", "epic", "legendary")
+SESSION_META_FIELDS = ("condition", "tuning_id", "arena_id", "config_hash", "seed", "session_id")
 
 
 class TraceError(ValueError):
-    """Raised when a trace file is missing, unreadable, empty, or malformed."""
+    """Raised when a trace file is missing, unreadable, empty, malformed, or multi-session."""
 
 
 def percentile(values: list[float] | list[int], q: float) -> float | None:
@@ -88,6 +89,35 @@ def _first_field(rows: list[dict[str, Any]], key: str) -> Any:
 
 def summarize_trace(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Compute per-trace metadata, decisions, and aggregates strictly from raw JSONL lines."""
+    seen_meta: dict[str, Any] = {}
+    encounter_1_starts = 0
+    session_end_count = 0
+
+    for row in rows:
+        for field in SESSION_META_FIELDS:
+            value = row.get(field)
+            if value is not None:
+                if field in seen_meta and seen_meta[field] != value:
+                    raise TraceError(
+                        f"{path}: multiple sessions or conflicting metadata in one trace file "
+                        f"({field}: {seen_meta[field]!r} vs {value!r})"
+                    )
+                seen_meta[field] = value
+        event = row["event"]
+        if event == "encounter_start" and _is_int(row.get("encounter")) and row["encounter"] == 1:
+            encounter_1_starts += 1
+            if encounter_1_starts > 1:
+                raise TraceError(
+                    f"{path}: multiple sessions detected in one trace file "
+                    "(repeated encounter 1 start)"
+                )
+        elif event == "session_end":
+            session_end_count += 1
+            if session_end_count > 1:
+                raise TraceError(
+                    f"{path}: multiple sessions detected in one trace file (repeated session_end)"
+                )
+
     condition = _first_field(rows, "condition")
     tuning_id = _first_field(rows, "tuning_id")
     arena_id = _first_field(rows, "arena_id")
@@ -103,7 +133,10 @@ def summarize_trace(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
     end_ticks: dict[int, int] = {}
     retries_by_sector: dict[int, int] = {}
     fusion_rolls: dict[str, int] = {rarity: 0 for rarity in RARITIES}
+    pending_sector_fusions: list[str] = []
+    fusion_rolled_back_rolls = 0
     fusion_failed_attempts = 0
+    in_encounter = False
     schedule: str | None = None
     has_ending = False
     has_session_end = False
@@ -126,7 +159,9 @@ def summarize_trace(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
                 schedule = reason.removeprefix("schedule_")
             if _is_int(encounter) and encounter >= 2:
                 raw_evidence = row.get("evidence_ids")
-                evidence_ids = list(raw_evidence) if isinstance(raw_evidence, list) else []
+                evidence_ids = (
+                    [str(item) for item in raw_evidence] if isinstance(raw_evidence, list) else []
+                )
                 decisions.append(
                     {
                         "encounter": encounter,
@@ -145,6 +180,7 @@ def summarize_trace(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
                 )
 
         elif event == "encounter_start":
+            in_encounter = True
             if _is_int(encounter):
                 entered_encounters.add(encounter)
                 retries_by_sector.setdefault(encounter, 0)
@@ -156,6 +192,9 @@ def summarize_trace(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
                     extra_wait[encounter] = wait
 
         elif event == "retry":
+            if pending_sector_fusions:
+                fusion_rolled_back_rolls += len(pending_sector_fusions)
+                pending_sector_fusions.clear()
             if _is_int(encounter):
                 entered_encounters.add(encounter)
                 retry_count = row.get("retries")
@@ -165,6 +204,10 @@ def summarize_trace(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
                     )
 
         elif event == "encounter_end":
+            in_encounter = False
+            for rarity in pending_sector_fusions:
+                fusion_rolls[rarity] += 1
+            pending_sector_fusions.clear()
             if _is_int(encounter):
                 entered_encounters.add(encounter)
                 ticks = row.get("ticks")
@@ -180,7 +223,10 @@ def summarize_trace(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
             if row.get("result") == "fused":
                 rarity = row.get("rarity")
                 if isinstance(rarity, str) and rarity in fusion_rolls:
-                    fusion_rolls[rarity] += 1
+                    if in_encounter:
+                        pending_sector_fusions.append(rarity)
+                    else:
+                        fusion_rolls[rarity] += 1
             else:
                 fusion_failed_attempts += 1
 
@@ -209,13 +255,17 @@ def summarize_trace(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
                             continue
                         retries_by_sector[enc_num] = max(retries_by_sector.get(enc_num, 0), value)
 
+    for rarity in pending_sector_fusions:
+        fusion_rolls[rarity] += 1
+    pending_sector_fusions.clear()
+
     completed = has_ending and has_session_end
     stage = "ending" if completed else "incomplete"
     if completed:
         incomplete_reason = None
     elif has_ending and not has_session_end:
         incomplete_reason = "missing_session_end"
-    elif has_session_end and session_end_stage:
+    elif has_session_end and session_end_stage and session_end_stage != "ending":
         incomplete_reason = f"stopped_at_{session_end_stage}"
     elif not has_ending and not has_session_end:
         incomplete_reason = "missing_ending_and_session_end"
@@ -313,6 +363,7 @@ def summarize_trace(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
         "total_encounter_seconds": total_encounter_seconds,
         "fusion_rolls": fusion_rolls,
         "total_fusion_rolls": sum(fusion_rolls.values()),
+        "fusion_rolled_back_rolls": fusion_rolled_back_rolls,
         "fusion_failed_attempts": fusion_failed_attempts,
     }
 
@@ -365,13 +416,25 @@ def build_paired_comparisons(summaries: list[dict[str, Any]]) -> list[dict[str, 
                     f"({trace['incomplete_reason']})."
                 )
 
-        arena_ids = sorted({t["arena_id"] for t in group if t["arena_id"] is not None})
+        missing_arena = [str(t["file"]) for t in group if t["arena_id"] is None]
+        if missing_arena:
+            confounds.append(
+                f"CONFOUND: missing arena_id in paired trace(s) ({', '.join(missing_arena)})."
+            )
+        arena_ids = sorted({str(t["arena_id"]) for t in group if t["arena_id"] is not None})
         if len(arena_ids) > 1:
             confounds.append(
                 f"CONFOUND: arena_id mismatch across paired traces ({', '.join(arena_ids)})."
             )
 
-        config_hashes = sorted({t["config_hash"] for t in group if t["config_hash"] is not None})
+        missing_config = [str(t["file"]) for t in group if t["config_hash"] is None]
+        if missing_config:
+            confounds.append(
+                f"CONFOUND: missing config_hash in paired trace(s) ({', '.join(missing_config)})."
+            )
+        config_hashes = sorted(
+            {str(t["config_hash"]) for t in group if t["config_hash"] is not None}
+        )
         if len(config_hashes) > 1:
             confounds.append(
                 f"CONFOUND: config_hash mismatch across paired traces ({', '.join(config_hashes)})."
@@ -418,6 +481,7 @@ def build_paired_comparisons(summaries: list[dict[str, Any]]) -> list[dict[str, 
                         "total_encounter_seconds": item["total_encounter_seconds"],
                         "fusion_rolls": item["fusion_rolls"],
                         "total_fusion_rolls": item["total_fusion_rolls"],
+                        "fusion_rolled_back_rolls": item["fusion_rolled_back_rolls"],
                         "live_valid_count": item["live_valid_count"],
                         "fallback_count": item["fallback_count"],
                         "fallback_reasons": item["fallback_reasons"],
@@ -438,14 +502,19 @@ def compare_traces(paths: list[Path]) -> dict[str, Any]:
     summaries = [summarize_trace(path, load_trace(path)) for path in paths]
 
     all_live_decisions = [d for s in summaries if s["condition"] == "live" for d in s["decisions"]]
-    valid_live = [d for d in all_live_decisions if d["source"] == "live" and d["reason"] is None]
+    live_source_decisions = [d for d in all_live_decisions if d["source"] == "live"]
+    valid_live = [d for d in live_source_decisions if d["reason"] is None]
+    fixture_valid = [
+        d for d in all_live_decisions if d["source"] == "fixture" and d["reason"] is None
+    ]
     live_latencies = [d["latency_ms"] for d in valid_live if _is_number(d["latency_ms"])]
     live_fallbacks = [d for d in all_live_decisions if d["source"] == "fallback"]
-    live_costs = [float(d["cost_usd"]) for d in all_live_decisions if _is_number(d["cost_usd"])]
+    live_costs = [float(d["cost_usd"]) for d in live_source_decisions if _is_number(d["cost_usd"])]
 
     overall_live = {
         "decision_count": len(all_live_decisions),
         "live_valid_count": len(valid_live),
+        "fixture_valid_count": len(fixture_valid),
         "fallback_count": len(live_fallbacks),
         "fallback_reasons": dict(
             sorted(Counter((d["reason"] or "unknown") for d in live_fallbacks).items())
@@ -454,10 +523,10 @@ def compare_traces(paths: list[Path]) -> dict[str, Any]:
         "latency_p95_ms": percentile(live_latencies, 0.95),
         "latency_mean_ms": round(statistics.mean(live_latencies), 1) if live_latencies else None,
         "total_input_tokens": sum(
-            d["input_tokens"] for d in all_live_decisions if _is_int(d["input_tokens"])
+            d["input_tokens"] for d in live_source_decisions if _is_int(d["input_tokens"])
         ),
         "total_output_tokens": sum(
-            d["output_tokens"] for d in all_live_decisions if _is_int(d["output_tokens"])
+            d["output_tokens"] for d in live_source_decisions if _is_int(d["output_tokens"])
         ),
         "total_cost_usd": round(sum(live_costs), 6) if live_costs else None,
     }
@@ -500,10 +569,11 @@ def _fmt_encounters(encounters: dict[str, dict[str, Any]], total_s: float, total
     return f"{parts}, total {total_s:.2f}s ({total_t}t)"
 
 
-def _fmt_fusions(rolls: dict[str, int], total: int) -> str:
-    return (
-        f"{total} (rare: {rolls['rare']}, epic: {rolls['epic']}, legendary: {rolls['legendary']})"
-    )
+def _fmt_fusions(rolls: dict[str, int], total: int, rolled_back: int = 0) -> str:
+    detail = f"rare: {rolls['rare']}, epic: {rolls['epic']}, legendary: {rolls['legendary']}"
+    if rolled_back > 0:
+        detail = f"{detail}, rolled back on retry: {rolled_back}"
+    return f"{total} ({detail})"
 
 
 def _fmt_fallbacks(count: int, reasons: dict[str, int]) -> str:
@@ -568,7 +638,8 @@ def format_markdown(report: dict[str, Any]) -> str:
                 ]
             )
             for d in summary["decisions"]:
-                evidence = ", ".join(d["evidence_ids"]) if d["evidence_ids"] else "none"
+                raw_ev = d["evidence_ids"]
+                evidence = ", ".join(str(item) for item in raw_ev) if raw_ev else "none"
                 lines.append(
                     f"| {d['encounter']} | `{_fmt_opt(d['tactic'])}` | "
                     f"`{_fmt_opt(d['source'])}` | `{_fmt_opt(d['reason'], 'none')}` | "
@@ -590,6 +661,11 @@ def format_markdown(report: dict[str, Any]) -> str:
             summary["total_encounter_seconds"],
             summary["total_encounter_ticks"],
         )
+        fusions_text = _fmt_fusions(
+            summary["fusion_rolls"],
+            summary["total_fusion_rolls"],
+            summary["fusion_rolled_back_rolls"],
+        )
         lines.extend(
             [
                 "",
@@ -609,8 +685,7 @@ def format_markdown(report: dict[str, Any]) -> str:
                 f"| Reported cost | {_fmt_cost(summary['total_cost_usd'])} |",
                 f"| Retries | {retries_text} |",
                 f"| Encounter durations (60 Hz) | {encounters_text} |",
-                f"| Fusion rolls | "
-                f"{_fmt_fusions(summary['fusion_rolls'], summary['total_fusion_rolls'])} |",
+                f"| Fusion rolls | {fusions_text} |",
                 "",
             ]
         )
@@ -630,6 +705,8 @@ def format_markdown(report: dict[str, Any]) -> str:
                 "| --- | --- |",
                 f"| Adaptation decisions (live condition) | {overall['decision_count']} |",
                 f"| Valid live decisions | {overall['live_valid_count']} |",
+                f"| Fixture decisions (excluded from live metrics) | "
+                f"{overall['fixture_valid_count']} |",
                 f"| Fallbacks | "
                 f"{_fmt_fallbacks(overall['fallback_count'], overall['fallback_reasons'])} |",
                 f"| Latency (valid live, nearest rank) | {overall_latency} |",
@@ -663,6 +740,11 @@ def format_markdown(report: dict[str, Any]) -> str:
                     item["total_encounter_seconds"],
                     sum(e["ticks"] for e in item["encounters"].values()),
                 )
+                fusions_cell = _fmt_fusions(
+                    item["fusion_rolls"],
+                    item["total_fusion_rolls"],
+                    item["fusion_rolled_back_rolls"],
+                )
                 live_fb = (
                     f"{item['live_valid_count']} / "
                     f"{_fmt_fallbacks(item['fallback_count'], item['fallback_reasons'])}"
@@ -671,9 +753,7 @@ def format_markdown(report: dict[str, Any]) -> str:
                     f"| `{cond}` | `{item['file']}` | `{item['stage']}` | "
                     f"{_fmt_protocols(item['protocols'])} | "
                     f"{_fmt_retries(item['total_retries'], item['retries_by_sector'])} | "
-                    f"{enc_text} | "
-                    f"{_fmt_fusions(item['fusion_rolls'], item['total_fusion_rolls'])} | "
-                    f"{live_fb} |"
+                    f"{enc_text} | {fusions_cell} | {live_fb} |"
                 )
 
             lines.append("")
@@ -744,8 +824,12 @@ def main(argv: list[str] | None = None) -> int:
         else format_markdown(report)
     )
     if args.out is not None:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(rendered, encoding="utf-8")
+        try:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(rendered, encoding="utf-8")
+        except OSError as exc:
+            print(f"Error: unable to write output file {args.out} ({exc})", file=sys.stderr)
+            return 2
         print(f"wrote {args.out}")
     else:
         sys.stdout.write(rendered)

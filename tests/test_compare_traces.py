@@ -223,9 +223,25 @@ def test_live_and_fixed_real_traces_paired_comparison(tmp_path: Path) -> None:
     assert sum(live_summary["fusion_rolls"].values()) == 3
     assert live_summary["fusion_failed_attempts"] == 1
     assert set(live_summary["encounters"]) == {"1", "2", "3"}
-    for enc_info in live_summary["encounters"].values():
+    live_enc = live_summary["encounters"]
+    assert live_enc["1"]["ticks"] == live_enc["1"]["world_tick"]
+    assert live_enc["2"]["ticks"] == live_enc["2"]["world_tick"] - (
+        live_enc["1"]["world_tick"] + MIN_FUSE_TICKS + 30
+    )
+    assert live_enc["3"]["ticks"] == live_enc["3"]["world_tick"] - (
+        live_enc["2"]["world_tick"] + MIN_FUSE_TICKS + 30
+    )
+    for enc_info in live_enc.values():
         assert enc_info["ticks"] > 0
         assert enc_info["seconds"] == round(enc_info["ticks"] / 60, 2)
+
+    fixed_enc = fixed_summary["encounters"]
+    assert fixed_enc["2"]["ticks"] == fixed_enc["2"]["world_tick"] - (
+        fixed_enc["1"]["world_tick"] + MIN_FUSE_TICKS + 15
+    )
+    assert fixed_enc["3"]["ticks"] == fixed_enc["3"]["world_tick"] - (
+        fixed_enc["2"]["world_tick"] + MIN_FUSE_TICKS + 15
+    )
 
     assert fixed_summary["condition"] == "fixed"
     assert fixed_summary["schedule"] == "B"
@@ -324,8 +340,8 @@ def test_fixture_source_is_kept_separate_from_live_and_flagged(tmp_path: Path) -
                     "evidence_ids": ["e1.far_share"],
                     "source": "fixture",
                     "resolved_model": "fixture",
-                    "usage": {"input_tokens": 0, "output_tokens": 0},
-                    "cost_usd_estimate": 0.0,
+                    "usage": {"input_tokens": 410, "output_tokens": 22},
+                    "cost_usd_estimate": 0.0012,
                 },
             ),
             3: (
@@ -336,8 +352,8 @@ def test_fixture_source_is_kept_separate_from_live_and_flagged(tmp_path: Path) -
                     "evidence_ids": ["e2.near_share"],
                     "source": "fixture",
                     "resolved_model": "fixture",
-                    "usage": {"input_tokens": 0, "output_tokens": 0},
-                    "cost_usd_estimate": 0.0,
+                    "usage": {"input_tokens": 520, "output_tokens": 28},
+                    "cost_usd_estimate": 0.0015,
                 },
             ),
         }
@@ -354,13 +370,304 @@ def test_fixture_source_is_kept_separate_from_live_and_flagged(tmp_path: Path) -
     assert fixture_summary["live_valid_count"] == 0
     assert fixture_summary["fixture_valid_count"] == 2
     assert fixture_summary["latency_p50_ms"] is None
-    assert fixture_summary["total_cost_usd"] == 0.0
+
+    overall = report["overall_live"]
+    assert overall["live_valid_count"] == 0
+    assert overall["fixture_valid_count"] == 2
+    assert overall["total_input_tokens"] == 0
+    assert overall["total_output_tokens"] == 0
+    assert overall["total_cost_usd"] is None
 
     paired = report["paired_comparisons"][0]
     assert any("used fixture provider" in msg for msg in paired["confounds"])
 
     md = compare_traces.format_markdown(report)
-    assert "USD 0.000000" in md
+    assert "| Fixture decisions (excluded from live metrics) | 2 |" in md
+
+
+def test_zero_reported_cost_is_distinguished_from_none(tmp_path: Path) -> None:
+    live_path = tmp_path / "zero-cost-live.jsonl"
+    selector, client = _live_selector(
+        {
+            2: (
+                200,
+                {
+                    "status": "ok",
+                    "tactic_id": "pressure",
+                    "evidence_ids": ["e1.far_share"],
+                    "source": "live",
+                    "resolved_model": "gemini-3.5-flash-lite",
+                    "usage": {"input_tokens": 100, "output_tokens": 10},
+                    "cost_usd_estimate": 0.0,
+                },
+            ),
+            3: (
+                200,
+                {
+                    "status": "ok",
+                    "tactic_id": "spacing",
+                    "evidence_ids": ["e2.near_share"],
+                    "source": "live",
+                    "resolved_model": "gemini-3.5-flash-lite",
+                    "usage": {"input_tokens": 120, "output_tokens": 12},
+                    "cost_usd_estimate": 0.0,
+                },
+            ),
+        }
+    )
+    try:
+        _generate_trace(live_path, seed=304, selector=selector, session_id=selector.session_id)
+    finally:
+        client.close()
+
+    report = compare_traces.compare_traces([live_path])
+    assert report["traces"][0]["total_cost_usd"] == 0.0
+    assert report["overall_live"]["total_cost_usd"] == 0.0
+    assert "USD 0.000000" in compare_traces.format_markdown(report)
+
+
+def test_mid_sector_fusion_rolled_back_on_retry_is_not_double_counted(tmp_path: Path) -> None:
+    trace_path = tmp_path / "retry-fusion.jsonl"
+    campaign = Campaign(707, PRESETS["medium"])
+    writer = TraceWriter(
+        trace_path,
+        condition="fixed",
+        tuning_id=campaign.tuning.tuning_id(),
+        arena_id=arena_id(campaign.arena),
+    )
+    session = Session(campaign, FixedSchedule("A"), writer, None)
+
+    for base in ("spark", "blink"):
+        session.campaign.world.unlocked.append(base)
+        session.campaign.world.bank[base] = 2
+    assert session.fuse("spark", "blink") == "fused"
+
+    # Retry rolls back the mid-sector fusion, then fuse again after retry and clear sector 1.
+    _trigger_retry(session)
+    for base in ("spark", "blink"):
+        if base not in session.campaign.world.unlocked:
+            session.campaign.world.unlocked.append(base)
+        session.campaign.world.bank[base] = 2
+    assert session.fuse("spark", "blink") == "fused"
+    clear_encounter(session)
+
+    # Fuse in the Fuse Box (committed to sector 2 checkpoint), then retry sector 2.
+    _wait_in_fuse_box(session, MIN_FUSE_TICKS)
+    for base in ("spark", "burst"):
+        if base not in session.campaign.world.unlocked:
+            session.campaign.world.unlocked.append(base)
+        session.campaign.world.bank[base] = 2
+    assert session.fuse("spark", "burst") == "fused"
+    assert session.confirm() is not None
+
+    _trigger_retry(session)
+    clear_encounter(session)
+    _wait_in_fuse_box(session, MIN_FUSE_TICKS)
+    assert session.confirm() is not None
+    clear_encounter(session)
+    session.close()
+
+    report = compare_traces.compare_traces([trace_path])
+    summary = report["traces"][0]
+    assert summary["fusion_rolled_back_rolls"] == 1
+    assert summary["total_fusion_rolls"] == 2
+    assert sum(summary["fusion_rolls"].values()) == 2
+    assert "rolled back on retry: 1" in compare_traces.format_markdown(report)
+
+
+def test_multi_session_concatenated_trace_is_rejected(tmp_path: Path, capsys) -> None:
+    concat_path = tmp_path / "concat.jsonl"
+    _generate_trace(concat_path, seed=801, selector=FixedSchedule("A"), session_id=None)
+    _generate_trace(concat_path, seed=801, selector=FixedSchedule("A"), session_id=None)
+
+    assert compare_traces.main([str(concat_path)]) == 2
+    assert "multiple sessions" in capsys.readouterr().err
+
+    conflict_path = tmp_path / "conflict.jsonl"
+    conflict_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "event": "encounter_start",
+                        "encounter": 1,
+                        "condition": "live",
+                        "tuning_id": "t1",
+                        "arena_id": "a1",
+                        "config_hash": "c1",
+                        "seed": 1,
+                        "session_id": "s1",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "event": "decision",
+                        "encounter": 2,
+                        "condition": "live",
+                        "tuning_id": "t1",
+                        "arena_id": "a1",
+                        "config_hash": "c1",
+                        "session_id": "s2",
+                        "tactic": "pressure",
+                        "source": "live",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert compare_traces.main([str(conflict_path)]) == 2
+    assert "conflicting metadata" in capsys.readouterr().err
+
+
+def test_defensive_hardening_edge_cases(tmp_path: Path, capsys) -> None:
+    # session_end with stage="ending" but no "ending" event reports missing_ending.
+    no_ending = tmp_path / "no-ending.jsonl"
+    no_ending.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "event": "encounter_start",
+                        "encounter": 1,
+                        "condition": "fixed",
+                        "tuning_id": "t1",
+                        "arena_id": "a1",
+                        "config_hash": "c1",
+                        "seed": 901,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "event": "session_end",
+                        "stage": "ending",
+                        "encounter": 3,
+                        "retries": {"1": 0, "2": 0, "3": 0},
+                        "condition": "fixed",
+                        "tuning_id": "t1",
+                        "arena_id": "a1",
+                        "config_hash": "c1",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    res_no_ending = compare_traces.compare_traces([no_ending])["traces"][0]
+    assert res_no_ending["stage"] == "incomplete"
+    assert res_no_ending["incomplete_reason"] == "missing_ending"
+
+    # Missing arena_id/config_hash in paired traces are flagged, and non-string evidence_ids work.
+    live_sparse = tmp_path / "sparse-live.jsonl"
+    fixed_sparse = tmp_path / "sparse-fixed.jsonl"
+    live_sparse.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "event": "encounter_start",
+                        "encounter": 1,
+                        "protocol": "lateral",
+                        "seed": 902,
+                        "condition": "live",
+                        "tuning_id": "t9",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "event": "decision",
+                        "encounter": 2,
+                        "tactic": "pressure",
+                        "source": "live",
+                        "reason": None,
+                        "evidence_ids": [123, None, "e1.far_share"],
+                        "condition": "live",
+                        "tuning_id": "t9",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "event": "decision",
+                        "encounter": 3,
+                        "tactic": "spacing",
+                        "source": "live",
+                        "reason": None,
+                        "evidence_ids": ["e2.near_share"],
+                        "condition": "live",
+                        "tuning_id": "t9",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "event": "ending",
+                        "protocols": {"1": "lateral", "2": "pressure", "3": "spacing"},
+                        "condition": "live",
+                        "tuning_id": "t9",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "event": "session_end",
+                        "stage": "ending",
+                        "encounter": 3,
+                        "retries": {"1": 0, "2": 0, "3": 0},
+                        "condition": "live",
+                        "tuning_id": "t9",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fixed_sparse.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "event": "encounter_start",
+                        "encounter": 1,
+                        "protocol": "lateral",
+                        "seed": 902,
+                        "condition": "fixed",
+                        "tuning_id": "t9",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "event": "ending",
+                        "protocols": {"1": "lateral", "2": "pressure", "3": "spacing"},
+                        "condition": "fixed",
+                        "tuning_id": "t9",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "event": "session_end",
+                        "stage": "ending",
+                        "encounter": 3,
+                        "retries": {"1": 0, "2": 0, "3": 0},
+                        "condition": "fixed",
+                        "tuning_id": "t9",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sparse_report = compare_traces.compare_traces([live_sparse, fixed_sparse])
+    confounds = sparse_report["paired_comparisons"][0]["confounds"]
+    assert any("missing arena_id" in msg for msg in confounds)
+    assert any("missing config_hash" in msg for msg in confounds)
+    md = compare_traces.format_markdown(sparse_report)
+    assert "123, None, e1.far_share" in md
+
+    # Unwritable --out target (an existing directory) returns exit code 2 cleanly.
+    assert compare_traces.main([str(no_ending), "--out", str(tmp_path)]) == 2
+    assert "unable to write output file" in capsys.readouterr().err
 
 
 def test_incomplete_and_truncated_traces_reported_honestly(tmp_path: Path) -> None:

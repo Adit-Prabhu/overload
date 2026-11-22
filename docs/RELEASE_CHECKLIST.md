@@ -51,7 +51,7 @@ uv run overload --replay logs/release-check.json
 - [ ] Playing with `--condition off` and `--mute` works cleanly end to end.
 
 ## 3. Worker Version and Live Evaluation Evidence
-Confirm the deployed Cloudflare Worker matches `main` (`config/tactics.json` v3, `config/evidence.json` v4, and OAuth warm-up):
+Confirm the deployed Cloudflare Worker matches `main` (`config/tactics.json` v3, `config/evidence.json` v4, and `POST /sessions/:id/warmup` OAuth warm-up inside `RivalSession`):
 
 ```sh
 cd worker
@@ -97,6 +97,9 @@ git status --short
 ## 6. Gold Candidate Tag and Release Workflow (Dec 5, Adit Only)
 Once all checks above are green on `main` and `FINAL_*` documents plus release notes are merged:
 
+1. Align the package version before tagging: update `version` in `pyproject.toml`, `__version__` in `src/overload/__init__.py`, and `uv.lock` (`uv lock`) to match the target release version (for example `1.0.0` for `v1.0.0`), verify tests pass, and merge that version bump to `main`.
+2. Tag and push `main`:
+
 ```sh
 git checkout main
 git pull --ff-only origin main
@@ -104,10 +107,11 @@ git tag -a v1.0.0 -m "Overload Gold candidate (G4)"
 git push origin v1.0.0
 ```
 
-Pushing a `v*` tag triggers [`.github/workflows/release.yml`](../.github/workflows/release.yml), which re-runs Python 3.11 and 3.12 checks, Worker typecheck and tests, builds the wheel, sdist, and source tarball with `SHA256SUMS.txt`, and publishes the GitHub Release.
+Pushing a `v*` tag triggers [`.github/workflows/release.yml`](../.github/workflows/release.yml), which re-runs Python 3.11 and 3.12 checks, Worker typecheck and tests, builds the wheel, sdist, and tagged source archive (`overload-<tag>-source.tar.gz`) with `SHA256SUMS.txt`, and publishes the GitHub Release. Note that `overload-<tag>-source.tar.gz` is the complete runnable release archive (including assets, configs, docs, and Worker source), while the `.whl` bundles the Python `overload` package code.
 
+- [ ] `pyproject.toml`, `src/overload/__init__.py`, and `uv.lock` match the tagged release version.
 - [ ] `.github/workflows/release.yml` succeeded on the pushed tag.
-- [ ] GitHub Release displays the wheel, sdist, source tarball, `SHA256SUMS.txt`, and accurate release notes citing the Worker version ID, `tuning_id`, `arena_id`, and `config_hash`.
+- [ ] GitHub Release displays `overload-<tag>-source.tar.gz` (complete runnable archive), the wheel, sdist, `SHA256SUMS.txt`, and accurate release notes citing the Worker version ID, `tuning_id`, `arena_id`, and `config_hash`.
 - [ ] Release assets verify locally against `SHA256SUMS.txt` (`sha256sum -c SHA256SUMS.txt`).
 
 ## 7. Gold Recording and G4 Freeze (Dec 5 to 7, Adit Only)

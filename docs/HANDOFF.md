@@ -13,8 +13,8 @@ Snapshot of November 21, 2026. For any agent or chat picking up the work. The st
 
 ## Final-readiness PRs (Nov 21, PRs #70 to #72)
 Three independent PRs branched from `main` (`9bbc557`), each targeting a distinct subsystem with zero changes to `tuning_id` (`624e3a96`), `arena_id` (`cff616dc`), or simulation hash pins:
-1. **PR #70 (impact hitstop, HUD, title, and ending music polish):** adds cosmetic impact hitstop, HUD readability polish, and title/ending music polish without touching simulation state.
-2. **PR #71 (Worker OAuth cold-start warm-up):** warms the Google OAuth access token during session creation (`POST /sessions`) so the first between-encounter request does not race a cold token exchange against the 4.5 s Worker deadline.
+1. **PR #70 (impact hitstop, HUD, title, and ending music polish):** adds cosmetic impact hitstop (suppressed on `down` and `player_down` transitions), HUD readability polish, and title/ending music polish without touching simulation state.
+2. **PR #71 (Worker OAuth cold-start warm-up):** warms the Google OAuth access token through `POST /sessions/:id/warmup` inside the `RivalSession` Durable Object so the first between-encounter request does not race a cold token exchange against the 4.5 s Worker deadline.
 3. **PR #72 (`feat/playtest-bi-and-release`):** adds the formal external playtest facilitator script ([docs/playtests/PROTOCOL.md](playtests/PROTOCOL.md)) and anonymized template ([docs/playtests/TEMPLATE.md](playtests/TEMPLATE.md)), the pure standard-library BI trace-comparison CLI (`tools/rival/compare_traces.py`) with paired `live` vs `fixed` analysis and explicit fallback confound flags (`tests/test_compare_traces.py`), the manual live-eval CI workflow (`.github/workflows/live-eval.yml`), the tagged `v*` release workflow (`.github/workflows/release.yml`), and the Gold release checklist ([docs/RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)).
 
 ## Next steps for Adit
