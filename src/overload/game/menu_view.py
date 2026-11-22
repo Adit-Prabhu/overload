@@ -190,21 +190,14 @@ def draw_hub(screen, menu: Menu, session, ready: bool, message: str | None, sect
     for i, item in enumerate(menu.hub_items):
         y = top + 16 + i * step  # room for 7 items (dev mode adds DEV) above the fallback line
         chosen = i == menu.hub
-        waiting = item == "CONTINUE" and not ready
-        go = item == "CONTINUE" and ready  # pilot playtest: make the way on obvious
         quitting = item == "QUIT" and menu.quitting
         if chosen:
             screen.fill(rgb("px.wall.1"), (left - 2, y - 1, 104, step - 1))
             hud.text(screen, ">", (left, y), "px.hazard.1")
-        if waiting:
-            token = "px.wall.4" if chosen else "px.floor.3"
-        else:
-            token = "ui.text" if chosen else "ui.dim"
+        token = "ui.text" if chosen else "ui.dim"
         if quitting:
             token = "px.lamp"
-        elif go:
-            token = "px.hazard.1" if (reduce_flash or pulse) else "ui.text"
-        label = "QUIT? SPACE AGAIN" if quitting else ("CONTINUE >>" if go else item)
+        label = "QUIT? SPACE AGAIN" if quitting else item
         hud.text(screen, label, (left + 8, y), token)
         if item == "FUSE" and free:  # a free first roll is waiting
             screen.fill(rgb("px.rarity.legendary"), (left + 40, y + 2, 3, 3))
@@ -226,22 +219,24 @@ def draw_hub(screen, menu: Menu, session, ready: bool, message: str | None, sect
                 hud.rarity_marks(screen, rarity_of(ability), card.right - 14, card.y + 7)
         else:
             hud.text(screen, "EMPTY", (card.x + 19 + shift, card.y + 4), "px.floor.3")
-    if menu.in_fuse_box:  # its own line, under the equipped slots
+    if menu.in_fuse_box:  # non-blocking recharge status under the equipped slots
         if ready:
-            hud.text(screen, "READY", (rx, top + 70), "px.hazard.1")
+            status_token = "px.hazard.1" if (reduce_flash or pulse) else "ui.text"
+            hud.text(screen, "SUIT CHARGED", (rx, top + 70), status_token)
         else:
-            hud.text(screen, "ROUTING POWER...", (rx, top + 70), "px.floor.3")
+            hud.text(screen, "RECHARGING SUIT...", (rx, top + 70), "px.blink.light")
         _spares(screen, world, rx, top + 82)
     if menu.in_fuse_box and message:  # the live fallback line (never in dev mode)
         for i, line in enumerate(_wrap(message.upper(), 22)[:3]):
             hud.text(screen, line, (left, PANEL.bottom - 40 + i * 9), "px.lamp")
     keys = menu.keys_page.binds
     if menu.in_fuse_box and ready:
-        prompt = f"SPACE ON CONTINUE: ENTER SECTOR {sector}"
+        prompt = f"RESUME TO ENTER SECTOR {sector}"
         _footer(screen, prompt, left, "px.hazard.1" if (reduce_flash or pulse) else "ui.text")
         return
-    resume = "" if menu.in_fuse_box else f"  {keys.short('menu')} RESUME"
-    _footer(screen, f"{keys.pair('up', 'down')} MOVE  SPACE PICK{resume}", left)
+    _footer(
+        screen, f"{keys.pair('up', 'down')} MOVE  SPACE PICK  {keys.short('menu')} RESUME", left
+    )
 
 
 def _spares(screen, world, x: int, y: int) -> None:

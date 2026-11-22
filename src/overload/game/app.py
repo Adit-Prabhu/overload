@@ -23,6 +23,7 @@ import pygame
 
 from overload.agent.client import TacticClient
 from overload.agent.selector import FixedSchedule, LiveSelector, NeutralSelector, Selector
+from overload.agent.tactics import Decision
 from overload.art.palette import rgb
 from overload.art.pixel import actors, hud, tiles
 from overload.game import dev as devmode
@@ -173,7 +174,7 @@ class InputReader:
 
 
 # Menu keys that never move. Select and back always win, so no binding can take away the
-# way to pick CONTINUE or leave a page. Roll and help give way to a bound key.
+# way to pick an item or leave a page. Roll and help give way to a bound key.
 MENU_ALWAYS = {
     pygame.K_SPACE: "select",
     pygame.K_RETURN: "select",
@@ -210,9 +211,8 @@ def menu_frame(
     recording: Recording,
     ms: int,
 ) -> list[str]:
-    """Menu keys once per rendered frame after the tick batch, then the spin's clock. The
-    Fuse Box keeps the menu open. CONTINUE starts the next sector once the hold is over,
-    RESUME closes the paused menu, and leaving either drops any power press still latched so
+    """Menu keys once per rendered frame after the tick batch, then the spin's clock.
+    RESUME (or Esc on the hub) closes the menu and drops any power press still latched so
     it cannot fire on the next tick. Returns the cues to play."""
     keys = reader.take_menu_raw()
     if not menu.open:
@@ -233,16 +233,7 @@ def menu_frame(
         if action is not None:
             recording.fuse_box(*action)
         for sound in sounds:
-            if sound == "continue":
-                decision = session.confirm()
-                if decision is None:
-                    cues.append("deny")  # still routing power
-                    continue
-                recording.begin_next(decision.tactic)
-                menu.close()
-                reader.drop_power_latches()
-                cues.append("confirm")
-            elif sound == "quit":
+            if sound == "quit":
                 reader.quit = True
             elif sound == "resume":
                 menu.close()
@@ -254,6 +245,29 @@ def menu_frame(
             break
     cues.extend(MENU_SOUNDS.get(s, s) for s in menu.update(ms))
     return cues
+
+
+def complete_fuse_box(
+    session: Session,
+    menu: Menu,
+    recording: Recording,
+    view: PixelView | None = None,
+) -> tuple[Decision | None, str | None]:
+    """Auto-confirm the Fuse Box once the hold and rival reply are ready and no menu is open.
+
+    Captures the approved D7 fallback line before confirming, because confirm advances the
+    encounter index. Returns (decision, fallback_message) when confirmed, else (None, None).
+    """
+    if menu.open or not session.ready():
+        return None, None
+    fallback = session.fuse_message()
+    decision = session.confirm()
+    if decision is None:
+        return None, None
+    recording.begin_next(decision.tactic)
+    if view is not None:
+        view.trigger_fuse_complete(session.campaign, fallback)
+    return decision, fallback
 
 
 def draw_dev_overlay(screen: pygame.Surface, tools, run, fps: float) -> None:
@@ -328,18 +342,16 @@ def open_menu(menu: Menu, reader: InputReader, in_fuse_box: bool) -> None:
 
 
 def can_open_menu(run) -> bool:
-    return run.stage == "encounter" and run.world.outcome == "playing"
+    return run.stage in ("encounter", "fuse_box") and run.world.outcome == "playing"
 
 
 def toggle_menu(menu: Menu, run) -> None:
-    """Tab: close the menu if open, else open the hub, but only mid-sector with the Surge up
-    (not while down or at the ending). In a Fuse Box the menu stays open."""
-    if run.stage == "fuse_box":
-        return
+    """Tab: close the menu if open, else open the hub while the Surge is up
+    (mid-sector or in a Fuse Box, never while down or at the ending)."""
     if menu.open:
         menu.close()
     elif can_open_menu(run):
-        menu.show(in_fuse_box=False)
+        menu.show(in_fuse_box=run.stage == "fuse_box")
 
 
 def hitstop_ticks(events, outcome: str = "playing") -> int:
@@ -520,7 +532,7 @@ def play(options: Options) -> int:
                         # menu can open (down, the ending, practice or a replay).
                         if session is None or not can_open_menu(run):
                             break
-                        open_menu(menu, reader, in_fuse_box=False)
+                        open_menu(menu, reader, in_fuse_box=run.stage == "fuse_box")
                     if scripted is None and not options.headless:
                         cursor = pygame.mouse.get_pos()
                     elapsed = clock.tick(240) / 1000.0
@@ -609,8 +621,6 @@ def play(options: Options) -> int:
                                 break
                     stage = getattr(run, "stage", None)
                     if session is not None:
-                        if run.stage == "fuse_box" and not menu.open:
-                            open_menu(menu, reader, in_fuse_box=True)  # arriving opens the hub
                         if (
                             stage == "ending"
                             and view.boss_banner is None
@@ -633,8 +643,15 @@ def play(options: Options) -> int:
                                 screen = _apply_fullscreen(
                                     screen, settings.fullscreen, options.headless
                                 )
+                            decision, _fallback = complete_fuse_box(session, menu, recording, view)
+                            if decision is not None:
+                                reader.drop_power_latches()
+                                cues = [sound for sound in cues if sound != "confirm"]
                             for sound in cues:
                                 audio.play(sound)
+                    for sound, volume in view.take_audio_cues():
+                        audio.play(sound, volume)
+                    stage = getattr(run, "stage", None)
                     audio.update(stage, getattr(run, "encounter", 1), run.world.outcome)
                     view.draw(screen, run, cursor)
                     if dev_tools is not None:

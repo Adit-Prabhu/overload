@@ -136,12 +136,22 @@ def dress(
     return emitters
 
 
+def fuse_pad_sockets(rect: tuple[int, int, int, int]) -> tuple[tuple[int, int], tuple[int, int]]:
+    """World pixel centers of a Fuse Box room's yellow (left) and blue (right) charging sockets."""
+    rx, ry, _, _ = rect
+    cx = (rx + 7) * TILE + 8
+    mid_y = (ry + 4) * TILE + 14
+    return ((cx - 9, mid_y), (cx + 9, mid_y))
+
+
 def _fuse_pad(s: pygame.Surface, light: pygame.Surface, rect: tuple[int, int, int, int]) -> None:
     """Cosmetic recessed charging and fusion bay in each Fuse Box safe room, tied by twin
     floor cables to the north wall monitor. Floor-level so the Surge walks right across it."""
     rx, ry, _, _ = rect
-    cx = (rx + 7) * TILE + 8
-    py = (ry + 4) * TILE + 2
+    left_socket, right_socket = fuse_pad_sockets(rect)
+    cx = (left_socket[0] + right_socket[0]) // 2
+    mid_y = left_socket[1]
+    py = mid_y - 12
     wall_bottom = (ry + 2) * TILE
     # Twin insulated conduit cables from the wall monitor down to the charging bay.
     for dx in (-4, 3):
@@ -164,18 +174,17 @@ def _fuse_pad(s: pygame.Surface, light: pygame.Surface, rect: tuple[int, int, in
     ):
         _px(s, "px.hazard.1", bx, by, 2, 2)
     # Twin glowing fusion sockets linked by a live bus bar.
-    mid_y = y0 + h // 2
     _px(s, "px.conduit.1", cx - 5, mid_y - 1, 10, 2)
     _px(light, "px.lamp.light", cx - 4, mid_y - 1, 8, 2)
-    for sx, token, glow_token in (
-        (cx - 9, "power.spark", "px.spark.light"),
-        (cx + 9, "power.blink", "px.blink.light"),
+    for (sx, sy), token, glow_token in (
+        (left_socket, "power.spark", "px.spark.light"),
+        (right_socket, "power.blink", "px.blink.light"),
     ):
-        pygame.draw.circle(s, rgb("px.outline"), (sx, mid_y), 6)
-        pygame.draw.circle(s, rgb(token), (sx, mid_y), 5, 1)
-        pygame.draw.circle(s, rgb(glow_token), (sx, mid_y), 2)
-        pygame.draw.circle(light, rgb(token), (sx, mid_y), 5, 1)
-        pygame.draw.circle(light, rgb(glow_token), (sx, mid_y), 2)
+        pygame.draw.circle(s, rgb("px.outline"), (sx, sy), 6)
+        pygame.draw.circle(s, rgb(token), (sx, sy), 5, 1)
+        pygame.draw.circle(s, rgb(glow_token), (sx, sy), 2)
+        pygame.draw.circle(light, rgb(token), (sx, sy), 5, 1)
+        pygame.draw.circle(light, rgb(glow_token), (sx, sy), 2)
     _px(s, "px.lamp.light", cx - 1, mid_y - 1, 2, 2)
     _px(light, "px.lamp.light", cx - 1, mid_y - 1, 2, 2)
 
