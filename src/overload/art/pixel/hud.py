@@ -200,12 +200,13 @@ def draw(target: pygame.Surface, hud: Hud) -> None:
     if hud.rival_health is not None:
         bar_w = 100
         bx = (w - bar_w) // 2
+        bar_y = 13
         title = hud.rival_name
         if hud.rival_phases > 1 and not hud.rival_changing:
             title += f"  PHASE {hud.rival_phase}/{hud.rival_phases}"
-        text(target, title, (w // 2, 2), "ui.text", "midtop")
-        target.fill(rgb("px.outline"), (bx - 1, 11, bar_w + 2, 5))
-        target.fill(rgb("px.hostile.1"), (bx, 12, bar_w, 3))
+        text(target, title, (w // 2, 1), "ui.text", "midtop")
+        target.fill(rgb("px.outline"), (bx - 1, bar_y, bar_w + 2, 5))
+        target.fill(rgb("px.hostile.1"), (bx, bar_y + 1, bar_w, 3))
         if hud.rival_venting:
             if hud.reduce_flash:
                 fill = "px.lamp.light"
@@ -213,22 +214,22 @@ def draw(target: pygame.Surface, hud: Hud) -> None:
                 fill = "fx.flash" if (hud.tick // 4) % 2 else "px.hostile.3"
         else:
             fill = "px.hostile.3"
-        target.fill(rgb(fill), (bx, 12, round(bar_w * hud.rival_health), 3))
+        target.fill(rgb(fill), (bx, bar_y + 1, round(bar_w * hud.rival_health), 3))
         for k in range(1, hud.rival_phases):  # where the next phases begin
             nx = bx + round(bar_w * k / hud.rival_phases)
-            target.fill(rgb("px.outline"), (nx, 11, 1, 5))
-            target.fill(rgb("ui.text"), (nx, 16, 1, 1))
+            target.fill(rgb("px.outline"), (nx, bar_y, 1, 5))
+            target.fill(rgb("ui.text"), (nx, bar_y + 5, 1, 1))
         if hud.rival_changing and hud.rival_phases > 1:
             phase_color = "px.hostile.3" if hud.rival_phase == 3 else "px.lamp.light"
-            panel = pygame.Rect(0, 18, 102, 13)
+            panel = pygame.Rect(0, bar_y + 7, 102, 13)
             panel.centerx = w // 2
             target.fill(rgb("px.outline"), panel)
             pygame.draw.rect(target, rgb(phase_color), panel, 1)
             label = f"PHASE {hud.rival_phase}/{hud.rival_phases} SHIFTING"
-            text(target, label, (w // 2, 20), phase_color, "midtop")
+            text(target, label, (w // 2, bar_y + 9), phase_color, "midtop")
         if hud.rival_protocol:
             icon = effects.protocol_icon(hud.rival_protocol)
-            target.blit(icon, icon.get_rect(midright=(bx - 3, 13)))
+            target.blit(icon, icon.get_rect(midright=(bx - 3, bar_y + 2)))
 
     if hud.stamp:
         text(target, hud.stamp, (4, h - 3), "px.floor.3", "bottomleft")

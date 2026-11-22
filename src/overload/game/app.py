@@ -340,6 +340,19 @@ def toggle_menu(menu: Menu, run) -> None:
         menu.show(in_fuse_box=False)
 
 
+def hitstop_ticks(events) -> int:
+    """Freeze duration in 60 Hz ticks for heavy impact events (presentation only)."""
+    best = 0
+    for event in events:
+        if event.kind == "rival_destroyed":
+            best = max(best, 4)
+        elif event.kind in ("phase_change", "player_hit"):
+            best = max(best, 3)
+        elif event.kind == "rival_hit" and event.power == "vent":
+            best = max(best, 2)
+    return best
+
+
 def ticks_due(paused: bool, headless: bool, accumulated: float, elapsed: float):
     """How many fixed ticks to run this frame, and the time left over. The loadout menu stops
     time: nothing runs and nothing carries over while it is open."""
@@ -487,6 +500,8 @@ def play(options: Options) -> int:
                 audio.apply_settings(settings)
                 clock = pygame.time.Clock()
                 accumulated = 0.0
+                hitstop = 0
+                interactive = not options.headless and scripted is None
                 frames = 0
                 finished = False
                 ending_shown = False
@@ -512,8 +527,13 @@ def play(options: Options) -> int:
                         if menu.open and not was_open:
                             reader.take_menu()  # keys from before the menu opened are not choices
                     paused = menu.open and getattr(run, "stage", None) != "fuse_box"
+                    if paused or menu.open:
+                        hitstop = 0
                     due, accumulated = ticks_due(paused, options.headless, accumulated, elapsed)
                     for _ in range(due):
+                        if interactive and hitstop > 0:
+                            hitstop -= 1
+                            continue
                         if replay_complete:
                             if replay_coda == 0:
                                 finished = True
@@ -573,6 +593,11 @@ def play(options: Options) -> int:
                             view.update(run, cursor)
                         else:
                             view.after_tick(run)
+                        if interactive and not menu.open:
+                            freeze = hitstop_ticks(run.world.events)
+                            if freeze > 0:
+                                hitstop = max(hitstop, freeze)
+                                break
                     stage = getattr(run, "stage", None)
                     if session is not None:
                         if run.stage == "fuse_box" and not menu.open:
