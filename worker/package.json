@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "description": "Cloudflare Worker that proposes the Regulator's next protocol. Scaffold: health route only.",
+  "description": "Cloudflare Worker rival service that proposes the Regulator's next protocol with bounded session state and OAuth warm-up.",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",

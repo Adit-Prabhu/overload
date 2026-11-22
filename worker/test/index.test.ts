@@ -9,12 +9,13 @@ import { type Summary, validateProposal } from "../src/schema";
 
 const BASE = "http://rival.test";
 
-function summary(far: number, near: number, previous = "lateral"): Summary {
+function summary(far: number, near: number, previous = "lateral", encounter = 1): Summary {
+  const prefix = `e${encounter}`;
   return {
     items: [
-      { id: "e1.far_share", label: "share of visible time the player spent far away", value: far },
-      { id: "e1.near_share", label: "share of visible time the player spent close", value: near },
-      { id: "e1.shots_per_minute", label: "shots fired per minute", value: 30 },
+      { id: `${prefix}.far_share`, label: "share of visible time the player spent far away", value: far },
+      { id: `${prefix}.near_share`, label: "share of visible time the player spent close", value: near },
+      { id: `${prefix}.shots_per_minute`, label: "shots fired per minute", value: 30 },
     ],
     previous_tactic: previous,
   };
@@ -131,7 +132,9 @@ describe("tactic proposals (fixture provider)", () => {
     const a = await startSession();
     expect((await ask(a, request(2, summary(0.1, 0.7)))).body.tactic_id).toBe("spacing");
     const b = await startSession();
-    expect((await ask(b, request(2, summary(0.3, 0.3)))).body.tactic_id).toBe("lateral");
+    const neutral = await ask(b, request(2, summary(0.3, 0.3)));
+    expect(neutral.body.tactic_id).toBe("lateral");
+    expect(neutral.body.evidence_ids).toEqual(["e1.far_share", "e1.near_share"]);
   });
 
   it("allows two attempts per session, counting every attempt", async () => {
@@ -177,6 +180,7 @@ describe("tactic proposals (fixture provider)", () => {
 
 describe("validation", () => {
   const s = summary(0.8, 0.1);
+  const s2 = summary(0.2, 0.7, "pressure", 2);
 
   it("accepts a proposal that cites supplied evidence", () => {
     expect(validateProposal('{"tactic_id":"pressure","evidence_ids":["e1.far_share"]}', s)).toEqual({
@@ -185,13 +189,105 @@ describe("validation", () => {
     });
   });
 
+  it("accepts encounter 3 proposals citing prior history or both encounters", () => {
+    expect(
+      validateProposal('{"tactic_id":"pressure","evidence_ids":["e1.far_share"]}', s2, [s]),
+    ).toEqual({
+      tactic_id: "pressure",
+      evidence_ids: ["e1.far_share"],
+    });
+    expect(
+      validateProposal(
+        '{"tactic_id":"spacing","evidence_ids":["e1.far_share","e2.near_share"]}',
+        s2,
+        [s],
+      ),
+    ).toEqual({
+      tactic_id: "spacing",
+      evidence_ids: ["e1.far_share", "e2.near_share"],
+    });
+  });
+
+  it("rejects prior-encounter IDs when no prior history was supplied", () => {
+    expect(validateProposal('{"tactic_id":"pressure","evidence_ids":["e1.far_share"]}', s2)).toBeNull();
+    expect(
+      validateProposal('{"tactic_id":"pressure","evidence_ids":["e1.far_share"]}', s2, []),
+    ).toBeNull();
+    expect(
+      validateProposal('{"tactic_id":"pressure","evidence_ids":["e1.player_hp"]}', s2, [s]),
+    ).toBeNull();
+  });
+
   it.each([
     ["not JSON", "pressure please"],
-    ["unknown tactic", '{"tactic_id":"berserk","evidence_ids":[]}'],
+    ["empty evidence", '{"tactic_id":"pressure","evidence_ids":[]}'],
+    ["unknown tactic", '{"tactic_id":"berserk","evidence_ids":["e1.far_share"]}'],
     ["invented evidence", '{"tactic_id":"pressure","evidence_ids":["e1.player_hp"]}'],
-    ["extra field", '{"tactic_id":"pressure","evidence_ids":[],"damage":99}'],
+    ["extra field", '{"tactic_id":"pressure","evidence_ids":["e1.far_share"],"damage":99}'],
   ])("rejects %s", (_name, raw) => {
     expect(validateProposal(raw, s)).toBeNull();
+  });
+
+  it("accepts e1.* and e1.*+e2.* on encounter 3 in RivalSession and rejects unsupplied IDs", async () => {
+    async function runE3(e3Raw: string) {
+      const id = await startSession();
+      const stub = env.RIVAL_SESSION.get(env.RIVAL_SESSION.idFromName(id));
+      return runInDurableObject(stub, async (instance) => {
+        const session = instance as unknown as {
+          createProvider: () => unknown;
+          propose: (r: unknown, id: string) => Promise<Record<string, unknown>>;
+        };
+        let call = 0;
+        session.createProvider = () => ({
+          source: "live" as const,
+          requestedModel: "fake-live",
+          async propose() {
+            call += 1;
+            const raw =
+              call === 1
+                ? '{"tactic_id":"pressure","evidence_ids":["e1.far_share"]}'
+                : e3Raw;
+            return { raw, resolvedModel: "fake-live-001", inputTokens: 120, outputTokens: 20 };
+          },
+        });
+        const e2 = await session.propose(request(2, summary(0.8, 0.1, "lateral", 1)), id);
+        const e3 = await session.propose(request(3, summary(0.2, 0.7, "pressure", 2)), id);
+        return { e2, e3 };
+      });
+    }
+
+    const citedPriorOnly = await runE3('{"tactic_id":"pressure","evidence_ids":["e1.far_share"]}');
+    expect(citedPriorOnly.e2).toMatchObject({ status: "ok", tactic_id: "pressure" });
+    expect(citedPriorOnly.e3).toMatchObject({
+      status: "ok",
+      tactic_id: "pressure",
+      evidence_ids: ["e1.far_share"],
+    });
+
+    const citedBoth = await runE3(
+      '{"tactic_id":"spacing","evidence_ids":["e1.far_share","e2.near_share"]}',
+    );
+    expect(citedBoth.e3).toMatchObject({
+      status: "ok",
+      tactic_id: "spacing",
+      evidence_ids: ["e1.far_share", "e2.near_share"],
+    });
+
+    const citedUnsupplied = await runE3(
+      '{"tactic_id":"spacing","evidence_ids":["e1.far_share","e2.dodge_roll"]}',
+    );
+    expect(citedUnsupplied.e3).toMatchObject({
+      status: "invalid_output",
+      tactic_id: null,
+      evidence_ids: [],
+    });
+
+    const citedEmpty = await runE3('{"tactic_id":"lateral","evidence_ids":[]}');
+    expect(citedEmpty.e3).toMatchObject({
+      status: "invalid_output",
+      tactic_id: null,
+      evidence_ids: [],
+    });
   });
 });
 
