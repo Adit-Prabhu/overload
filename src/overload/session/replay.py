@@ -12,11 +12,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from overload.sim.arena import FLOOR_ARENA, SUBSTATION, Arena, arena_id
-from overload.sim.campaign import NEUTRAL, Campaign
+from overload.sim.campaign import ENCOUNTERS, NEUTRAL, Campaign
 from overload.sim.difficulty import PRESETS
 from overload.sim.inputs import InputFrame
 from overload.sim.run import Run
 from overload.sim.tuning import DEFAULT, Tuning
+from overload.sim.world import PROTOCOLS
 
 FORMAT = "overload-replay"
 VERSION = 4
@@ -65,18 +66,48 @@ class Recording:
     @classmethod
     def load(cls, path: Path) -> Recording:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        if payload.get("format") != FORMAT or payload.get("version") != VERSION:
+        if (
+            not isinstance(payload, dict)
+            or payload.get("format") != FORMAT
+            or payload.get("version") != VERSION
+        ):
             raise ValueError(f"{path} is not an {FORMAT} v{VERSION} file")
+        try:
+            seed = payload["seed"]
+            tuning_id = payload["tuning_id"]
+            arena = payload["arena_id"]
+            raw_frames = payload["frames"]
+            mode = payload["mode"]
+            raw_protocols = payload["protocols"]
+            raw_starts = payload["starts"]
+            raw_menu = payload["menu"]
+        except KeyError as error:
+            raise ValueError(f"{path} is missing field {error.args[0]!r}") from error
+        if not _is_int(seed) or not isinstance(tuning_id, str) or not isinstance(arena, str):
+            raise ValueError(f"{path} has malformed header fields")
+        if not isinstance(mode, str):
+            raise ValueError(f"{path} has malformed mode")
+        if not all(
+            isinstance(seq, list) for seq in (raw_frames, raw_protocols, raw_starts, raw_menu)
+        ):
+            raise ValueError(f"{path} has malformed replay lists")
+        final_hash = payload.get("final_hash")
+        if final_hash is not None and not isinstance(final_hash, str):
+            raise ValueError(f"{path} has malformed final_hash")
+        try:
+            frames = [InputFrame.from_list(values) for values in raw_frames]
+        except (TypeError, ValueError, IndexError) as error:
+            raise ValueError(f"{path} has malformed input frame: {error}") from error
         return cls(
-            seed=payload["seed"],
-            tuning_id=payload["tuning_id"],
-            arena_id=payload["arena_id"],
-            frames=[InputFrame.from_list(values) for values in payload["frames"]],
-            final_hash=payload.get("final_hash"),
-            mode=payload["mode"],
-            protocols=list(payload["protocols"]),
-            starts=list(payload["starts"]),
-            menu=list(payload["menu"]),
+            seed=seed,
+            tuning_id=tuning_id,
+            arena_id=arena,
+            frames=frames,
+            final_hash=final_hash,
+            mode=mode,
+            protocols=list(raw_protocols),
+            starts=list(raw_starts),
+            menu=list(raw_menu),
         )
 
 
@@ -86,8 +117,15 @@ def check_campaign(recording: Recording) -> None:
         raise ValueError(f"cannot replay mode {recording.mode!r}")
     if not recording.protocols or recording.protocols[0] != NEUTRAL:
         raise ValueError("a campaign recording starts with the neutral protocol")
+    if len(recording.protocols) > ENCOUNTERS:
+        raise ValueError(f"a campaign recording has at most {ENCOUNTERS} encounters")
+    for protocol in recording.protocols[1:]:
+        if not isinstance(protocol, str) or protocol not in PROTOCOLS:
+            raise ValueError(f"unknown protocol {protocol!r}")
     if len(recording.starts) != len(recording.protocols) - 1:
         raise ValueError("a campaign recording needs one start per encounter after the first")
+    if any(not _is_int(start) for start in recording.starts):
+        raise ValueError("encounter starts must be integers")
     bounds = [0, *recording.starts]
     if any(b <= a for a, b in zip(bounds, bounds[1:], strict=False)):
         raise ValueError("encounter starts must be positive and strictly increasing")
