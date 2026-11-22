@@ -70,7 +70,7 @@ uv run python tools/rival/live_suite.py "$OVERLOAD_RIVAL_URL" \
 
 - [ ] Deployed Worker version ID is recorded and matches `main`.
 - [ ] Live smoke test (`tools/rival/smoke.py` normal and `--expect-timeout --deadline 0.05`) is recorded with date and Worker version ID.
-- [ ] Full live suite report (`evidence/rival/<date>-<label>/summary.md`, `config.json`, `results.jsonl`) covers all 6 `eval/histories.json` v2 cases, reports model ID, nearest-rank p50/p95 latency, tokens, estimated cost, and keeps every fallback or failure honestly labeled.
+- [ ] Full live suite report (`evidence/rival/<date>-<label>/summary.md`, `config.json`, `results.jsonl`) covers all 6 `eval/histories.json` v2 cases, logs the resolved `model` ID per attempt in `results.jsonl`, reports nearest-rank p50/p95 latency, tokens, and estimated cost in `summary.md`, and keeps every fallback or failure honestly labeled.
 - [ ] External playtest logs (`P1` and `P2`, anonymized) include `tools/rival/compare_traces.py` output with all fallback confounds documented.
 
 ## 4. Asset Manifest and Attribution Check
@@ -81,7 +81,7 @@ uv run pytest -q -W error tests/test_assets.py tests/test_audio_assets.py tests/
 ```
 
 - [ ] Every file under `assets/` is listed in `assets/ASSET_MANIFEST.json` with a matching SHA-256 hash and valid license file.
-- [ ] Every audio cue in `assets/ASSET_MANIFEST.json` has `"approval": "approved"`.
+- [ ] Every audio cue (`"Approved by Adit in the Nov 19 listen-through"`) and font (`"Approved by Adit in the Nov 16 pixel style frame review"`) in `assets/ASSET_MANIFEST.json` carries an approved status (zero pending entries).
 - [ ] `LICENSE`, `LICENSE-ASSETS.md`, `assets/fonts/silkscreen/OFL.txt`, and `docs/REFERENCES.md` are intact and accurate.
 
 ## 5. Repository Boundary, No-Videos, and No-Secrets Check
@@ -107,7 +107,7 @@ git tag -a v1.0.0 -m "Overload Gold candidate (G4)"
 git push origin v1.0.0
 ```
 
-Pushing a `v*` tag triggers [`.github/workflows/release.yml`](../.github/workflows/release.yml), which re-runs Python 3.11 and 3.12 checks, Worker typecheck and tests, builds the wheel, sdist, and tagged source archive (`overload-<tag>-source.tar.gz`) with `SHA256SUMS.txt`, and publishes the GitHub Release. Note that `overload-<tag>-source.tar.gz` is the complete runnable release archive (including assets, configs, docs, and Worker source), while the `.whl` bundles the Python `overload` package code.
+Pushing a `v*` tag triggers [`.github/workflows/release.yml`](../.github/workflows/release.yml), which re-runs Python 3.11 and 3.12 checks, Worker typecheck and tests, verifies that the tag matches the version in `pyproject.toml`, `src/overload/__init__.py`, and `uv.lock`, builds the wheel, sdist, and tagged source archive (`overload-<tag>-source.tar.gz`) with `SHA256SUMS.txt`, and publishes the GitHub Release. Note that only `overload-<tag>-source.tar.gz` is a complete standalone runnable release archive (including `assets/`, `config/`, docs, and Worker source), while both the `.whl` and the sdist omit `assets/` and `config/` and bundle only the Python `overload` package source.
 
 - [ ] `pyproject.toml`, `src/overload/__init__.py`, and `uv.lock` match the tagged release version.
 - [ ] `.github/workflows/release.yml` succeeded on the pushed tag.

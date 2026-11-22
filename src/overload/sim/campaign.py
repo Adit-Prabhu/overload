@@ -176,7 +176,7 @@ class Campaign:
 
     def _editable_kit(self) -> Kit:
         """The live kit (charges absorbed since the last Fuse Box included). Only the Fuse
-        Box keeps it as the campaign's kit; a mid-sector edit lives in the world alone, so a
+        Box keeps it as the campaign's kit. A mid-sector edit lives in the world alone, so a
         retry rolls it back with everything else."""
         if self.stage == "ending" or self.world.outcome != "playing":
             raise RuntimeError(f"the loadout cannot change now (stage {self.stage})")

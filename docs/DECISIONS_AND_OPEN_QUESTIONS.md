@@ -11,14 +11,14 @@ Top-down 2D, a Python/Pygame client with a Cloudflare-hosted model selector, reu
 GDF v2.1 Sections 5.1/5.2 and Gate 1 read. Required live deployed model behavior and extension manifest included. Combined G2/G3 review: Nov 30, recording Nov 28. All GDF production roles covered in plan. Cloudflare is the course deployment path. Alternative hosting needs instructor permission. The final is individual, with Adit as Executive Producer/Creative Director and instructor as Gate Approver.
 
 ## Open questions
-| ID | Question | Needed by |
-| --- | --- | --- |
-| OQ1 | Which final-game repository and course submission directory should hold the project? | Before upload/PR. Do not assume the midterm directory |
-| OQ2 | Can the approved Cloudflare service authenticate to the course Vertex project? | Deployment spike, Nov 21. Demonstrate Nov 23 |
-| OQ3 | Are the proposed model ID/settings supported, and what are current prices? | Before first paid call |
-| OQ4 | Is 30 hours available through Nov 28, and which dependency versions will be pinned? | G1 review/setup |
-| OQ5 | Do players recognize adaptation and regard it as fair? | Initial external playtest |
-| OQ6 | Does the LLM improve anything over a simple adaptive rule? | Optional third condition. Otherwise leave claim untested |
+| ID | Question | Needed by | Status |
+| --- | --- | --- | --- |
+| OQ1 | Which final-game repository and course submission directory should hold the project? | Before upload/PR. Do not assume the midterm directory | Resolved Nov 16 (`Adit-Prabhu/overload`, see Decisions after G1 below) |
+| OQ2 | Can the approved Cloudflare service authenticate to the course Vertex project? | Deployment spike, Nov 21. Demonstrate Nov 23 | Resolved Nov 16 to 19 (D6 Vertex AI via Worker secret, verified live in [LIVE_SMOKE_2026-11-19.md](evidence/LIVE_SMOKE_2026-11-19.md)) |
+| OQ3 | Are the proposed model ID/settings supported, and what are current prices? | Before first paid call | Resolved Nov 17 to 19 (`gemini-3.5-flash-lite` verified live, list prices $0.30 / $2.50 per million tokens in `worker/wrangler.jsonc` and `tools/rival/live_suite.py`) |
+| OQ4 | Is 30 hours available through Nov 28, and which dependency versions will be pinned? | G1 review/setup | Resolved Nov 16 to 19 (D3 40 hours through Nov 28, dependencies pinned in `pyproject.toml`, `uv.lock`, and `worker/package.json`, see Pinned dependencies below) |
+| OQ5 | Do players recognize adaptation and regard it as fair? | Initial external playtest | Open (tested in Nov 25 and Dec 2 to 4 external playtests, [PROTOCOL.md](playtests/PROTOCOL.md)) |
+| OQ6 | Does the LLM improve anything over a simple adaptive rule? | Optional third condition. Otherwise leave claim untested | Open (untested unless optional third condition is added) |
 
 ## Decisions after G1
 | Date | Decision | Source |
@@ -87,7 +87,7 @@ GDF v2.1 Sections 5.1/5.2 and Gate 1 read. Required live deployed model behavior
 | Production ceiling: three short combat rooms, one hidden branch | Six combat rooms, three chambers, two Fuse Box rooms, three entries, one hidden room | As above. Rooms are data, so cuts are cheap |
 | Enemies: Arc Mite (Spark), Relay (Blink), Coil (Burst) | Arc Drone (Spark), Relay Bot (Blink), Breaker (Burst), plus two power-less robots, Sweeper and Sentry | Adit, Nov 17: robots instead of bug-like machines, and each attacker needs its own attack and projectile |
 | The Regulator observes its own encounter | The Regulator observes the whole sector with the same visible kinds | One fight is thin evidence, and the fiction is that it watches how you fight. Explained in IMPLEMENTATION_PLAN section 2b |
-| The rival observes power uses by power (G1 plan, knowledge boundary) | Power use counts by cooldown family (shot, teleport, pulse, shield, pull) in `config/evidence.json` version 4 (Nov 19), counted only when the power actually fires on screen, ten kinds in all. Version 3 counted Spark, Blink, Arc Trail, Burst and Shock Cone by name | The deployed Worker accepts these kinds only after a redeploy from the merged code, which Adit runs (docs/DEPLOY.md). Until then live requests carrying them fall back to the neutral tactic. Thirty fused powers would not fit the Worker's cap of 12 summary items (`MAX_SUMMARY_ITEMS`), and rarity is never sent |
+| The rival observes power uses by power (G1 plan, knowledge boundary) | Power use counts by cooldown family (shot, teleport, pulse, shield, pull) in `config/evidence.json` version 4 (Nov 19), counted only when the power actually fires on screen, ten kinds in all. Version 3 counted Spark, Blink, Arc Trail, Burst and Shock Cone by name | Evidence Version 4 is already deployed and verified live on Worker version `bf48e333` (Nov 19, [LIVE_SMOKE_2026-11-19.md](evidence/LIVE_SMOKE_2026-11-19.md)). Only `config/tactics.json` version 3 (PR #68) and the OAuth cold-start warm-up (`POST /sessions/:id/warmup`, PR #71) await Adit's next redeploy (`docs/DEPLOY.md`). Thirty fused powers would not fit the Worker's cap of 12 summary items (`MAX_SUMMARY_ITEMS`), and rarity is never sent |
 | Loadout and fusion happen in the safe-room menu (GDD) | Tab opens the loadout menu anywhere, pausing the game. Equip and fuse any time the Surge is up. The Fuse Box stays the safe room: recharge, the rival's one request, and Continue | Adit, Nov 17: "I should be able to fuse and switch these powers whenever I want". A retry still restores the sector's entry loadout, so a fusion made mid-sector is undone by dying, but its ingredients come back too |
 | One Regulator, the same body in every encounter (GDD) | Three Regulator chassis, one per sector chamber: the Linesman (36 health, a ring of 8 bolts), the Transformer (52 health, quicker, a wide floor shockwave) and the Grid Core (66 health, summons two drones, then at half health overloads into a faster pace and a twin bolt spiral). Each signature has its own tell of at least 0.5 s and pauses the protocol while it runs. The protocol (pressure, spacing or lateral) is unchanged and still the only thing the rival model picks. The chassis is fixed per sector and identical in both conditions, so the comparison is unaffected. The legacy single-arena mode keeps the plain Regulator | Adit, Nov 17: "the boss feels pretty 1D... different bosses, different levels of difficulty and each one has different patterns". Needs the instructor's G3 approval to count |
 | One set of combat room templates reused across sectors, the same robots everywhere | Each sector has its own two combat rooms (the switchyard, the cooling plant, the grid core), its own light and its own robot colors. Sector 3 is harder: Overcharged robots (10 percent more health rounded up, so +1 to +2 points per robot, 5 percent faster, 10 percent shorter rests, tells unchanged, including the Grid Core's summoned drones), three waves in its first room and a Breaker in most waves. Sectors 1 and 2 keep their difficulty (sector 2 robots keep stock stats). Measured with the test bot over 8 seeds: sector 3 went from 0.25 to 1 retry a run, sectors 1 and 2 unchanged. Identical in both conditions | Adit, Nov 17: "sector 1 and 2 are good, 3 can be harder", "the rooms start becoming the same so each sector should be a bit different... mobs for each one can be slightly different". Needs the instructor's G3 approval to count |
@@ -101,8 +101,8 @@ GDF v2.1 Sections 5.1/5.2 and Gate 1 read. Required live deployed model behavior
 | Menu (spec 0.3 section 7) | QUIT is a hub item and asks twice. Esc outside a menu opens the hub. Locked powers show as silhouettes, not padlocks. REPLACES X shows on the second-press confirm, not whenever a result is owned. LOADOUT marks evolved powers with square pips and inherited evolution badges (added Nov 21). The back cue reuses `menu_move`. The spin's small outline steps faster than 3 times a second at first: it is a moving outline, not a screen flash, and needs Adit's OK | Review of PR #33 and play feel. The outline rate can be slowed if Adit prefers |
 | Balance not specified | Health 40 for every protocol. A scripted player beats Clamp and Insulate in about 10 s and Oscillate in about 40 s. Solid bodies made Insulate harder for a player who only walks, since a hazard can pin them against the Regulator, so the test player now dodges out of armed tiles | Left for the Nov 25 playtest to judge before any retune |
 
-## Pinned dependencies (OQ4, partly resolved)
-Pinned in task 1 (November 16, 2026). Versions published before November 2, 2026 were chosen on purpose, so nothing is days old.
+## Pinned dependencies (OQ4, resolved)
+Pinned in task 1 (November 16, 2026), with Worker runtime dependencies pinned in `worker/package.json` when the session agent was built. Versions published before November 2, 2026 were chosen on purpose, so nothing is days old.
 
 | Package | Version | Note |
 | --- | --- | --- |
@@ -114,4 +114,6 @@ Pinned in task 1 (November 16, 2026). Versions published before November 2, 2026
 | vitest | 4.1.12 | The plugin needs vitest 4 or 5 |
 | @cloudflare/workers-types | 5.20261101.1 | |
 | typescript | 5.9.3 | |
-| agents (Cloudflare Agents SDK) | Not yet pinned | Added in task 4, when the session agent needs it |
+| agents (Cloudflare Agents SDK) | 0.32.0 | Pinned in `worker/package.json` for `RivalSession` |
+| zod | 4.6.7 | Request and response schema validation in `worker/src/schema.ts` |
+| @modelcontextprotocol/client | 2.4.0 | Pinned in `worker/package.json` alongside `agents` |

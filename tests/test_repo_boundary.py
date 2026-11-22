@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VIDEO_SUFFIXES = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
-SECRET_FILES = {".env", ".dev.vars"}
+SECRET_FILES = {".env", ".dev.vars", ".overload-dev"}
 SECRET_SUFFIXES = (".pem", ".p12", ".pfx", ".key")
 MANIFEST_FIELDS = {
     "purpose",
@@ -61,7 +61,15 @@ def looks_like_secret(path: Path) -> bool:
 
 
 def test_secret_detector_catches_known_shapes() -> None:
-    for name in [".env", ".env.local", ".dev.vars", "key.pem", "cert.p12", "id.key"]:
+    for name in [
+        ".env",
+        ".env.local",
+        ".dev.vars",
+        ".overload-dev",
+        "key.pem",
+        "cert.p12",
+        "id.key",
+    ]:
         assert looks_like_secret(Path(name)), name
     assert not looks_like_secret(Path(".env.example"))
     assert not looks_like_secret(Path("README.md"))

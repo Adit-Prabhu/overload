@@ -27,7 +27,7 @@ If additional participants join (`P3`, `P4`, ...), continue alternating starting
 
 ## 3. Pre-Session Facilitator Checklist
 1. Confirm the clean build commit (`git rev-parse --short HEAD`) and verify deterministic checks passed (`uv run pytest -q -W error`).
-2. Confirm the deployed Cloudflare Worker version ID (`npx wrangler deployments list` in `worker/`) matches `config/tactics.json` v3 and `config/evidence.json` v4.
+2. Confirm the deployed Cloudflare Worker version ID (`npx wrangler deployments list` in `worker/`) matches `config/tactics.json` v3, `config/evidence.json` v4, and the `POST /sessions/:id/warmup` OAuth warm-up.
 3. Export the deployed Worker URL in the facilitator terminal without revealing or committing it:
    ```sh
    export OVERLOAD_RIVAL_URL="https://overload-rival.<your-subdomain>.workers.dev"

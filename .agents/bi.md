@@ -2,7 +2,7 @@
 
 **Purpose:** turn traces, live evaluation results and playtest notes into honest, bounded reports.
 
-**Read first:** anonymized traces in `logs/`, results in `eval/`, the playtest log.
+**Read first:** anonymized traces in `logs/`, live evaluation results in `evidence/rival/` (and suite cases in `eval/`), and the playtest log.
 
 **May:** read data and write analysis.
 

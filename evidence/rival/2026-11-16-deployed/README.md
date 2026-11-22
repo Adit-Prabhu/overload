@@ -22,8 +22,8 @@
 
 ## Cost
 - **Live calls:** 6 in total (3 in each run). The forced-deadline calls still reached Vertex and are billed even though the game ignored them.
-- **Reported usage:** 350 to 451 input tokens and 35 to 44 output tokens per call. At the dated planning rates (/bin/zsh.30 and .50 per million) that is about /bin/zsh.0002 per call and about /bin/zsh.001 in all.
-- **The `cost_usd` field** is the Worker's worst-case reservation (/bin/zsh.00158 per call), not the actual cost.
+- **Reported usage:** 350 to 451 input tokens and 35 to 44 output tokens per call. At the dated planning rates ($0.30 and $2.50 per million) that is about $0.0002 per call and about $0.001 in all.
+- **The `cost_usd` field** is the Worker's worst-case reservation ($0.00158 per call), not the actual cost.
 - **Earlier attempts:** two runs failed before any tactic request (session creation was blocked) and made no paid calls.
 
 ## Findings

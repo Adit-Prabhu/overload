@@ -32,5 +32,5 @@ node_modules/
 logs/
 dist/
 
-# Local player settings (rebound keys)
+# Local player settings (keys.json and prefs.json)
 settings/

@@ -1,6 +1,6 @@
-"""Audio technical checks (docs/ART_AND_AUDIO_DIRECTION.md): every P0 cue exists, peaks stay
-at or below -1 dBFS, stems share one length and loop without a click. Decoded with the
-game's own mixer, so no tools dependencies are needed."""
+"""Audio technical checks (docs/ART_AND_AUDIO_DIRECTION.md): every required P0 cue exists,
+every OGG cue peaks at or below -1 dBFS, stems share one length, and tonal stems loop
+without a click. Decoded with the game's own mixer, so no tools dependencies are needed."""
 
 from __future__ import annotations
 
@@ -25,7 +25,8 @@ SFX = (
     "tread", "lunge", "hazard_fill", "orb_fire", "regulator_hit", "regulator_defeated",
     "pickup", "unlock", "fusion",
 )  # fmt: skip
-ALL = MUSIC + STINGS + tuple(f"sfx_{name}" for name in SFX)
+REQUIRED = MUSIC + STINGS + tuple(f"sfx_{name}" for name in SFX)
+ALL = tuple(sorted(path.stem for path in AUDIO.glob("*.ogg")))
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -48,8 +49,13 @@ def samples(name: str) -> array:
     return array("h", raw)
 
 
+def test_every_required_p0_cue_exists() -> None:
+    missing = set(REQUIRED) - set(ALL)
+    assert not missing, f"Missing required P0 audio cues: {sorted(missing)}"
+
+
 @pytest.mark.parametrize("name", ALL)
-def test_every_p0_cue_exists_and_peaks_at_or_below_minus_1_dbfs(name: str) -> None:
+def test_every_audio_cue_exists_and_peaks_at_or_below_minus_1_dbfs(name: str) -> None:
     data = samples(name)
     assert len(data) > 0
     assert max(max(data), -min(data)) <= CEILING, f"{name} peaks above -1 dBFS"
@@ -60,7 +66,9 @@ def test_music_stems_share_one_length() -> None:
     assert set(lengths.values()) == {LOOP_SAMPLES}, lengths
 
 
-@pytest.mark.parametrize("name", ("music_hum", "music_arc", "music_lead", "music_fuse_box"))
+@pytest.mark.parametrize(
+    "name", ("music_hum", "music_arc", "music_lead", "music_fuse_box", "music_title")
+)
 def test_tonal_stems_loop_without_a_click(name: str) -> None:
     """The jump from the last sample back to the first is no bigger than the movement right
     around the loop point (the drum stem starts on a kick, a deliberate attack)."""

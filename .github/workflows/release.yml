@@ -64,12 +64,62 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Verify release tag matches package version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          uv run --no-project --python 3.12 python - <<'PY'
+          import os
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          tag = os.environ["RELEASE_TAG"]
+          if not tag.startswith("v"):
+              sys.exit(f"Release tag {tag!r} must start with 'v'")
+          expected = tag.removeprefix("v")
+
+          pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          pyproject_version = pyproject["project"]["version"]
+
+          sys.path.insert(0, "src")
+          import overload
+
+          init_version = overload.__version__
+
+          uv_lock = tomllib.loads(Path("uv.lock").read_text(encoding="utf-8"))
+          lock_matches = [
+              pkg["version"]
+              for pkg in uv_lock.get("package", [])
+              if pkg.get("name") == "overload"
+          ]
+          if len(lock_matches) != 1:
+              sys.exit(
+                  f"Expected one 'overload' package entry in uv.lock, found {lock_matches!r}"
+              )
+          lock_version = lock_matches[0]
+
+          if (
+              pyproject_version != expected
+              or init_version != expected
+              or lock_version != expected
+          ):
+              sys.exit(
+                  f"Release tag {tag!r} expects version {expected!r}, "
+                  f"found pyproject.toml={pyproject_version!r}, "
+                  f"src/overload/__init__.py={init_version!r}, and "
+                  f"uv.lock={lock_version!r}"
+              )
+          print(f"Verified release tag {tag} matches version {expected} across pyproject.toml, __init__.py, and uv.lock")
+          PY
+
       - name: Build wheel, sdist, and tagged source archive
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           rm -rf dist
           uv build --out-dir dist
+          rm -f dist/.gitignore
           git archive --format=tar.gz \
             --prefix="overload-${RELEASE_TAG}/" \
             -o "dist/overload-${RELEASE_TAG}-source.tar.gz" \
@@ -85,7 +135,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: overload-release-${{ github.ref_name }}
-          path: dist/
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/SHA256SUMS.txt
 
       - name: Create GitHub Release
         env:
