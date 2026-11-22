@@ -50,6 +50,7 @@ EVENT_SOUNDS = {
     "rival_orb": "orb_fire",
     "rival_volley": "mite_zap",
     "rival_hit": "regulator_hit",
+    "rival_shielded": "bulwark_absorb",
     "rival_destroyed": "boss_down",  # rolling explosions, then the motif in major
     "absorb": "pickup",
     "unlock": "unlock",
@@ -81,8 +82,10 @@ EVENT_SOUNDS = {
     "magnet_crush": "magnet_crush",
     "magnet_rejected": "blink_deny",
     # Fused powers' own events (their use cues are added below from FUSED).
+    "armor_absorb": "bulwark_absorb",
     "armor_release": "ring_burst",
     "hooked": "magnet_crush",
+    "slammed": "charge_impact",
     "mirror_release": "bulwark_reflect",
     # The boss kits (docs/BOSS_DESIGN.md): each attack its own sound.
     "phase_change": "phase_change",
@@ -145,6 +148,7 @@ VISUAL_TWINS = {
     "rival_orb": "large orb",
     "rival_volley": "three-bolt fan",
     "rival_hit": "white flash on the Regulator, its bar drops, gold burst and ring while venting",
+    "rival_shielded": "metallic sparks and an expanding deflection ring on the Regulator",
     "rival_destroyed": "the wreck sinks under chained explosions, then NAME DOWN",
     "absorb": "burst in the power color",
     "unlock": "screen flash and a SPARK STOLEN or BLINK STOLEN notice",
@@ -179,10 +183,12 @@ VISUAL_TWINS = {
     "power_static_guard": "a green bubble with yellow sparks in its ring",
     "power_tesla_coil": "a small green tower appears and starts to crackle",
     "power_capacitor_armor": "three charge cells start to orbit the Surge",
+    "armor_absorb": "a green burst on the Surge as a Capacitor Armor cell discharges",
     "armor_release": "a ring of sparks bursts out from the Surge",
     "power_lodestone": "a big slow spark with turning field lines",
     "power_ion_hook": "a barbed spark flies out",
     "hooked": "an indigo burst as the robot is dragged in",
+    "slammed": "an indigo burst where the robot slams into the wall",
     "power_magrail": "a bolt from the Surge to where the rail stops",
     "power_bastion": "a green bubble with magenta sparks in its ring",
     "power_reflector_wave": "a green bar with a magenta edge rolls forward",
@@ -258,7 +264,7 @@ def stems_for(stage: str | None, encounter: int, outcome: str) -> set[str]:
         return {"fuse_box"}
     if outcome == "down":
         return {"hum"}
-    if stage == "ending":
+    if stage == "ending" or (stage is None and outcome == "clear"):
         return {"hum", "arc", "lead"}
     layers = {"hum", "pulse"}
     if encounter >= 2:
@@ -337,14 +343,23 @@ class Audio:
         used = {e.kind.removeprefix("power_") for e in events if e.kind.startswith("power_")}
         fused = bool(used & FUSED.keys())
         for event in events:
-            if event.kind == "rival_destroyed" and world.outcome == "down":
+            if (
+                event.kind in ("rival_destroyed", "boss_reward", "room_clear")
+                and world.outcome == "down"
+            ):
                 continue
             if fused and _cast_by_fused(event, used):
                 continue
             name = EVENT_SOUNDS.get(event.kind)
             if name is None:
                 continue
-            self.play(name, 0.3 if name == "shot" else SFX_LEVEL)
+            if name == "shot":
+                volume = 0.3
+            elif event.kind == "rival_shielded":
+                volume = 0.45
+            else:
+                volume = SFX_LEVEL
+            self.play(name, volume)
             if event.kind == "rival_hit" and event.power == "vent":
                 self.play("spark", 0.45)
             if event.kind == "player_hit" and 0 < world.player.charge <= 2:
