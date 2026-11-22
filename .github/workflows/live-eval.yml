@@ -47,6 +47,7 @@ jobs:
       - run: uv sync --frozen
 
       - name: Run live evaluation suite
+        id: run_suite
         env:
           OVERLOAD_RIVAL_URL: ${{ secrets.OVERLOAD_RIVAL_URL }}
           EVAL_LABEL: ${{ inputs.label }}
@@ -63,15 +64,31 @@ jobs:
             echo "Error: label must contain only letters, digits, dots, underscores, or hyphens." >&2
             exit 1
           fi
+          if [[ ! "$WORKER_VERSION" =~ ^[A-Za-z0-9._-]+$ ]]
+          then
+            echo "Error: worker_version must contain only letters, digits, dots, underscores, or hyphens." >&2
+            exit 1
+          fi
+          RUN_DATE="$(date -u +%Y-%m-%d)"
+          OUT_DIR="evidence/rival/${RUN_DATE}-${EVAL_LABEL}"
+          write_output() {
+            END_DATE="$(date -u +%Y-%m-%d)"
+            if [ "$END_DATE" != "$RUN_DATE" ] && [ -d "evidence/rival/${END_DATE}-${EVAL_LABEL}" ] && [ ! -d "$OUT_DIR" ]
+            then
+              OUT_DIR="evidence/rival/${END_DATE}-${EVAL_LABEL}"
+            fi
+            echo "out_dir=${OUT_DIR}" >> "$GITHUB_OUTPUT"
+          }
+          trap write_output EXIT
           uv run python tools/rival/live_suite.py "$OVERLOAD_RIVAL_URL" \
             --label "$EVAL_LABEL" \
             --worker-version "$WORKER_VERSION" \
             --repeats "$EVAL_REPEATS"
 
       - name: Upload live evaluation evidence
-        if: always()
+        if: always() && steps.run_suite.outputs.out_dir != ''
         uses: actions/upload-artifact@v7
         with:
           name: rival-live-eval-${{ inputs.label }}-${{ github.run_id }}
-          path: evidence/rival/
+          path: ${{ steps.run_suite.outputs.out_dir }}
           if-no-files-found: warn
