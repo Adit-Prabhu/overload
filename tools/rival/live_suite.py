@@ -71,9 +71,48 @@ def git_commit() -> str:
     return result.stdout.strip() + ("-dirty" if dirty else "")
 
 
+def _is_fixture_record(record: dict) -> bool:
+    if record.get("source") == "fixture":
+        return True
+    model = record.get("model")
+    return isinstance(model, str) and model.startswith("fixture")
+
+
 def estimated_cost(record: dict) -> float:
+    if _is_fixture_record(record):
+        return 0.0
     tokens_in, tokens_out = record.get("input_tokens") or 0, record.get("output_tokens") or 0
     return (tokens_in * INPUT_USD_PER_M + tokens_out * OUTPUT_USD_PER_M) / 1e6
+
+
+def _evidence_banner(records: list[dict]) -> str:
+    if not records:
+        return "**Evidence type: none.** No attempts recorded."
+    has_live = any(r.get("source") == "live" for r in records)
+    has_fixture = any(_is_fixture_record(r) for r in records)
+    if has_live and has_fixture:
+        return (
+            "**Evidence type: mixed (live and fixture).** Warning: fixture replies are "
+            "present and excluded from live totals, latency, and intent agreement."
+        )
+    if has_fixture:
+        return (
+            "**Evidence type: fixture.** Deterministic local fixture replies, "
+            "not live model evidence."
+        )
+    if has_live:
+        return "**Evidence type: live.** Real calls to the deployed rival service."
+    return "**Evidence type: fallback only.** No valid live or fixture decisions were recorded."
+
+
+def _format_choice(record: dict) -> str:
+    if record.get("reason") is not None:
+        return f"fallback ({record['reason']})"
+    if record.get("source") == "fixture":
+        return f"{record['tactic']} (fixture)"
+    if record.get("source") != "live":
+        return f"{record['tactic']} ({record.get('source', 'unknown')})"
+    return str(record["tactic"])
 
 
 def run_case(client: TacticClient, case: dict) -> dict:
@@ -102,44 +141,70 @@ def percentile(values: list[float], q: float) -> float | None:
 
 
 def write_summary(path: Path, label: str, records: list[dict]) -> None:
-    valid = [r for r in records if r["source"] == "live" and r["reason"] is None]
+    valid = [r for r in records if r.get("source") == "live" and r.get("reason") is None]
+    fixture_rows = [r for r in records if r.get("source") == "fixture" and r.get("reason") is None]
     agree = [r for r in valid if r["tactic"] == r["intended"]]
-    latencies = [r["latency_ms"] for r in valid if r["latency_ms"] is not None]
-    tokens_in = sum(r["input_tokens"] or 0 for r in records)
-    tokens_out = sum(r["output_tokens"] or 0 for r in records)
-    cost = sum(estimated_cost(r) for r in records)
+    latencies = [r["latency_ms"] for r in valid if r.get("latency_ms") is not None]
+    billable = [r for r in records if not _is_fixture_record(r)]
+    tokens_in = sum(r.get("input_tokens") or 0 for r in billable)
+    tokens_out = sum(r.get("output_tokens") or 0 for r in billable)
+    cost = sum(estimated_cost(r) for r in billable)
     per_case = Counter(r["case"] for r in records)
     counts = sorted(set(per_case.values()))
-    per_case_text = (
-        f"{counts[0]} per case" if len(counts) == 1 else f"{counts[0]} to {counts[-1]} per case"
+    if not counts:
+        per_case_text = "0 per case"
+    elif len(counts) == 1:
+        per_case_text = f"{counts[0]} per case"
+    else:
+        per_case_text = f"{counts[0]} to {counts[-1]} per case"
+    models = sorted(
+        {
+            r["model"].strip()
+            for r in records
+            if isinstance(r.get("model"), str) and r["model"].strip()
+        }
     )
+    models_text = ", ".join(models) if models else "none"
+    p50 = percentile(latencies, 0.5)
+    p95 = percentile(latencies, 0.95)
+    latency_text = f"{p50} ms / {p95} ms" if p50 is not None and p95 is not None else "n/a"
     lines = [
         f"# Rival live suite: {label}",
         "",
-        "**Evidence type: live.** Real calls to the deployed rival service.",
+        _evidence_banner(records),
         "",
         "| Measure | Value |",
         "| --- | --- |",
+        f"| Model(s) observed | {models_text} |",
         f"| Attempts | {len(records)} ({per_case_text}) |",
         f"| Valid live decisions | {len(valid)} of {len(records)} |",
+    ]
+    if fixture_rows:
+        lines.append(
+            f"| Fixture decisions (excluded from live metrics) | "
+            f"{len(fixture_rows)} of {len(records)} |"
+        )
+    lines += [
         f"| Agree with the designer's intent | {len(agree)} of {len(valid)} valid |",
-        f"| Latency p50 / p95, nearest rank (valid) | {percentile(latencies, 0.5)} ms / "
-        f"{percentile(latencies, 0.95)} ms |",
+        f"| Latency p50 / p95, nearest rank (valid) | {latency_text} |",
         f"| Tokens in / out | {tokens_in} / {tokens_out} |",
         f"| Estimated cost | USD {cost:.4f} at list prices of USD {INPUT_USD_PER_M} and "
         f"{OUTPUT_USD_PER_M} per million tokens |",
         "",
-        "| Case | Intended | Chosen (per repeat) | Evidence cited |",
-        "| --- | --- | --- | --- |",
     ]
-    for case_id in dict.fromkeys(r["case"] for r in records):
-        rows = [r for r in records if r["case"] == case_id]
-        chosen = ", ".join(
-            r["tactic"] if r["reason"] is None else f"fallback ({r['reason']})" for r in rows
-        )
-        cited = " / ".join(",".join(r["evidence_ids"]) or "none" for r in rows)
-        lines.append(f"| {case_id} | {rows[0]['intended']} | {chosen} | {cited} |")
-    fallbacks = [r for r in records if r["reason"] is not None]
+    if records:
+        lines += [
+            "| Case | Intended | Chosen (per repeat) | Evidence cited |",
+            "| --- | --- | --- | --- |",
+        ]
+        for case_id in dict.fromkeys(r["case"] for r in records):
+            rows = [r for r in records if r["case"] == case_id]
+            chosen = ", ".join(_format_choice(r) for r in rows)
+            cited = " / ".join(",".join(r.get("evidence_ids") or ()) or "none" for r in rows)
+            lines.append(f"| {case_id} | {rows[0]['intended']} | {chosen} | {cited} |")
+    else:
+        lines.append("No attempts recorded.")
+    fallbacks = [r for r in records if r.get("reason") is not None]
     lines += ["", f"Fallbacks: {len(fallbacks)}."]
     if latencies:
         lines.append(f"Mean latency: {round(statistics.mean(latencies))} ms.")
@@ -161,6 +226,7 @@ def main() -> int:
     parser.add_argument("--label")
     parser.add_argument("--worker-version")
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--resummarize", type=Path)
     args = parser.parse_args()
 
@@ -172,13 +238,28 @@ def main() -> int:
         return 0
     if not (args.url and args.label and args.worker_version):
         parser.error("URL, --label and --worker-version are required to run the suite")
+    if args.repeats < 1:
+        parser.error("--repeats must be at least 1")
 
     suite = json.loads(HISTORIES.read_text(encoding="utf-8"))
     stamp = datetime.now(UTC).strftime("%Y-%m-%d")
     out = ROOT / "evidence" / "rival" / f"{stamp}-{args.label}"
+    config = out / "config.json"
+    results = out / "results.jsonl"
+    summary = out / "summary.md"
+    existing = [p for p in (config, results, summary) if p.exists() and p.stat().st_size > 0]
+    if existing and not args.overwrite:
+        parser.error(
+            f"run directory {out} already has saved evidence "
+            f"({', '.join(p.name for p in existing)}). "
+            "Use a new --label or pass --overwrite to replace it."
+        )
     out.mkdir(parents=True, exist_ok=True)
+    if args.overwrite:
+        for stale in (results, summary):
+            stale.unlink(missing_ok=True)
     budget = min(MAX_ATTEMPTS, args.repeats * len(suite["cases"]))
-    (out / "config.json").write_text(
+    config.write_text(
         json.dumps(
             {
                 "suite_version": suite["version"],
@@ -198,7 +279,6 @@ def main() -> int:
     )
 
     client = TacticClient(args.url)
-    results = out / "results.jsonl"
     attempts = 0
     try:
         for _ in range(args.repeats):

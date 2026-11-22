@@ -50,6 +50,13 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 
+def _is_fixture_decision(decision: dict[str, Any]) -> bool:
+    if decision.get("source") == "fixture":
+        return True
+    model = decision.get("model")
+    return isinstance(model, str) and model.startswith("fixture")
+
+
 def load_trace(path: Path) -> list[dict[str, Any]]:
     """Read and validate JSONL lines from one trace file."""
     if not path.exists():
@@ -97,6 +104,17 @@ def summarize_trace(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
         for field in SESSION_META_FIELDS:
             value = row.get(field)
             if value is not None:
+                if field == "seed":
+                    if not (_is_int(value) or isinstance(value, str)):
+                        raise TraceError(
+                            f"{path}: invalid metadata field 'seed' "
+                            f"(expected int or string, got {type(value).__name__})"
+                        )
+                elif not isinstance(value, str):
+                    raise TraceError(
+                        f"{path}: invalid metadata field '{field}' "
+                        f"(expected string, got {type(value).__name__})"
+                    )
                 if field in seen_meta and seen_meta[field] != value:
                     raise TraceError(
                         f"{path}: multiple sessions or conflicting metadata in one trace file "
@@ -150,6 +168,36 @@ def summarize_trace(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
             if _is_int(encounter):
                 decision_encounters.add(encounter)
             reason = row.get("reason")
+            if reason is not None and not isinstance(reason, str):
+                raise TraceError(
+                    f"{path}: invalid decision field 'reason' "
+                    f"(expected string or null, got {type(reason).__name__})"
+                )
+            source = row.get("source")
+            if source is not None and not isinstance(source, str):
+                raise TraceError(
+                    f"{path}: invalid decision field 'source' "
+                    f"(expected string or null, got {type(source).__name__})"
+                )
+            tactic = row.get("tactic")
+            if tactic is not None and not isinstance(tactic, str):
+                raise TraceError(
+                    f"{path}: invalid decision field 'tactic' "
+                    f"(expected string or null, got {type(tactic).__name__})"
+                )
+            model = row.get("model")
+            if model is not None and not isinstance(model, str):
+                raise TraceError(
+                    f"{path}: invalid decision field 'model' "
+                    f"(expected string or null, got {type(model).__name__})"
+                )
+            raw_cost = row.get("cost_usd")
+            if raw_cost is not None and not _is_number(raw_cost):
+                raise TraceError(
+                    f"{path}: invalid decision field 'cost_usd' "
+                    f"(expected finite number or null, got {raw_cost!r})"
+                )
+            cost_usd = float(raw_cost) if raw_cost is not None else None
             if (
                 condition == "fixed"
                 and schedule is None
@@ -165,15 +213,15 @@ def summarize_trace(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
                 decisions.append(
                     {
                         "encounter": encounter,
-                        "tactic": row.get("tactic"),
-                        "source": row.get("source"),
+                        "tactic": tactic,
+                        "source": source,
                         "reason": reason,
                         "evidence_ids": evidence_ids,
                         "latency_ms": row.get("latency_ms"),
-                        "model": row.get("model"),
+                        "model": model,
                         "input_tokens": row.get("input_tokens"),
                         "output_tokens": row.get("output_tokens"),
-                        "cost_usd": row.get("cost_usd"),
+                        "cost_usd": cost_usd,
                         "request_id": row.get("request_id"),
                         "context_hash": row.get("context_hash"),
                     }
@@ -294,9 +342,16 @@ def summarize_trace(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
     latency_p95_ms = percentile(live_latencies, 0.95)
     latency_mean_ms = round(statistics.mean(live_latencies), 1) if live_latencies else None
 
-    total_input_tokens = sum(d["input_tokens"] for d in decisions if _is_int(d["input_tokens"]))
-    total_output_tokens = sum(d["output_tokens"] for d in decisions if _is_int(d["output_tokens"]))
-    reported_costs = [float(d["cost_usd"]) for d in decisions if _is_number(d["cost_usd"])]
+    non_fixture_decisions = [d for d in decisions if not _is_fixture_decision(d)]
+    total_input_tokens = sum(
+        d["input_tokens"] for d in non_fixture_decisions if _is_int(d["input_tokens"])
+    )
+    total_output_tokens = sum(
+        d["output_tokens"] for d in non_fixture_decisions if _is_int(d["output_tokens"])
+    )
+    reported_costs = [
+        float(d["cost_usd"]) for d in non_fixture_decisions if _is_number(d["cost_usd"])
+    ]
     total_cost_usd = round(sum(reported_costs), 6) if reported_costs else None
 
     encounters: dict[str, dict[str, Any]] = {}
@@ -372,8 +427,15 @@ def build_paired_comparisons(summaries: list[dict[str, Any]]) -> list[dict[str, 
     """Build paired comparisons whenever live and fixed traces share (seed, tuning_id)."""
     groups: dict[tuple[Any, Any], list[dict[str, Any]]] = defaultdict(list)
     for summary in summaries:
-        if summary["seed"] is not None and summary["tuning_id"] is not None:
-            groups[(summary["seed"], summary["tuning_id"])].append(summary)
+        seed_val = summary["seed"]
+        tuning_val = summary["tuning_id"]
+        if seed_val is not None and tuning_val is not None:
+            if isinstance(seed_val, list | dict) or isinstance(tuning_val, list | dict):
+                raise TraceError(
+                    f"{summary.get('file', '<trace>')}: unhashable pairing metadata "
+                    f"(seed={seed_val!r}, tuning_id={tuning_val!r})"
+                )
+            groups[(seed_val, tuning_val)].append(summary)
 
     paired: list[dict[str, Any]] = []
     for (seed, tuning_id), group in groups.items():
@@ -443,9 +505,14 @@ def build_paired_comparisons(summaries: list[dict[str, Any]]) -> list[dict[str, 
         pairs: list[dict[str, Any]] = []
         for lt in live_traces:
             for ft in fixed_traces:
-                differing = [
+                compared = [
                     enc
                     for enc in (2, 3)
+                    if str(enc) in lt["protocols"] or str(enc) in ft["protocols"]
+                ]
+                differing = [
+                    enc
+                    for enc in compared
                     if lt["protocols"].get(str(enc)) != ft["protocols"].get(str(enc))
                 ]
                 pairs.append(
@@ -454,6 +521,7 @@ def build_paired_comparisons(summaries: list[dict[str, Any]]) -> list[dict[str, 
                         "fixed_file": ft["file"],
                         "live_protocols": lt["protocols"],
                         "fixed_protocols": ft["protocols"],
+                        "compared_encounters": compared,
                         "differing_encounters": differing,
                         "retries_delta": lt["total_retries"] - ft["total_retries"],
                         "encounter_seconds_delta": round(
@@ -509,7 +577,12 @@ def compare_traces(paths: list[Path]) -> dict[str, Any]:
     ]
     live_latencies = [d["latency_ms"] for d in valid_live if _is_number(d["latency_ms"])]
     live_fallbacks = [d for d in all_live_decisions if d["source"] == "fallback"]
-    live_costs = [float(d["cost_usd"]) for d in live_source_decisions if _is_number(d["cost_usd"])]
+    live_billing_decisions = [
+        d
+        for d in all_live_decisions
+        if d["source"] in ("live", "fallback") and not _is_fixture_decision(d)
+    ]
+    live_costs = [float(d["cost_usd"]) for d in live_billing_decisions if _is_number(d["cost_usd"])]
 
     overall_live = {
         "decision_count": len(all_live_decisions),
@@ -523,10 +596,10 @@ def compare_traces(paths: list[Path]) -> dict[str, Any]:
         "latency_p95_ms": percentile(live_latencies, 0.95),
         "latency_mean_ms": round(statistics.mean(live_latencies), 1) if live_latencies else None,
         "total_input_tokens": sum(
-            d["input_tokens"] for d in live_source_decisions if _is_int(d["input_tokens"])
+            d["input_tokens"] for d in live_billing_decisions if _is_int(d["input_tokens"])
         ),
         "total_output_tokens": sum(
-            d["output_tokens"] for d in live_source_decisions if _is_int(d["output_tokens"])
+            d["output_tokens"] for d in live_billing_decisions if _is_int(d["output_tokens"])
         ),
         "total_cost_usd": round(sum(live_costs), 6) if live_costs else None,
     }
@@ -542,8 +615,8 @@ def _fmt_opt(value: Any, default: str = "n/a") -> str:
     return default if value is None else str(value)
 
 
-def _fmt_cost(cost: float | None) -> str:
-    return "n/a" if cost is None else f"USD {cost:.6f}"
+def _fmt_cost(cost: Any) -> str:
+    return f"USD {float(cost):.6f}" if _is_number(cost) else "n/a"
 
 
 def _fmt_protocols(protocols: dict[str, str]) -> str:
@@ -758,11 +831,16 @@ def format_markdown(report: dict[str, Any]) -> str:
 
             lines.append("")
             for pair in group["pairs"]:
-                diff_text = (
-                    ", ".join(f"E{enc}" for enc in pair["differing_encounters"])
-                    if pair["differing_encounters"]
-                    else "none (identical E2 and E3 protocols)"
-                )
+                compared = pair.get("compared_encounters", [2, 3])
+                if pair["differing_encounters"]:
+                    diff_text = ", ".join(f"E{enc}" for enc in pair["differing_encounters"])
+                elif not compared:
+                    diff_text = "n/a (neither trace reached E2)"
+                elif compared == [2, 3]:
+                    diff_text = "none (identical E2 and E3 protocols)"
+                else:
+                    compared_label = " and ".join(f"E{enc}" for enc in compared)
+                    diff_text = f"none (identical {compared_label} protocol)"
                 lines.append(
                     f"- Delta (`{pair['live_file']}` minus `{pair['fixed_file']}`): "
                     f"differing protocols = {diff_text}, "
