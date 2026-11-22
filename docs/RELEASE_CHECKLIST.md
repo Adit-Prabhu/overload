@@ -107,7 +107,7 @@ git tag -a v1.0.0 -m "Overload Gold candidate (G4)"
 git push origin v1.0.0
 ```
 
-Pushing a `v*` tag triggers [`.github/workflows/release.yml`](../.github/workflows/release.yml), which re-runs Python 3.11 and 3.12 checks, Worker typecheck and tests, verifies that the tag matches the version in `pyproject.toml` and `src/overload/__init__.py`, builds the wheel, sdist, and tagged source archive (`overload-<tag>-source.tar.gz`) with `SHA256SUMS.txt`, and publishes the GitHub Release. Note that only `overload-<tag>-source.tar.gz` is a complete standalone runnable release archive (including `assets/`, `config/`, docs, and Worker source), while both the `.whl` and the sdist omit `assets/` and `config/` and bundle only the Python `overload` package source.
+Pushing a `v*` tag triggers [`.github/workflows/release.yml`](../.github/workflows/release.yml), which re-runs Python 3.11 and 3.12 checks, Worker typecheck and tests, verifies that the tag matches the version in `pyproject.toml`, `src/overload/__init__.py`, and `uv.lock`, builds the wheel, sdist, and tagged source archive (`overload-<tag>-source.tar.gz`) with `SHA256SUMS.txt`, and publishes the GitHub Release. Note that only `overload-<tag>-source.tar.gz` is a complete standalone runnable release archive (including `assets/`, `config/`, docs, and Worker source), while both the `.whl` and the sdist omit `assets/` and `config/` and bundle only the Python `overload` package source.
 
 - [ ] `pyproject.toml`, `src/overload/__init__.py`, and `uv.lock` match the tagged release version.
 - [ ] `.github/workflows/release.yml` succeeded on the pushed tag.

@@ -59,14 +59,14 @@ jobs:
             echo "Error: OVERLOAD_RIVAL_URL secret is not configured." >&2
             exit 1
           fi
-          if [[ ! "$EVAL_LABEL" =~ ^[A-Za-z0-9._-]+$ ]]
+          if [[ ! "$EVAL_LABEL" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
           then
-            echo "Error: label must contain only letters, digits, dots, underscores, or hyphens." >&2
+            echo "Error: label must start with a letter or digit and contain only letters, digits, dots, underscores, or hyphens." >&2
             exit 1
           fi
-          if [[ ! "$WORKER_VERSION" =~ ^[A-Za-z0-9._-]+$ ]]
+          if [[ ! "$WORKER_VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
           then
-            echo "Error: worker_version must contain only letters, digits, dots, underscores, or hyphens." >&2
+            echo "Error: worker_version must start with a letter or digit and contain only letters, digits, dots, underscores, or hyphens." >&2
             exit 1
           fi
           RUN_DATE="$(date -u +%Y-%m-%d)"
@@ -81,9 +81,9 @@ jobs:
           }
           trap write_output EXIT
           uv run python tools/rival/live_suite.py "$OVERLOAD_RIVAL_URL" \
-            --label "$EVAL_LABEL" \
-            --worker-version "$WORKER_VERSION" \
-            --repeats "$EVAL_REPEATS"
+            --label="$EVAL_LABEL" \
+            --worker-version="$WORKER_VERSION" \
+            --repeats="$EVAL_REPEATS"
 
       - name: Upload live evaluation evidence
         if: always() && steps.run_suite.outputs.out_dir != ''

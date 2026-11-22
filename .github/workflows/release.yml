@@ -87,13 +87,30 @@ jobs:
 
           init_version = overload.__version__
 
-          if pyproject_version != expected or init_version != expected:
+          uv_lock = tomllib.loads(Path("uv.lock").read_text(encoding="utf-8"))
+          lock_matches = [
+              pkg["version"]
+              for pkg in uv_lock.get("package", [])
+              if pkg.get("name") == "overload"
+          ]
+          if len(lock_matches) != 1:
+              sys.exit(
+                  f"Expected one 'overload' package entry in uv.lock, found {lock_matches!r}"
+              )
+          lock_version = lock_matches[0]
+
+          if (
+              pyproject_version != expected
+              or init_version != expected
+              or lock_version != expected
+          ):
               sys.exit(
                   f"Release tag {tag!r} expects version {expected!r}, "
-                  f"found pyproject.toml={pyproject_version!r} and "
-                  f"src/overload/__init__.py={init_version!r}"
+                  f"found pyproject.toml={pyproject_version!r}, "
+                  f"src/overload/__init__.py={init_version!r}, and "
+                  f"uv.lock={lock_version!r}"
               )
-          print(f"Verified release tag {tag} matches version {expected}")
+          print(f"Verified release tag {tag} matches version {expected} across pyproject.toml, __init__.py, and uv.lock")
           PY
 
       - name: Build wheel, sdist, and tagged source archive
