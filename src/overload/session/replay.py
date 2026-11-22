@@ -95,7 +95,7 @@ class Recording:
         if final_hash is not None and not isinstance(final_hash, str):
             raise ValueError(f"{path} has malformed final_hash")
         try:
-            frames = [InputFrame.from_list(values) for values in raw_frames]
+            frames = [_parse_frame(values) for values in raw_frames]
         except (TypeError, ValueError, IndexError) as error:
             raise ValueError(f"{path} has malformed input frame: {error}") from error
         return cls(
@@ -142,6 +142,22 @@ def check_campaign(recording: Recording) -> None:
 
 def _is_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_flag(value: object) -> bool:
+    """True for a boolean or strict integer 0/1."""
+    return isinstance(value, bool) or (_is_int(value) and value in (0, 1))
+
+
+def _parse_frame(values: object) -> InputFrame:
+    """Validate and decode one serialized InputFrame list."""
+    if not isinstance(values, list) or len(values) != 9:
+        raise ValueError(f"expected 9-item list, got {values!r}")
+    if not all(_is_int(v) for v in values[:4]):
+        raise ValueError(f"move and aim fields must be integers, got {values!r}")
+    if not all(_is_flag(v) for v in values[4:]):
+        raise ValueError(f"button fields must be 0, 1 or booleans, got {values!r}")
+    return InputFrame.from_list(values)
 
 
 def _well_formed(entry: object) -> bool:

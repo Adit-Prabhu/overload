@@ -65,13 +65,36 @@ def test_saved_keys_load_and_damaged_files_fall_back(tmp_path) -> None:
         json.dumps({"up": "i"}),
         json.dumps({**DEFAULTS, "up": "s"}),
         json.dumps({**DEFAULTS, "dodge": "return"}),
+        json.dumps({**DEFAULTS, "dodge": "RETURN"}),
+        json.dumps({**DEFAULTS, "dodge": "ESCAPE"}),
         json.dumps({**DEFAULTS, "dodge": "backspace"}),
         json.dumps({**DEFAULTS, "dodge": "tab", "menu": "space"}),
+        json.dumps({**DEFAULTS, "dodge": "tab", "menu": "SPACE"}),
         json.dumps({**DEFAULTS, "dodge": "q", "power_q": "space"}),
+        json.dumps({**DEFAULTS, "up": "W", "dodge": "w"}),
     ):
         path.write_text(broken)
         assert Keybinds.load(path).keys == DEFAULTS
+    # Valid uppercase keys normalize cleanly to lowercase on load and bind.
+    path.write_text(json.dumps({**DEFAULTS, "up": "I"}))
+    assert Keybinds.load(path).keys["up"] == "i"
     assert Keybinds.load(tmp_path / "missing.json").keys == DEFAULTS
+
+
+def test_case_insensitive_reserved_keys_and_swaps_are_enforced() -> None:
+    binds = Keybinds()
+    for bad in ("RETURN", "Enter", "KP_ENTER", "BackSpace", "ESCAPE"):
+        assert not binds.bind("dodge", bad)
+    assert not binds.bind("menu", "SPACE")
+    assert not binds.bind("power_q", "Space")
+    assert not binds.bind("dodge", "Q")
+    assert binds.bind("power_q", "E")
+    assert binds.keys["power_q"] == "e" and binds.keys["power_e"] == "q"
+    page = RebindPage(Keybinds())
+    page.nav("select")
+    assert page.capture("RETURN") == "deny" and page.notice == "ENTER RESERVED FOR MENUS"
+    page.nav("select")
+    assert page.capture("SPACE") == "deny" and page.notice == "SPACE RESERVED FOR MENUS"
 
 
 def test_unsaved_bindings_never_write(tmp_path) -> None:

@@ -8,7 +8,7 @@ import pytest
 
 from overload.game.app import Options, play
 from overload.session.replay import FORMAT, VERSION, Recording, check_campaign
-from overload.sim.arena import FLOOR_ARENA, arena_id
+from overload.sim.arena import FLOOR_ARENA, SUBSTATION, arena_id
 from overload.sim.inputs import IDLE
 from overload.sim.tuning import DEFAULT
 
@@ -26,6 +26,22 @@ def _valid_campaign_payload() -> dict:
         "starts": [1],
         "menu": [],
         "frames": [IDLE.to_list(), IDLE.to_list()],
+    }
+
+
+def _valid_practice_payload() -> dict:
+    return {
+        "format": FORMAT,
+        "version": VERSION,
+        "seed": 1,
+        "tuning_id": DEFAULT.tuning_id(),
+        "arena_id": arena_id(SUBSTATION),
+        "final_hash": None,
+        "mode": "practice",
+        "protocols": [],
+        "starts": [],
+        "menu": [],
+        "frames": [IDLE.to_list()],
     }
 
 
@@ -79,6 +95,44 @@ def test_play_rejects_missing_and_corrupt_replays_cleanly(tmp_path, capsys) -> N
         (
             "bad_frame.json",
             json.dumps({**_valid_campaign_payload(), "frames": [["bad"]]}),
+        ),
+        (
+            "bad_aim_str_campaign.json",
+            json.dumps({**_valid_campaign_payload(), "frames": [[0, 0, "bad", 0, 0, 0, 0, 0, 0]]}),
+        ),
+        (
+            "bad_aim_null_campaign.json",
+            json.dumps({**_valid_campaign_payload(), "frames": [[0, 0, 0, None, 0, 0, 0, 0, 0]]}),
+        ),
+        (
+            "bad_aim_str_practice.json",
+            json.dumps({**_valid_practice_payload(), "frames": [[0, 0, "bad", 0, 0, 0, 0, 0, 0]]}),
+        ),
+        (
+            "bad_aim_null_practice.json",
+            json.dumps({**_valid_practice_payload(), "frames": [[0, 0, 0, None, 0, 0, 0, 0, 0]]}),
+        ),
+        (
+            "bool_move.json",
+            json.dumps(
+                {**_valid_campaign_payload(), "frames": [[True, False, 0, 0, 0, 0, 0, 0, 0]]}
+            ),
+        ),
+        (
+            "float_aim.json",
+            json.dumps({**_valid_campaign_payload(), "frames": [[0, 0, 1.5, 2.5, 0, 0, 0, 0, 0]]}),
+        ),
+        (
+            "bad_flag_str.json",
+            json.dumps({**_valid_campaign_payload(), "frames": [[0, 0, 0, 0, "yes", 0, 0, 0, 0]]}),
+        ),
+        (
+            "bad_flag_int.json",
+            json.dumps({**_valid_campaign_payload(), "frames": [[0, 0, 0, 0, 2, 0, 0, 0, 0]]}),
+        ),
+        (
+            "bad_flag_float.json",
+            json.dumps({**_valid_campaign_payload(), "frames": [[0, 0, 0, 0, 1.0, 0, 0, 0, 0]]}),
         ),
         (
             "bad_protocol.json",

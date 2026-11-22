@@ -76,9 +76,10 @@ _LABEL = {
 
 def allowed(action: str, name: str) -> bool:
     """True if `name` can legally be bound to `action` without conflicting with menus."""
-    if action not in DEFAULTS or not name or name in UNBINDABLE:
+    key = name.lower() if isinstance(name, str) else ""
+    if action not in DEFAULTS or not key or key in UNBINDABLE:
         return False
-    return not (name == "space" and action in MENU_ACTIONS)
+    return not (key == "space" and action in MENU_ACTIONS)
 
 
 def key_label(name: str) -> str:
@@ -111,10 +112,13 @@ class Keybinds:
         if (
             isinstance(saved, dict)
             and set(saved) == set(DEFAULTS)
-            and all(isinstance(v, str) and allowed(k, v) for k, v in saved.items())
-            and len(set(saved.values())) == len(saved)
+            and all(isinstance(v, str) for v in saved.values())
         ):
-            binds.keys = dict(saved)
+            normalized = {k: v.lower() for k, v in saved.items()}
+            if all(allowed(k, v) for k, v in normalized.items()) and len(
+                set(normalized.values())
+            ) == len(normalized):
+                binds.keys = normalized
         return binds
 
     def save(self) -> None:
@@ -130,15 +134,16 @@ class Keybinds:
         """Put `name` on `action`. A key already on another action swaps over to it when
         both actions legally accept their new keys, so no key is ever used twice and no
         menu action ever receives a reserved menu key."""
-        if not allowed(action, name):
+        key = name.lower() if isinstance(name, str) else ""
+        if not allowed(action, key):
             return False
-        for other, key in self.keys.items():
-            if key == name and other != action:
+        for other, current in self.keys.items():
+            if current.lower() == key and other != action:
                 if not allowed(other, self.keys[action]):
                     return False
                 self.keys[other] = self.keys[action]
                 break
-        self.keys[action] = name
+        self.keys[action] = key
         self.save()
         return True
 
@@ -210,22 +215,27 @@ class RebindPage:
         """The key pressed while waiting. Esc cancels. Reserved menu keys are refused with
         a notice and a deny cue. Returns a sound."""
         self.capturing = False
-        if not name or name == "escape":
+        key = name.lower() if isinstance(name, str) else ""
+        if not key or key == "escape":
             self.notice = ""
             return "move"
         action, title = ACTIONS[self.row]
-        if not allowed(action, name):
-            self.notice = f"{key_label(name)} RESERVED FOR MENUS"
+        if not allowed(action, key):
+            self.notice = f"{key_label(key)} RESERVED FOR MENUS"
             return "deny"
-        for other, key in self.binds.keys.items():
-            if key == name and other != action and not allowed(other, self.binds.keys[action]):
+        for other, current in self.binds.keys.items():
+            if (
+                current.lower() == key
+                and other != action
+                and not allowed(other, self.binds.keys[action])
+            ):
                 other_title = dict(ACTIONS)[other]
                 self.notice = f"REBIND {other_title} FIRST"
                 return "deny"
-        if not self.binds.bind(action, name):
+        if not self.binds.bind(action, key):
             self.notice = ""
             return "move"
-        self.notice = f"{title}: {key_label(name)}"
+        self.notice = f"{title}: {key_label(key)}"
         return "confirm"
 
 
