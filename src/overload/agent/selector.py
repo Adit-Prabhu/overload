@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 from typing import Protocol
 
-from overload.agent.client import Pending, TacticClient
+from overload.agent.client import Pending, TacticClient, is_timeout_error
 from overload.agent.tactics import Decision, catalogue, fallback, schedules, validate
 
 MAX_REQUESTS = 2
@@ -113,8 +113,9 @@ class LiveSelector:
         if pending.future.done():
             try:
                 status, body, arrived = pending.future.result()
-            except Exception:  # any transport, parsing or cancellation failure means fallback
-                return fallback(pending.encounter, "transport_error", pending.request_id, latency)
+            except Exception as exc:  # timeout or transport, parsing or cancellation failure
+                reason = "timeout" if is_timeout_error(exc) else "transport_error"
+                return fallback(pending.encounter, reason, pending.request_id, latency)
             latency = round((arrived - pending.started) * 1000)
             if arrived - pending.started > self.client.deadline:
                 return fallback(pending.encounter, "late", pending.request_id, latency)
@@ -126,6 +127,7 @@ class LiveSelector:
                 request_id=pending.request_id,
                 encounter=pending.encounter,
                 supplied_ids=pending.supplied_ids,
+                prior_supplied_ids=pending.prior_supplied_ids,
                 latency_ms=latency,
             )
         if elapsed >= self.client.deadline:

@@ -82,6 +82,10 @@ export class RivalSession extends Agent<Env, SessionState> {
     if (previous) await this.cancelSchedule(previous).catch(() => undefined);
   }
 
+  private createProvider() {
+    return makeProvider(this.env, TACTIC_IDS);
+  }
+
   async propose(request: TacticRequest, sessionId: string): Promise<TacticResponse> {
     const started = Date.now();
     const state = this.state;
@@ -89,7 +93,7 @@ export class RivalSession extends Agent<Env, SessionState> {
     let configError = false;
     let setupError = false;
     try {
-      provider = makeProvider(this.env, TACTIC_IDS);
+      provider = this.createProvider();
     } catch (error) {
       configError = error instanceof ProviderNotConfigured;
       setupError = !configError;
@@ -163,7 +167,7 @@ export class RivalSession extends Agent<Env, SessionState> {
         request.summary,
         AbortSignal.timeout(PROVIDER_DEADLINE_MS),
       );
-      const proposal = validateProposal(result.raw, request.summary);
+      const proposal = validateProposal(result.raw, request.summary, state.history);
       return {
         ...counted,
         status: proposal ? "ok" : "invalid_output",

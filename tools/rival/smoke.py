@@ -18,59 +18,96 @@ import sys
 import time
 from dataclasses import asdict
 
-from overload.agent.client import TacticClient
+from overload.agent.client import TacticClient, Transport, urllib_transport
 from overload.agent.observations import ObservationLog
 from overload.agent.selector import LiveSelector
+from overload.agent.tactics import Decision
 
 
-def summary(distance: float) -> dict:
-    log = ObservationLog(1)
+def summary(distance: float, encounter: int = 1, previous_tactic: str = "lateral") -> dict:
+    log = ObservationLog(encounter)
     for tick in range(600):
         log.observe((0.0, 0.0), (distance, 0.0), ["shot"] if tick % 10 == 0 else [])
-    return log.summary("lateral")
+    return log.summary(previous_tactic)
 
 
-def wait(selector: LiveSelector, encounter: int):
+def wait(selector: LiveSelector, encounter: int) -> Decision:
     while (decision := selector.poll(encounter)) is None:
         time.sleep(0.02)
     return decision
+
+
+def run_smoke(
+    base: str,
+    *,
+    expect_timeout: bool = False,
+    deadline: float = 5.0,
+    transport: Transport = urllib_transport,
+) -> dict[str, Decision]:
+    client = TacticClient(base, transport=transport, deadline=deadline)
+    try:
+        far_player = LiveSelector(client, client.start_session())
+        near_player = LiveSelector(client, client.start_session())
+        assert far_player.session_id and near_player.session_id, "could not start sessions"
+        assert far_player.session_id != near_player.session_id
+        if expect_timeout:
+            far_player.warm()
+        else:
+            warm_status, warm_body = client.transport(
+                "POST",
+                f"{client.base_url}/sessions/{far_player.session_id}/warmup",
+                None,
+                min(3.0, deadline),
+            )
+            assert (
+                warm_status == 200 and isinstance(warm_body, dict) and warm_body.get("ok") is True
+            ), (warm_status, warm_body)
+        near_player.warm()
+        far_player.prepare(2, summary(200.0, encounter=1))
+        near_player.prepare(2, summary(10.0, encounter=1))
+        results = {"far": wait(far_player, 2), "near": wait(near_player, 2)}
+        far_player.prepare(3, summary(200.0, encounter=2, previous_tactic=results["far"].tactic))
+        results["far_3"] = wait(far_player, 3)
+        far_player.prepare(4, summary(200.0, encounter=3, previous_tactic=results["far_3"].tactic))
+        results["far_4"] = wait(far_player, 4)
+        for name, decision in results.items():
+            print(json.dumps({"case": name, **asdict(decision)}))
+        if expect_timeout:
+            # The service gives up at 4.5 s and reports a timeout, or the game's own 5 s deadline
+            # fires first. Either way every fight starts on the neutral tactic.
+            for name in ("far", "near", "far_3"):
+                assert results[name].source == "fallback", results[name]
+                assert results[name].reason in ("timeout", "late", "service_timeout"), results[name]
+                assert results[name].tactic == "lateral", results[name]
+        else:
+            for name in ("far", "near", "far_3"):
+                assert results[name].reason is None, results[name]
+                assert bool(results[name].evidence_ids), results[name]
+            if results["far"].source == "fixture":
+                # The fixture is a fixed rule, so its answers are known exactly.
+                for name in ("far", "near", "far_3"):
+                    assert results[name].source == "fixture", results[name]
+                assert results["far"].tactic == "pressure", results["far"]
+                assert results["near"].tactic == "spacing", results["near"]
+                assert results["far_3"].tactic == "pressure", results["far_3"]
+            else:
+                # A live model may choose differently. It must give valid, cited answers.
+                for name in ("far", "near", "far_3"):
+                    assert results[name].source == "live", results[name]
+                    assert bool(results[name].evidence_ids), results[name]
+        assert results["far_4"].source == "fallback", results["far_4"]
+        assert results["far_4"].reason == "request_cap", results["far_4"]
+        assert results["far_4"].tactic == "lateral", results["far_4"]
+        return results
+    finally:
+        client.close()
 
 
 def main(argv: list[str]) -> int:
     base = argv[1]
     expect_timeout = "--expect-timeout" in argv
     deadline = float(argv[argv.index("--deadline") + 1]) if "--deadline" in argv else 5.0
-    client = TacticClient(base, deadline=deadline)
-    far_player = LiveSelector(client, client.start_session())
-    near_player = LiveSelector(client, client.start_session())
-    assert far_player.session_id and near_player.session_id, "could not start sessions"
-    assert far_player.session_id != near_player.session_id
-    far_player.prepare(2, summary(200.0))
-    near_player.prepare(2, summary(10.0))
-    results = {"far": wait(far_player, 2), "near": wait(near_player, 2)}
-    far_player.prepare(3, summary(200.0))
-    results["far_3"] = wait(far_player, 3)
-    far_player.prepare(4, summary(200.0))
-    results["far_4"] = wait(far_player, 4)
-    for name, decision in results.items():
-        print(json.dumps({"case": name, **asdict(decision)}))
-    if expect_timeout:
-        # The service gives up at 4.5 s and reports a timeout, or the game's own 5 s deadline
-        # fires first. Either way the fight starts on the neutral tactic.
-        assert results["far"].reason in ("timeout", "late", "service_timeout"), results["far"]
-        assert results["far"].tactic == "lateral"
-    else:
-        for name in ("far", "near", "far_3"):
-            assert results[name].reason is None, results[name]
-        if results["far"].source == "fixture":
-            # The fixture is a fixed rule, so its answers are known exactly.
-            assert results["far"].tactic == "pressure", results["far"]
-            assert results["near"].tactic == "spacing", results["near"]
-        else:
-            # A live model may choose differently. It must give valid, cited answers.
-            assert results["far"].source == "live" and results["far"].evidence_ids is not None
-    assert results["far_4"].reason == "request_cap", results["far_4"]
-    client.close()
+    run_smoke(base, expect_timeout=expect_timeout, deadline=deadline)
     print("smoke passed")
     return 0
 

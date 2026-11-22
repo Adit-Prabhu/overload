@@ -11,6 +11,7 @@ import http.client
 import json
 import re
 import threading
+import urllib.error
 
 import pytest
 
@@ -169,6 +170,519 @@ def test_valid_reply_is_accepted() -> None:
         supplied_ids=frozenset({"e1.near_share"}),
     )
     assert (decision.tactic, decision.source, decision.reason) == ("spacing", "fixture", None)
+
+
+def test_empty_evidence_falls_back_to_neutral() -> None:
+    body = {"request_id": "req-1", "encounter": 2}
+    decision = validate(
+        ok_reply(body, "lateral", []),
+        session_id=SESSION,
+        request_id="req-1",
+        encounter=2,
+        supplied_ids=frozenset({"e1.far_share"}),
+    )
+    assert (decision.tactic, decision.source, decision.reason) == (
+        catalogue().neutral,
+        "fallback",
+        "empty_evidence",
+    )
+
+
+def test_validate_accepts_prior_supplied_ids_when_provided() -> None:
+    body = {"request_id": "req-2", "encounter": 3}
+    prior = frozenset({"e1.far_share"})
+    current = frozenset({"e2.near_share"})
+
+    prior_only = validate(
+        ok_reply(body, "pressure", ["e1.far_share"], source="live"),
+        session_id=SESSION,
+        request_id="req-2",
+        encounter=3,
+        supplied_ids=current,
+        prior_supplied_ids=prior,
+    )
+    assert (prior_only.tactic, prior_only.source, prior_only.evidence_ids) == (
+        "pressure",
+        "live",
+        ("e1.far_share",),
+    )
+
+    both = validate(
+        ok_reply(body, "spacing", ["e1.far_share", "e2.near_share"], source="live"),
+        session_id=SESSION,
+        request_id="req-2",
+        encounter=3,
+        supplied_ids=current,
+        prior_supplied_ids=prior,
+    )
+    assert (both.tactic, both.source, both.evidence_ids) == (
+        "spacing",
+        "live",
+        ("e1.far_share", "e2.near_share"),
+    )
+
+    unsupplied = validate(
+        ok_reply(body, "spacing", ["e1.player_hp"], source="live"),
+        session_id=SESSION,
+        request_id="req-2",
+        encounter=3,
+        supplied_ids=current,
+        prior_supplied_ids=prior,
+    )
+    assert (unsupplied.tactic, unsupplied.source, unsupplied.reason) == (
+        catalogue().neutral,
+        "fallback",
+        "unknown_evidence",
+    )
+
+
+def test_fallback_preserves_usage_cost_and_model_on_spent_worker_calls() -> None:
+    body = {"request_id": "req-1", "encounter": 2}
+    invalid_reply = ok_reply(
+        body,
+        None,
+        [],
+        status="invalid_output",
+        source="live",
+        resolved_model="gemini-3.5-flash-lite-001",
+        usage={"input_tokens": 512, "output_tokens": 27},
+        cost_usd_estimate=0.00158,
+    )
+    invalid_decision = validate(
+        invalid_reply,
+        session_id=SESSION,
+        request_id="req-1",
+        encounter=2,
+        supplied_ids=frozenset({"e1.far_share"}),
+        latency_ms=420,
+    )
+    assert invalid_decision.tactic == catalogue().neutral
+    assert invalid_decision.source == "fallback"
+    assert invalid_decision.reason == "service_invalid_output"
+    assert invalid_decision.model == "gemini-3.5-flash-lite-001"
+    assert invalid_decision.input_tokens == 512
+    assert invalid_decision.output_tokens == 27
+    assert invalid_decision.cost_usd == 0.00158
+
+    timeout_reply = ok_reply(
+        body,
+        None,
+        [],
+        status="timeout",
+        source="live",
+        requested_model="gemini-3.5-flash-lite",
+        resolved_model=None,
+        usage={"input_tokens": 0, "output_tokens": 0},
+        cost_usd_estimate=0.00158,
+    )
+    timeout_decision = validate(
+        timeout_reply,
+        session_id=SESSION,
+        request_id="req-1",
+        encounter=2,
+        supplied_ids=frozenset({"e1.far_share"}),
+        latency_ms=4500,
+    )
+    assert timeout_decision.tactic == catalogue().neutral
+    assert timeout_decision.source == "fallback"
+    assert timeout_decision.reason == "service_timeout"
+    assert timeout_decision.model == "gemini-3.5-flash-lite"
+    assert timeout_decision.input_tokens == 0
+    assert timeout_decision.output_tokens == 0
+    assert timeout_decision.cost_usd == 0.00158
+
+    # Unspent refusals (budget) and mismatched sessions do not carry usage or cost.
+    budget_reply = ok_reply(
+        body,
+        None,
+        [],
+        status="budget",
+        source="live",
+        requested_model="gemini-3.5-flash-lite",
+        resolved_model=None,
+        usage={"input_tokens": 0, "output_tokens": 0},
+        cost_usd_estimate=0,
+    )
+    budget_decision = validate(
+        budget_reply,
+        session_id=SESSION,
+        request_id="req-1",
+        encounter=2,
+        supplied_ids=frozenset({"e1.far_share"}),
+    )
+    assert budget_decision.reason == "service_budget"
+    assert budget_decision.model is None
+    assert budget_decision.input_tokens is None
+    assert budget_decision.output_tokens is None
+    assert budget_decision.cost_usd is None
+
+    wrong_session_reply = {**invalid_reply, "session_id": "other-session"}
+    wrong_decision = validate(
+        wrong_session_reply,
+        session_id=SESSION,
+        request_id="req-1",
+        encounter=2,
+        supplied_ids=frozenset({"e1.far_share"}),
+    )
+    assert wrong_decision.reason == "service_invalid_output"
+    assert wrong_decision.model is None
+    assert wrong_decision.cost_usd is None
+
+    # Missing identity fields, unknown/none source, and negative values are rejected.
+    for bad_override in (
+        {"session_id": None},
+        {"request_id": None},
+        {"encounter": None},
+        {"source": "none"},
+        {"source": "guess"},
+    ):
+        strict_decision = validate(
+            {**invalid_reply, **bad_override},
+            session_id=SESSION,
+            request_id="req-1",
+            encounter=2,
+            supplied_ids=frozenset({"e1.far_share"}),
+        )
+        assert strict_decision.reason == "service_invalid_output"
+        assert strict_decision.model is None
+        assert strict_decision.input_tokens is None
+        assert strict_decision.output_tokens is None
+        assert strict_decision.cost_usd is None
+
+    negative_decision = validate(
+        {
+            **invalid_reply,
+            "usage": {"input_tokens": -5, "output_tokens": -1},
+            "cost_usd_estimate": -0.01,
+        },
+        session_id=SESSION,
+        request_id="req-1",
+        encounter=2,
+        supplied_ids=frozenset({"e1.far_share"}),
+    )
+    assert negative_decision.model == "gemini-3.5-flash-lite-001"
+    assert negative_decision.input_tokens is None
+    assert negative_decision.output_tokens is None
+    assert negative_decision.cost_usd is None
+
+    negative_ok = validate(
+        ok_reply(
+            body,
+            "pressure",
+            ["e1.far_share"],
+            source="live",
+            usage={"input_tokens": -10, "output_tokens": -2},
+            cost_usd_estimate=-0.5,
+        ),
+        session_id=SESSION,
+        request_id="req-1",
+        encounter=2,
+        supplied_ids=frozenset({"e1.far_share"}),
+    )
+    assert negative_ok.tactic == "pressure"
+    assert negative_ok.input_tokens is None
+    assert negative_ok.output_tokens is None
+    assert negative_ok.cost_usd is None
+
+
+@pytest.mark.parametrize("bad_status", [["timeout"], {"kind": "timeout"}, 200])
+def test_unhashable_or_non_string_status_falls_back_cleanly(bad_status) -> None:
+    body = {"request_id": "req-1", "encounter": 2}
+    reply = ok_reply(body, "pressure", ["e1.far_share"], status=bad_status)
+    decision = validate(
+        reply,
+        session_id=SESSION,
+        request_id="req-1",
+        encounter=2,
+        supplied_ids=frozenset({"e1.far_share"}),
+    )
+    assert (decision.tactic, decision.source, decision.reason) == (
+        catalogue().neutral,
+        "fallback",
+        "malformed_reply",
+    )
+
+    clock = Clock()
+    selector = live(
+        Service(
+            clock,
+            reply=lambda b: {**ok_reply(b, "pressure", ["e1.far_share"]), "status": bad_status},
+        ),
+        clock,
+    )
+    try:
+        selector.prepare(2, summary(1))
+        settle(selector, 2)
+        polled = selector.poll(2)
+        assert (polled.tactic, polled.source, polled.reason) == (
+            catalogue().neutral,
+            "fallback",
+            "malformed_reply",
+        )
+    finally:
+        selector.client.close()
+
+
+def test_encounter_3_accepts_prior_history_evidence_and_rejects_unsupplied() -> None:
+    def run_e3_case(e3_evidence: list[str], *, skip_e2: bool = False):
+        clock = Clock()
+
+        def reply(body):
+            if body["encounter"] == 2:
+                return ok_reply(body, "pressure", ["e1.far_share"], source="live")
+            return ok_reply(body, "spacing", e3_evidence, source="live")
+
+        service = Service(clock, reply=reply)
+        selector = live(service, clock)
+        try:
+            if not skip_e2:
+                selector.prepare(2, summary(1))
+                settle(selector, 2)
+                assert selector.poll(2).tactic == "pressure"
+            selector.prepare(3, summary(2))
+            settle(selector, 3)
+            return selector.poll(3)
+        finally:
+            selector.client.close()
+
+    prior_only = run_e3_case(["e1.far_share"])
+    assert (prior_only.tactic, prior_only.source, prior_only.evidence_ids) == (
+        "spacing",
+        "live",
+        ("e1.far_share",),
+    )
+
+    both = run_e3_case(["e1.far_share", "e2.near_share"])
+    assert (both.tactic, both.source, both.evidence_ids) == (
+        "spacing",
+        "live",
+        ("e1.far_share", "e2.near_share"),
+    )
+
+    unsupplied = run_e3_case(["e1.far_share", "e2.player_hp"])
+    assert (unsupplied.tactic, unsupplied.source, unsupplied.reason) == (
+        catalogue().neutral,
+        "fallback",
+        "unknown_evidence",
+    )
+
+    empty = run_e3_case([])
+    assert (empty.tactic, empty.source, empty.reason) == (
+        catalogue().neutral,
+        "fallback",
+        "empty_evidence",
+    )
+
+    without_prior = run_e3_case(["e1.far_share"], skip_e2=True)
+    assert (without_prior.tactic, without_prior.source, without_prior.reason) == (
+        catalogue().neutral,
+        "fallback",
+        "unknown_evidence",
+    )
+
+
+def test_pending_keeps_current_and_prior_ids_separate() -> None:
+    clock = Clock()
+    service = Service(
+        clock,
+        reply=lambda body: ok_reply(
+            body,
+            "pressure",
+            ["e1.far_share"] if body["encounter"] == 2 else ["e2.far_share"],
+            source="live",
+        ),
+    )
+    selector = live(service, clock)
+    try:
+        selector.prepare(2, summary(1))
+        settle(selector, 2)
+        assert selector.poll(2).tactic == "pressure"
+        assert selector.pending[2].prior_supplied_ids == frozenset()
+        assert all(eid.startswith("e1.") for eid in selector.pending[2].supplied_ids)
+
+        selector.prepare(3, summary(2))
+        settle(selector, 3)
+        assert all(eid.startswith("e2.") for eid in selector.pending[3].supplied_ids)
+        assert all(eid.startswith("e1.") for eid in selector.pending[3].prior_supplied_ids)
+        assert "e1.far_share" not in selector.pending[3].supplied_ids
+        assert "e1.far_share" in selector.pending[3].prior_supplied_ids
+    finally:
+        selector.client.close()
+
+
+@pytest.mark.parametrize(
+    ("e2_outcome", "expect_e1_accepted"),
+    [
+        # Pre-state failures never persist history on the Worker, so E3 must reject e1.*.
+        (("http", 503, {"error": "internal_error"}), False),
+        (("http", 400, {"error": "invalid_request"}), False),
+        (("http", 404, {"error": "unknown_session"}), False),
+        (("exc", OSError("connection refused")), False),
+        (("status", "duplicate_request", 0), False),
+        (("status", "request_cap", 2), False),
+        (("status", "encounter_order", 0), False),
+        (("status", "internal_error", 0), False),
+        # Counted Worker statuses and timeouts may persist history, so E3 accepts e1.*.
+        (("status", "invalid_output", 1), True),
+        (("status", "timeout", 1), True),
+        (("status", "provider_error", 1), True),
+        (("status", "budget", 1), True),
+        (("status", "provider_not_configured", 1), True),
+        (("status", "internal_error", 1), True),
+        (("exc", TimeoutError("timed out")), True),
+        (("exc", urllib.error.URLError(TimeoutError("timed out"))), True),
+    ],
+)
+def test_e2_history_retention_matches_worker_state_persistence(
+    e2_outcome, expect_e1_accepted: bool
+) -> None:
+    clock = Clock()
+
+    def transport(method, url, body, timeout):
+        if url.endswith("/sessions"):
+            return 201, {"session_id": SESSION}
+        if body["encounter"] == 2:
+            kind = e2_outcome[0]
+            if kind == "http":
+                return e2_outcome[1], e2_outcome[2]
+            if kind == "exc":
+                raise e2_outcome[1]
+            return 200, ok_reply(
+                body,
+                None,
+                [],
+                status=e2_outcome[1],
+                source="live",
+                attempts_used=e2_outcome[2],
+            )
+        return 200, ok_reply(body, "pressure", ["e1.far_share"], source="live")
+
+    client = TacticClient("http://rival.test", transport=transport, clock=clock)
+    try:
+        selector = LiveSelector(client, client.start_session())
+        selector.prepare(2, summary(1))
+        with contextlib.suppress(Exception):
+            settle(selector, 2)
+        selector.poll(2)
+
+        selector.prepare(3, summary(2))
+        settle(selector, 3)
+        e3 = selector.poll(3)
+        if expect_e1_accepted:
+            assert (e3.tactic, e3.source, e3.evidence_ids) == (
+                "pressure",
+                "live",
+                ("e1.far_share",),
+            )
+        else:
+            assert (e3.tactic, e3.source, e3.reason) == (
+                catalogue().neutral,
+                "fallback",
+                "unknown_evidence",
+            )
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected_reason"),
+    [
+        (TimeoutError("timed out"), "timeout"),
+        (urllib.error.URLError(TimeoutError("timed out")), "timeout"),
+        (OSError("refused"), "transport_error"),
+        (urllib.error.URLError(OSError("refused")), "transport_error"),
+        (http.client.IncompleteRead(b""), "transport_error"),
+    ],
+)
+def test_socket_timeout_maps_to_timeout_not_transport_error(exc, expected_reason: str) -> None:
+    clock = Clock()
+    service = Service(clock, reply=lambda body: (_ for _ in ()).throw(exc))
+    selector = live(service, clock)
+    try:
+        selector.prepare(2, summary(1))
+        with contextlib.suppress(Exception):
+            settle(selector, 2)
+        decision = selector.poll(2)
+        assert (decision.tactic, decision.source, decision.reason) == (
+            catalogue().neutral,
+            "fallback",
+            expected_reason,
+        )
+    finally:
+        selector.client.close()
+
+
+def test_shared_client_isolates_prior_evidence_ids_by_session() -> None:
+    clock = Clock()
+    sessions = iter(["sess-a", "sess-b"])
+
+    def transport(method, url, body, timeout):
+        if url.endswith("/sessions"):
+            return 201, {"session_id": next(sessions)}
+        sid = url.split("/sessions/")[1].split("/")[0]
+        return 200, {
+            "session_id": sid,
+            "request_id": body["request_id"],
+            "encounter": body["encounter"],
+            "status": "ok",
+            "tactic_id": "pressure",
+            "evidence_ids": ["e1.far_share"],
+            "source": "live",
+            "resolved_model": "gemini-3.5-flash-lite",
+        }
+
+    client = TacticClient("http://rival.test", transport=transport, clock=clock)
+    try:
+        player_a = LiveSelector(client, client.start_session())
+        player_b = LiveSelector(client, client.start_session())
+        player_a.prepare(2, summary(1))
+        settle(player_a, 2)
+        assert player_a.poll(2).tactic == "pressure"
+
+        # Session B never submitted encounter 2, so e1.far_share from session A must be rejected.
+        player_b.prepare(3, summary(2))
+        settle(player_b, 3)
+        decision_b = player_b.poll(3)
+        assert (decision_b.tactic, decision_b.source, decision_b.reason) == (
+            catalogue().neutral,
+            "fallback",
+            "unknown_evidence",
+        )
+    finally:
+        client.close()
+
+
+def test_live_selector_preserves_usage_and_cost_on_service_invalid_output() -> None:
+    clock = Clock()
+    service = Service(
+        clock,
+        reply=lambda body: ok_reply(
+            body,
+            None,
+            [],
+            status="invalid_output",
+            source="live",
+            resolved_model="gemini-3.5-flash-lite-001",
+            usage={"input_tokens": 600, "output_tokens": 45},
+            cost_usd_estimate=0.00158,
+        ),
+    )
+    selector = live(service, clock)
+    try:
+        selector.prepare(2, summary(1))
+        settle(selector, 2)
+        decision = selector.poll(2)
+        assert (decision.tactic, decision.source, decision.reason) == (
+            catalogue().neutral,
+            "fallback",
+            "service_invalid_output",
+        )
+        assert decision.model == "gemini-3.5-flash-lite-001"
+        assert decision.input_tokens == 600
+        assert decision.output_tokens == 45
+        assert decision.cost_usd == 0.00158
+    finally:
+        selector.client.close()
 
 
 # Live selector -------------------------------------------------------------------------------

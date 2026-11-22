@@ -50,7 +50,11 @@ export class FixtureProvider implements Provider {
     const find = (suffix: string) => summary.items.find((item) => item.id.endsWith(suffix));
     const far = find(".far_share");
     const near = find(".near_share");
-    let choice = { tactic_id: "lateral", evidence_ids: [] as string[] };
+    const neutralIds = [far?.id, near?.id].filter((id): id is string => id !== undefined);
+    let choice = {
+      tactic_id: "lateral",
+      evidence_ids: neutralIds.length > 0 ? neutralIds : summary.items.slice(0, 1).map((i) => i.id),
+    };
     if (far && far.value >= 0.5) choice = { tactic_id: "pressure", evidence_ids: [far.id] };
     else if (near && near.value >= 0.5) choice = { tactic_id: "spacing", evidence_ids: [near.id] };
     const raw = JSON.stringify(choice);
@@ -138,14 +142,20 @@ export class VertexProvider implements Provider {
     });
     if (!response.ok) throw new Error(`Vertex returned HTTP ${response.status}`);
     const data = (await response.json()) as {
-      candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
+      candidates?: {
+        content?: { parts?: { text?: string; thought?: boolean }[] };
+        finishReason?: string;
+      }[];
       usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number };
       modelVersion?: string;
     };
     const candidate = data.candidates?.[0];
     const usage = data.usageMetadata ?? {};
     const truncated = candidate?.finishReason === "MAX_TOKENS";
-    const text = (candidate?.content?.parts ?? []).map((part) => part.text ?? "").join("");
+    const text = (candidate?.content?.parts ?? [])
+      .filter((part) => !part.thought)
+      .map((part) => part.text ?? "")
+      .join("");
     return {
       raw: truncated ? "" : text, // a cut-off reply fails validation instead of being guessed at
       resolvedModel: data.modelVersion ?? this.requestedModel,
@@ -153,6 +163,19 @@ export class VertexProvider implements Provider {
       outputTokens: (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0),
     };
   }
+}
+
+function parseThinkingBudget(raw: string | undefined): number | null {
+  if (raw === undefined || raw === "") return null;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    throw new ProviderNotConfigured(`invalid THINKING_BUDGET: ${raw}`);
+  }
+  const value = Number(trimmed);
+  if (!Number.isSafeInteger(value)) {
+    throw new ProviderNotConfigured(`invalid THINKING_BUDGET: ${raw}`);
+  }
+  return value;
 }
 
 export function makeProvider(env: Env, tacticIds: string[] = [], fetcher?: Fetcher): Provider {
@@ -168,7 +191,7 @@ export function makeProvider(env: Env, tacticIds: string[] = [], fetcher?: Fetch
     } catch (error) {
       throw new ProviderNotConfigured(String(error));
     }
-    const budget = env.THINKING_BUDGET === undefined || env.THINKING_BUDGET === "" ? null : Number(env.THINKING_BUDGET);
+    const budget = parseThinkingBudget(env.THINKING_BUDGET);
     return new VertexProvider(
       account,
       env.GOOGLE_CLOUD_PROJECT,

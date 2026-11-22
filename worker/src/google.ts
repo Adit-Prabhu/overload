@@ -67,28 +67,52 @@ interface CachedToken {
   expiresAt: number;
 }
 
+const TOKEN_FETCH_CEILING_MS = 10_000;
+
 interface InFlightToken {
   email: string;
   promise: Promise<string>;
-  signal?: AbortSignal;
+  controller: AbortController;
+  waiters: number;
+  settled: boolean;
 }
 
 let cached: CachedToken | null = null;
 let inFlight: InFlightToken | null = null;
 
-function raceSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise;
-  if (signal.aborted) return Promise.reject(signal.reason);
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(signal.reason);
+function waitForFlight(flight: InFlightToken, signal?: AbortSignal): Promise<string> {
+  if (signal?.aborted) {
+    return Promise.reject(signal.reason);
+  }
+  flight.waiters += 1;
+  let released = false;
+  const release = (aborted: boolean) => {
+    if (released) return;
+    released = true;
+    flight.waiters -= 1;
+    if (aborted && flight.waiters === 0 && !flight.settled) {
+      if (inFlight === flight) inFlight = null;
+      flight.controller.abort(signal?.reason);
+    }
+  };
+  if (!signal) {
+    return flight.promise.finally(() => release(false));
+  }
+  return new Promise<string>((resolve, reject) => {
+    const onAbort = () => {
+      release(true);
+      reject(signal.reason);
+    };
     signal.addEventListener("abort", onAbort, { once: true });
-    promise.then(
+    flight.promise.then(
       (value) => {
         signal.removeEventListener("abort", onAbort);
+        release(false);
         resolve(value);
       },
       (error) => {
         signal.removeEventListener("abort", onAbort);
+        release(false);
         reject(error);
       },
     );
@@ -108,18 +132,30 @@ export async function accessToken(
   if (signal?.aborted) {
     throw signal.reason;
   }
-  if (inFlight && inFlight.email === account.client_email && !inFlight.signal?.aborted) {
-    return raceSignal(inFlight.promise, signal);
+  if (inFlight && inFlight.email === account.client_email && !inFlight.controller.signal.aborted) {
+    return waitForFlight(inFlight, signal);
   }
   const issuedAt = Math.floor(now() / 1000);
+  const controller = new AbortController();
   const flight: InFlightToken = {
     email: account.client_email,
     promise: null as unknown as Promise<string>,
-    signal,
+    controller,
+    waiters: 0,
+    settled: false,
   };
+  // Decouple the shared fetch from any individual caller's shorter signal. It cancels only
+  // when every attached waiter aborts, or when the safe ceiling elapses.
+  const ceilingTimer = setTimeout(() => {
+    if (!flight.settled) {
+      if (inFlight === flight) inFlight = null;
+      controller.abort(new DOMException("token exchange timed out", "TimeoutError"));
+    }
+  }, TOKEN_FETCH_CEILING_MS);
   const run = (async () => {
     try {
       const assertion = await signedAssertion(account, issuedAt);
+      if (controller.signal.aborted) throw controller.signal.reason;
       const response = await fetcher(account.token_uri ?? DEFAULT_TOKEN_URI, {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -127,7 +163,7 @@ export async function accessToken(
           grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
           assertion,
         }).toString(),
-        signal,
+        signal: controller.signal,
       });
       if (!response.ok) throw new Error(`token exchange failed with HTTP ${response.status}`);
       const body = (await response.json()) as { access_token?: string; expires_in?: number };
@@ -142,6 +178,8 @@ export async function accessToken(
       }
       return entry.token;
     } finally {
+      clearTimeout(ceilingTimer);
+      flight.settled = true;
       if (inFlight === flight) {
         inFlight = null;
       }
@@ -150,10 +188,13 @@ export async function accessToken(
   flight.promise = run;
   inFlight = flight;
   void run.catch(() => undefined);
-  return raceSignal(run, signal);
+  return waitForFlight(flight, signal);
 }
 
 export function forgetToken(): void {
   cached = null;
-  inFlight = null;
+  if (inFlight) {
+    inFlight.controller.abort();
+    inFlight = null;
+  }
 }

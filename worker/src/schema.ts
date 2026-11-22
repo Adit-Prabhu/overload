@@ -16,6 +16,7 @@ const KIND_PATTERN = Object.keys(evidence.kinds).join("|");
 export const MAX_ATTEMPTS_PER_SESSION = 2;
 export const MAX_SUMMARY_ITEMS = 12;
 export const HISTORY_LIMIT = 2;
+export const MAX_PROPOSAL_EVIDENCE = MAX_SUMMARY_ITEMS * HISTORY_LIMIT;
 export const SESSION_TTL_SECONDS = 30 * 60;
 export const PROVIDER_DEADLINE_MS = 4500; // the client's hard deadline is 5 s
 
@@ -45,7 +46,7 @@ export const TacticRequest = z
 export const Proposal = z
   .object({
     tactic_id: z.enum(TACTIC_IDS),
-    evidence_ids: z.array(z.string()).max(MAX_SUMMARY_ITEMS),
+    evidence_ids: z.array(z.string()).min(1).max(MAX_PROPOSAL_EVIDENCE),
   })
   .strict();
 
@@ -86,7 +87,11 @@ export interface TacticResponse {
 }
 
 /** Check a model's raw JSON against the schema and the evidence actually supplied. */
-export function validateProposal(raw: string, summary: Summary): Proposal | null {
+export function validateProposal(
+  raw: string,
+  summary: Summary,
+  history: readonly Summary[] = [],
+): Proposal | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -96,6 +101,9 @@ export function validateProposal(raw: string, summary: Summary): Proposal | null
   const result = Proposal.safeParse(parsed);
   if (!result.success) return null;
   const supplied = new Set(summary.items.map((item) => item.id));
+  for (const earlier of history) {
+    for (const item of earlier.items) supplied.add(item.id);
+  }
   if (!result.data.evidence_ids.every((id) => supplied.has(id))) return null;
   return result.data;
 }

@@ -5,6 +5,8 @@ import json
 import math
 import re
 
+import pytest
+
 from overload.paths import ROOT
 
 spec = importlib.util.spec_from_file_location(
@@ -128,3 +130,191 @@ def test_a_run_never_exceeds_the_attempt_ceiling(tmp_path, monkeypatch) -> None:
     assert len(calls) == live_suite.MAX_ATTEMPTS
     results = next(tmp_path.glob("evidence/rival/*-cap/results.jsonl"))
     assert len(results.read_text().splitlines()) == live_suite.MAX_ATTEMPTS
+
+
+def test_summary_distinguishes_fixture_mixed_empty_and_models(tmp_path) -> None:
+    fixture_records = [
+        {
+            "case": "far_heavy",
+            "intended": "pressure",
+            "tactic": "pressure",
+            "source": "fixture",
+            "reason": None,
+            "latency_ms": 5,
+            "model": "fixture-rule-v1",
+            "input_tokens": 500,
+            "output_tokens": 30,
+            "evidence_ids": ["e1.far_share"],
+        },
+    ]
+    fixture_path = tmp_path / "fixture.md"
+    live_suite.write_summary(fixture_path, "local", fixture_records)
+    fixture_text = fixture_path.read_text(encoding="utf-8")
+    assert "**Evidence type: fixture.**" in fixture_text
+    assert "**Evidence type: live.**" not in fixture_text
+    assert "| Model(s) observed | fixture-rule-v1 |" in fixture_text
+    assert "| Valid live decisions | 0 of 1 |" in fixture_text
+    assert "| Fixture decisions (excluded from live metrics) | 1 of 1 |" in fixture_text
+    assert "| Tokens in / out | 0 / 0 |" in fixture_text
+    assert "| Estimated cost | USD 0.0000" in fixture_text
+    assert "pressure (fixture)" in fixture_text
+
+    mixed_records = [
+        {
+            "case": "far_heavy",
+            "intended": "pressure",
+            "tactic": "pressure",
+            "source": "live",
+            "reason": None,
+            "latency_ms": 900,
+            "model": "gemini-3.5-flash-lite-001",
+            "input_tokens": 400,
+            "output_tokens": 40,
+            "evidence_ids": ["e1.far_share"],
+        },
+        *fixture_records,
+    ]
+    mixed_path = tmp_path / "mixed.md"
+    live_suite.write_summary(mixed_path, "mix", mixed_records)
+    mixed_text = mixed_path.read_text(encoding="utf-8")
+    assert "**Evidence type: mixed (live and fixture).**" in mixed_text
+    assert "Warning:" in mixed_text
+    assert "| Model(s) observed | fixture-rule-v1, gemini-3.5-flash-lite-001 |" in mixed_text
+    assert "| Valid live decisions | 1 of 2 |" in mixed_text
+    assert "| Tokens in / out | 400 / 40 |" in mixed_text
+    assert "pressure, pressure (fixture)" in mixed_text
+
+    empty_path = tmp_path / "empty.md"
+    live_suite.write_summary(empty_path, "empty", [])
+    empty_text = empty_path.read_text(encoding="utf-8")
+    assert "**Evidence type: none.**" in empty_text
+    assert "| Model(s) observed | none |" in empty_text
+    assert "| Attempts | 0 (0 per case) |" in empty_text
+    assert "| Latency p50 / p95, nearest rank (valid) | n/a |" in empty_text
+    assert "No attempts recorded." in empty_text
+
+    # Fixture + spent live fallback (non-fixture model, zero source="live" rows) is mixed.
+    spent_live_fallback = {
+        "case": "near_heavy",
+        "intended": "spacing",
+        "tactic": "lateral",
+        "source": "fallback",
+        "reason": "service_invalid_output",
+        "latency_ms": 800,
+        "model": "gemini-3.5-flash-lite-001",
+        "input_tokens": 420,
+        "output_tokens": 25,
+        "evidence_ids": [],
+    }
+    mixed_fb_path = tmp_path / "mixed-fb.md"
+    live_suite.write_summary(mixed_fb_path, "mix-fb", [*fixture_records, spent_live_fallback])
+    mixed_fb_text = mixed_fb_path.read_text(encoding="utf-8")
+    assert "**Evidence type: mixed (live and fixture).**" in mixed_fb_text
+    assert "| Tokens in / out | 420 / 25 |" in mixed_fb_text
+
+    # Fixture + client-timeout fallback (model=None) stays fixture.
+    client_timeout_fb = {
+        **spent_live_fallback,
+        "reason": "timeout",
+        "model": None,
+        "input_tokens": None,
+        "output_tokens": None,
+    }
+    fixture_fb_path = tmp_path / "fixture-fb.md"
+    live_suite.write_summary(fixture_fb_path, "fix-fb", [*fixture_records, client_timeout_fb])
+    assert "**Evidence type: fixture.**" in fixture_fb_path.read_text(encoding="utf-8")
+
+    # Pure fallbacks (even with a spent live model) stay fallback only.
+    pure_fb_path = tmp_path / "pure-fb.md"
+    live_suite.write_summary(pure_fb_path, "pure-fb", [spent_live_fallback, client_timeout_fb])
+    assert "**Evidence type: fallback only.**" in pure_fb_path.read_text(encoding="utf-8")
+
+
+def test_rerun_with_same_label_refuses_without_overwrite_and_replaces_with_it(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    def fake_case(client, case):
+        return {
+            "case": case["id"],
+            "intended": case["intended"],
+            "tactic": "pressure",
+            "source": "live",
+            "reason": None,
+            "latency_ms": 100,
+            "model": "gemini-3.5-flash-lite-001",
+            "input_tokens": 100,
+            "output_tokens": 10,
+            "evidence_ids": ["e1.far_share"],
+            "est_cost_usd": 0.000055,
+        }
+
+    monkeypatch.setattr(live_suite, "run_case", fake_case)
+    monkeypatch.setattr(live_suite, "ROOT", tmp_path)
+    monkeypatch.setattr(live_suite, "prompt_hash", lambda: "test")
+    monkeypatch.setattr(live_suite, "git_commit", lambda: "test")
+
+    base_argv = [
+        "live_suite",
+        "http://rival.test",
+        "--label",
+        "dup",
+        "--worker-version",
+        "v1",
+        "--repeats",
+        "1",
+    ]
+    monkeypatch.setattr("sys.argv", base_argv)
+    assert live_suite.main() == 0
+    run_dir = next(tmp_path.glob("evidence/rival/*-dup"))
+    results_file = run_dir / "results.jsonl"
+    config_file = run_dir / "config.json"
+    assert len(results_file.read_text(encoding="utf-8").splitlines()) == 6
+    assert json.loads(config_file.read_text(encoding="utf-8"))["worker_version"] == "v1"
+
+    # Re-running the same label on the same UTC date without --overwrite refuses cleanly.
+    monkeypatch.setattr(
+        "sys.argv",
+        [*base_argv[:4], "--worker-version", "v2", "--repeats", "1"],
+    )
+    with pytest.raises(SystemExit) as excinfo:
+        live_suite.main()
+    assert excinfo.value.code == 2
+    assert "--overwrite" in capsys.readouterr().err
+    assert len(results_file.read_text(encoding="utf-8").splitlines()) == 6
+    assert json.loads(config_file.read_text(encoding="utf-8"))["worker_version"] == "v1"
+
+    # With --overwrite, previous results are replaced cleanly instead of concatenated.
+    monkeypatch.setattr(
+        "sys.argv",
+        [*base_argv[:4], "--worker-version", "v2", "--repeats", "1", "--overwrite"],
+    )
+    assert live_suite.main() == 0
+    assert len(results_file.read_text(encoding="utf-8").splitlines()) == 6
+    assert json.loads(config_file.read_text(encoding="utf-8"))["worker_version"] == "v2"
+    summary_text = (run_dir / "summary.md").read_text(encoding="utf-8")
+    assert "| Model(s) observed | gemini-3.5-flash-lite-001 |" in summary_text
+
+    # An empty pre-existing directory works without --overwrite, and --resummarize allows empty.
+    empty_dir = run_dir.parent / run_dir.name.replace("-dup", "-fresh")
+    empty_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "live_suite",
+            "http://rival.test",
+            "--label",
+            "fresh",
+            "--worker-version",
+            "v2",
+            "--repeats",
+            "1",
+        ],
+    )
+    assert live_suite.main() == 0
+
+    resum_dir = tmp_path / "2026-11-22-empty-resum"
+    resum_dir.mkdir()
+    (resum_dir / "results.jsonl").write_text("", encoding="utf-8")
+    monkeypatch.setattr("sys.argv", ["live_suite", "--resummarize", str(resum_dir)])
+    assert live_suite.main() == 0
+    assert "**Evidence type: none.**" in (resum_dir / "summary.md").read_text(encoding="utf-8")

@@ -370,6 +370,9 @@ def test_fixture_source_is_kept_separate_from_live_and_flagged(tmp_path: Path) -
     assert fixture_summary["live_valid_count"] == 0
     assert fixture_summary["fixture_valid_count"] == 2
     assert fixture_summary["latency_p50_ms"] is None
+    assert fixture_summary["total_input_tokens"] == 0
+    assert fixture_summary["total_output_tokens"] == 0
+    assert fixture_summary["total_cost_usd"] is None
 
     overall = report["overall_live"]
     assert overall["live_valid_count"] == 0
@@ -853,3 +856,220 @@ def test_cli_runs_with_stdlib_only() -> None:
     assert result.returncode == 0, result.stderr
     assert "--json" in result.stdout
     assert "--out" in result.stdout
+
+
+def test_malformed_cost_and_unhashable_fields_raise_clean_trace_error(
+    tmp_path: Path, capsys
+) -> None:
+    cases = [
+        (
+            "bad-cost.jsonl",
+            [
+                {
+                    "event": "decision",
+                    "encounter": 2,
+                    "condition": "live",
+                    "tuning_id": "t1",
+                    "seed": 1,
+                    "tactic": "pressure",
+                    "source": "live",
+                    "cost_usd": "not-a-number",
+                }
+            ],
+            "cost_usd",
+        ),
+        (
+            "bool-cost.jsonl",
+            [
+                {
+                    "event": "decision",
+                    "encounter": 2,
+                    "condition": "live",
+                    "tuning_id": "t1",
+                    "seed": 1,
+                    "tactic": "pressure",
+                    "source": "live",
+                    "cost_usd": True,
+                }
+            ],
+            "cost_usd",
+        ),
+        (
+            "list-seed.jsonl",
+            [
+                {
+                    "event": "encounter_start",
+                    "encounter": 1,
+                    "condition": "live",
+                    "tuning_id": "t1",
+                    "seed": [1, 2],
+                }
+            ],
+            "seed",
+        ),
+        (
+            "dict-tuning.jsonl",
+            [
+                {
+                    "event": "encounter_start",
+                    "encounter": 1,
+                    "condition": "live",
+                    "tuning_id": {"id": "t1"},
+                    "seed": 1,
+                }
+            ],
+            "tuning_id",
+        ),
+        (
+            "list-reason.jsonl",
+            [
+                {
+                    "event": "decision",
+                    "encounter": 2,
+                    "condition": "live",
+                    "tuning_id": "t1",
+                    "seed": 1,
+                    "tactic": "lateral",
+                    "source": "fallback",
+                    "reason": ["timeout"],
+                }
+            ],
+            "reason",
+        ),
+    ]
+    for name, rows, expected_field in cases:
+        path = tmp_path / name
+        path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+        assert compare_traces.main([str(path)]) == 2
+        err = capsys.readouterr().err
+        assert expected_field in err
+
+
+def test_paired_traces_stopping_before_e2_do_not_claim_identical_e2_e3(tmp_path: Path) -> None:
+    live_early = tmp_path / "early-live.jsonl"
+    fixed_early = tmp_path / "early-fixed.jsonl"
+    for path, cond in ((live_early, "live"), (fixed_early, "fixed")):
+        path.write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "event": "encounter_start",
+                            "encounter": 1,
+                            "protocol": "lateral",
+                            "condition": cond,
+                            "tuning_id": "t1",
+                            "arena_id": "a1",
+                            "config_hash": "c1",
+                            "seed": 77,
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "event": "session_end",
+                            "stage": "encounter",
+                            "encounter": 1,
+                            "retries": {"1": 0},
+                            "condition": cond,
+                            "tuning_id": "t1",
+                            "arena_id": "a1",
+                            "config_hash": "c1",
+                        }
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    report = compare_traces.compare_traces([live_early, fixed_early])
+    pair = report["paired_comparisons"][0]["pairs"][0]
+    assert pair["compared_encounters"] == []
+    md = compare_traces.format_markdown(report)
+    assert "identical E2 and E3 protocols" not in md
+    assert "n/a (neither trace reached E2)" in md
+
+    # Traces that both reach E2 with the same protocol and stop before E3 say E2 only.
+    live_e2 = tmp_path / "e2-live.jsonl"
+    fixed_e2 = tmp_path / "e2-fixed.jsonl"
+    for path, cond in ((live_e2, "live"), (fixed_e2, "fixed")):
+        path.write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "event": "encounter_start",
+                            "encounter": 1,
+                            "protocol": "lateral",
+                            "condition": cond,
+                            "tuning_id": "t1",
+                            "arena_id": "a1",
+                            "config_hash": "c1",
+                            "seed": 78,
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "event": "encounter_start",
+                            "encounter": 2,
+                            "protocol": "pressure",
+                            "condition": cond,
+                            "tuning_id": "t1",
+                            "arena_id": "a1",
+                            "config_hash": "c1",
+                        }
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    e2_md = compare_traces.format_markdown(compare_traces.compare_traces([live_e2, fixed_e2]))
+    assert "none (identical E2 protocol)" in e2_md
+    assert "identical E2 and E3 protocols" not in e2_md
+
+
+def test_spent_fallback_usage_and_cost_included_while_fixture_excluded(tmp_path: Path) -> None:
+    live_path = tmp_path / "spent-fallback-live.jsonl"
+    selector, client = _live_selector(
+        {
+            2: (
+                200,
+                {
+                    "status": "ok",
+                    "tactic_id": "pressure",
+                    "evidence_ids": ["e1.far_share"],
+                    "source": "live",
+                    "resolved_model": "gemini-3.5-flash-lite",
+                    "usage": {"input_tokens": 500, "output_tokens": 30},
+                    "cost_usd_estimate": 0.00158,
+                },
+            ),
+            3: (
+                200,
+                {
+                    "status": "invalid_output",
+                    "tactic_id": None,
+                    "evidence_ids": [],
+                    "source": "live",
+                    "resolved_model": "gemini-3.5-flash-lite",
+                    "usage": {"input_tokens": 620, "output_tokens": 40},
+                    "cost_usd_estimate": 0.00158,
+                },
+            ),
+        }
+    )
+    try:
+        _generate_trace(live_path, seed=909, selector=selector, session_id=selector.session_id)
+    finally:
+        client.close()
+
+    report = compare_traces.compare_traces([live_path])
+    summary = report["traces"][0]
+    assert summary["live_valid_count"] == 1
+    assert summary["fallback_count"] == 1
+    assert summary["total_input_tokens"] == 1120
+    assert summary["total_output_tokens"] == 70
+    assert summary["total_cost_usd"] == 0.00316
+    assert report["overall_live"]["total_input_tokens"] == 1120
+    assert report["overall_live"]["total_output_tokens"] == 70
+    assert report["overall_live"]["total_cost_usd"] == 0.00316
