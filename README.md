@@ -29,6 +29,7 @@ npm run typecheck
 npx wrangler dev --port 8787                     # run the rival service locally (fixture provider)
 cd ..
 uv run python tools/rival/smoke.py http://127.0.0.1:8787   # drive it from the game's client
+uv run python tools/rival/compare_traces.py logs/p1-live.jsonl logs/p1-fixed.jsonl  # compare playtest traces
 ```
 
 The rival service (`worker/`) gives each player session its own Cloudflare Agent, accepts only a strict Evidence Version 4 observation summary (distance shares, shots, dodges and five power-family counts, never power names or rarities), allows two requests per session and validates every proposal. The game validates again and falls back to the neutral protocol (`Oscillate`) on anything invalid, late or missing (`src/overload/agent/`). Locally the service uses a deterministic fixture rule labeled `fixture`. The deployed service calls Gemini on Vertex AI (decision D6), see [docs/DEPLOY.md](docs/DEPLOY.md) and the Nov 19 live smoke evidence in [docs/evidence/LIVE_SMOKE_2026-11-19.md](docs/evidence/LIVE_SMOKE_2026-11-19.md).
@@ -41,7 +42,7 @@ On the title screen, use A/D or Left/Right to choose Easy, Medium, Hard, or Nigh
 
 Review renders of the art live in [`docs/art/`](docs/art/): the contact sheet with color-vision simulations, boss phases, robot roster and UI screens. Regenerate them with `uv run --group tools python tools/art/contact_sheet.py` (Python 3.12), `uv run python tools/art/robot_style_frame.py`, `uv run python tools/art/boss_review.py` and `uv run python tools/art/ui_renders.py`.
 
-CI runs the same checks on every pull request ([`.github/workflows/overload-checks.yml`](.github/workflows/overload-checks.yml)). Development agent roles live in [`.agents/`](.agents/) and the common manifest is [`agent-config.json`](agent-config.json).
+CI runs deterministic checks on every pull request ([`.github/workflows/overload-checks.yml`](.github/workflows/overload-checks.yml)). Manual live evaluation ([`.github/workflows/live-eval.yml`](.github/workflows/live-eval.yml)) and tagged `v*` release packaging ([`.github/workflows/release.yml`](.github/workflows/release.yml)) run only when explicitly triggered by Adit. Development agent roles live in [`.agents/`](.agents/) and the common manifest is [`agent-config.json`](agent-config.json).
 
 ## G1 submission
 - Recording (3-5 min): https://youtu.be/uBufxDVXPek
@@ -59,6 +60,8 @@ CI runs the same checks on every pull request ([`.github/workflows/overload-chec
 - [Powers and fusion](docs/POWERS_AND_FUSION.md): base powers, evolutions, chance fusion and 30 fused outcomes
 - [Boss design](docs/BOSS_DESIGN.md): three-phase chassis kits, vent windows and protocol balance
 - [Art and audio direction](docs/ART_AND_AUDIO_DIRECTION.md): theme, visual and sound rules, full asset list
+- [External playtest protocol](docs/playtests/PROTOCOL.md) and [log template](docs/playtests/TEMPLATE.md): blind `live` vs `fixed` facilitator script, OQ5 questions, and trace comparison workflow (`tools/rival/compare_traces.py`)
+- [Gold release checklist](docs/RELEASE_CHECKLIST.md): Dec 4 Beta lock, fresh-clone checks, live evidence, and Dec 5 to 7 Gold tag steps
 - [Handoff](docs/HANDOFF.md): current milestone snapshot and next steps
 
 Files named "Initial" are the G1 gate proposal. They are preserved as submitted. Update (G2/G3) and Final (G4) versions are added alongside them rather than overwriting them.

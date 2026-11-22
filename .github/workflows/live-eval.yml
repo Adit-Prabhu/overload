@@ -1,0 +1,77 @@
+name: Rival live evaluation
+
+# Manual workflow only. Makes paid Vertex AI calls through the deployed Worker,
+# capped at 18 attempts by tools/rival/live_suite.py. Never triggered on PR or push.
+on:
+  workflow_dispatch:
+    inputs:
+      label:
+        description: Short run label for evidence/rival/<date>-<label>
+        required: true
+        type: string
+      worker_version:
+        description: Deployed Cloudflare Worker version ID
+        required: true
+        type: string
+      repeats:
+        description: Repeats per history case (6 cases, max 18 attempts)
+        required: false
+        default: "3"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: overload-live-eval
+  cancel-in-progress: false
+
+jobs:
+  live-eval:
+    name: Live suite (${{ inputs.label }})
+    runs-on: ubuntu-latest
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.12"
+
+      - run: uv sync --frozen
+
+      - name: Run live evaluation suite
+        env:
+          OVERLOAD_RIVAL_URL: ${{ secrets.OVERLOAD_RIVAL_URL }}
+          EVAL_LABEL: ${{ inputs.label }}
+          WORKER_VERSION: ${{ inputs.worker_version }}
+          EVAL_REPEATS: ${{ inputs.repeats }}
+        run: |
+          if [ -z "$OVERLOAD_RIVAL_URL" ]
+          then
+            echo "Error: OVERLOAD_RIVAL_URL secret is not configured." >&2
+            exit 1
+          fi
+          if [[ ! "$EVAL_LABEL" =~ ^[A-Za-z0-9._-]+$ ]]
+          then
+            echo "Error: label must contain only letters, digits, dots, underscores, or hyphens." >&2
+            exit 1
+          fi
+          uv run python tools/rival/live_suite.py "$OVERLOAD_RIVAL_URL" \
+            --label "$EVAL_LABEL" \
+            --worker-version "$WORKER_VERSION" \
+            --repeats "$EVAL_REPEATS"
+
+      - name: Upload live evaluation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rival-live-eval-${{ inputs.label }}-${{ github.run_id }}
+          path: evidence/rival/
+          if-no-files-found: warn
