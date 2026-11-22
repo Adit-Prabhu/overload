@@ -48,6 +48,11 @@ def test_hitstop_ticks_durations() -> None:
     assert app.hitstop_ticks([Event("rival_destroyed", 0, 0)]) == 4
     assert app.hitstop_ticks([Event("rival_hit", 0, 0, 5, "vent"), Event("player_hit", 0, 0)]) == 3
     assert app.hitstop_ticks([Event("player_hit", 0, 0), Event("rival_destroyed", 0, 0)]) == 4
+    # Mutual kills and lethal hits never trigger hitstop.
+    assert app.hitstop_ticks([Event("rival_destroyed", 0, 0)], outcome="down") == 0
+    assert app.hitstop_ticks([Event("rival_destroyed", 0, 0), Event("player_down", 0, 0)]) == 0
+    assert app.hitstop_ticks([Event("player_hit", 0, 0), Event("player_down", 0, 0)]) == 0
+    assert app.hitstop_ticks([Event("player_hit", 0, 0)], outcome="down") == 0
 
 
 def test_hitstop_pauses_interactive_sim_preserves_latches_and_clears_on_pause(
@@ -63,7 +68,7 @@ def test_hitstop_pauses_interactive_sim_preserves_latches_and_clears_on_pause(
     # Frames 3..5: due 1 each, consume the 3 hitstop ticks without stepping.
     # Frame 6: due 1, tick 3 runs and receives the Space press latched during hitstop.
     # Frame 7: due 1, tick 4 emits rival_destroyed (4-tick hitstop).
-    # Frame 8: Esc pauses (clears hitstop). Frame 9: Esc unpauses, due 1 steps immediately.
+    # Frame 8: Esc pauses (clears hitstop). Frame 9: Tab unpauses, due 1 steps immediately.
     due_plan = iter([1, 3, 1, 1, 1, 1, 1, 1, 1])
     frame_idx = 0
     ticks_at_frame: list[int] = []

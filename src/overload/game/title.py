@@ -23,6 +23,7 @@ from overload.game.settings import Settings, SettingsPage
 from overload.sim.difficulty import DIFFICULTIES, PRESETS
 
 ITEMS = ("START", "SETTINGS", "CONTROLS", "QUIT")
+TUNING_IDS = {name: preset.tuning_id().upper() for name, preset in PRESETS.items()}
 # One line on what each preset changes (sim/difficulty.py). Medium is the formal playtest's.
 ABOUT = {
     "easy": "MORE CELLS, SOFTER BOTS",
@@ -338,7 +339,7 @@ class TitleScreen:
         name = self.difficulty.upper()
         hud.text(screen, f"< {name} >", (left - 2, y + 10), "ui.text")
         hud.text(screen, ABOUT[self.difficulty], (left - 2, y + 20), "px.floor.3")
-        stamp = f"OVERLOAD {__version__} {PRESETS[self.difficulty].tuning_id().upper()}"
+        stamp = f"OVERLOAD {__version__} {TUNING_IDS[self.difficulty]}"
         hud.text(screen, stamp, (4, h - 3), "px.floor.3", "bottomleft")
         hud.text(screen, "A/D DIFF  W/S ENTER", (w - 4, h - 3), "px.floor.3", "bottomright")
 
