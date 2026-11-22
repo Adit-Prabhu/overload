@@ -193,6 +193,42 @@ def test_summary_distinguishes_fixture_mixed_empty_and_models(tmp_path) -> None:
     assert "| Latency p50 / p95, nearest rank (valid) | n/a |" in empty_text
     assert "No attempts recorded." in empty_text
 
+    # Fixture + spent live fallback (non-fixture model, zero source="live" rows) is mixed.
+    spent_live_fallback = {
+        "case": "near_heavy",
+        "intended": "spacing",
+        "tactic": "lateral",
+        "source": "fallback",
+        "reason": "service_invalid_output",
+        "latency_ms": 800,
+        "model": "gemini-3.5-flash-lite-001",
+        "input_tokens": 420,
+        "output_tokens": 25,
+        "evidence_ids": [],
+    }
+    mixed_fb_path = tmp_path / "mixed-fb.md"
+    live_suite.write_summary(mixed_fb_path, "mix-fb", [*fixture_records, spent_live_fallback])
+    mixed_fb_text = mixed_fb_path.read_text(encoding="utf-8")
+    assert "**Evidence type: mixed (live and fixture).**" in mixed_fb_text
+    assert "| Tokens in / out | 420 / 25 |" in mixed_fb_text
+
+    # Fixture + client-timeout fallback (model=None) stays fixture.
+    client_timeout_fb = {
+        **spent_live_fallback,
+        "reason": "timeout",
+        "model": None,
+        "input_tokens": None,
+        "output_tokens": None,
+    }
+    fixture_fb_path = tmp_path / "fixture-fb.md"
+    live_suite.write_summary(fixture_fb_path, "fix-fb", [*fixture_records, client_timeout_fb])
+    assert "**Evidence type: fixture.**" in fixture_fb_path.read_text(encoding="utf-8")
+
+    # Pure fallbacks (even with a spent live model) stay fallback only.
+    pure_fb_path = tmp_path / "pure-fb.md"
+    live_suite.write_summary(pure_fb_path, "pure-fb", [spent_live_fallback, client_timeout_fb])
+    assert "**Evidence type: fallback only.**" in pure_fb_path.read_text(encoding="utf-8")
+
 
 def test_rerun_with_same_label_refuses_without_overwrite_and_replaces_with_it(
     tmp_path, monkeypatch, capsys

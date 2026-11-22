@@ -11,6 +11,7 @@ import http.client
 import json
 import re
 import threading
+import urllib.error
 
 import pytest
 
@@ -327,6 +328,100 @@ def test_fallback_preserves_usage_cost_and_model_on_spent_worker_calls() -> None
     assert wrong_decision.model is None
     assert wrong_decision.cost_usd is None
 
+    # Missing identity fields, unknown/none source, and negative values are rejected.
+    for bad_override in (
+        {"session_id": None},
+        {"request_id": None},
+        {"encounter": None},
+        {"source": "none"},
+        {"source": "guess"},
+    ):
+        strict_decision = validate(
+            {**invalid_reply, **bad_override},
+            session_id=SESSION,
+            request_id="req-1",
+            encounter=2,
+            supplied_ids=frozenset({"e1.far_share"}),
+        )
+        assert strict_decision.reason == "service_invalid_output"
+        assert strict_decision.model is None
+        assert strict_decision.input_tokens is None
+        assert strict_decision.output_tokens is None
+        assert strict_decision.cost_usd is None
+
+    negative_decision = validate(
+        {
+            **invalid_reply,
+            "usage": {"input_tokens": -5, "output_tokens": -1},
+            "cost_usd_estimate": -0.01,
+        },
+        session_id=SESSION,
+        request_id="req-1",
+        encounter=2,
+        supplied_ids=frozenset({"e1.far_share"}),
+    )
+    assert negative_decision.model == "gemini-3.5-flash-lite-001"
+    assert negative_decision.input_tokens is None
+    assert negative_decision.output_tokens is None
+    assert negative_decision.cost_usd is None
+
+    negative_ok = validate(
+        ok_reply(
+            body,
+            "pressure",
+            ["e1.far_share"],
+            source="live",
+            usage={"input_tokens": -10, "output_tokens": -2},
+            cost_usd_estimate=-0.5,
+        ),
+        session_id=SESSION,
+        request_id="req-1",
+        encounter=2,
+        supplied_ids=frozenset({"e1.far_share"}),
+    )
+    assert negative_ok.tactic == "pressure"
+    assert negative_ok.input_tokens is None
+    assert negative_ok.output_tokens is None
+    assert negative_ok.cost_usd is None
+
+
+@pytest.mark.parametrize("bad_status", [["timeout"], {"kind": "timeout"}, 200])
+def test_unhashable_or_non_string_status_falls_back_cleanly(bad_status) -> None:
+    body = {"request_id": "req-1", "encounter": 2}
+    reply = ok_reply(body, "pressure", ["e1.far_share"], status=bad_status)
+    decision = validate(
+        reply,
+        session_id=SESSION,
+        request_id="req-1",
+        encounter=2,
+        supplied_ids=frozenset({"e1.far_share"}),
+    )
+    assert (decision.tactic, decision.source, decision.reason) == (
+        catalogue().neutral,
+        "fallback",
+        "malformed_reply",
+    )
+
+    clock = Clock()
+    selector = live(
+        Service(
+            clock,
+            reply=lambda b: {**ok_reply(b, "pressure", ["e1.far_share"]), "status": bad_status},
+        ),
+        clock,
+    )
+    try:
+        selector.prepare(2, summary(1))
+        settle(selector, 2)
+        polled = selector.poll(2)
+        assert (polled.tactic, polled.source, polled.reason) == (
+            catalogue().neutral,
+            "fallback",
+            "malformed_reply",
+        )
+    finally:
+        selector.client.close()
+
 
 def test_encounter_3_accepts_prior_history_evidence_and_rejects_unsupplied() -> None:
     def run_e3_case(e3_evidence: list[str], *, skip_e2: bool = False):
@@ -384,6 +479,137 @@ def test_encounter_3_accepts_prior_history_evidence_and_rejects_unsupplied() -> 
         "fallback",
         "unknown_evidence",
     )
+
+
+def test_pending_keeps_current_and_prior_ids_separate() -> None:
+    clock = Clock()
+    service = Service(
+        clock,
+        reply=lambda body: ok_reply(
+            body,
+            "pressure",
+            ["e1.far_share"] if body["encounter"] == 2 else ["e2.far_share"],
+            source="live",
+        ),
+    )
+    selector = live(service, clock)
+    try:
+        selector.prepare(2, summary(1))
+        settle(selector, 2)
+        assert selector.poll(2).tactic == "pressure"
+        assert selector.pending[2].prior_supplied_ids == frozenset()
+        assert all(eid.startswith("e1.") for eid in selector.pending[2].supplied_ids)
+
+        selector.prepare(3, summary(2))
+        settle(selector, 3)
+        assert all(eid.startswith("e2.") for eid in selector.pending[3].supplied_ids)
+        assert all(eid.startswith("e1.") for eid in selector.pending[3].prior_supplied_ids)
+        assert "e1.far_share" not in selector.pending[3].supplied_ids
+        assert "e1.far_share" in selector.pending[3].prior_supplied_ids
+    finally:
+        selector.client.close()
+
+
+@pytest.mark.parametrize(
+    ("e2_outcome", "expect_e1_accepted"),
+    [
+        # Pre-state failures never persist history on the Worker, so E3 must reject e1.*.
+        (("http", 503, {"error": "internal_error"}), False),
+        (("http", 400, {"error": "invalid_request"}), False),
+        (("http", 404, {"error": "unknown_session"}), False),
+        (("exc", OSError("connection refused")), False),
+        (("status", "duplicate_request", 0), False),
+        (("status", "request_cap", 2), False),
+        (("status", "encounter_order", 0), False),
+        (("status", "internal_error", 0), False),
+        # Counted Worker statuses and timeouts may persist history, so E3 accepts e1.*.
+        (("status", "invalid_output", 1), True),
+        (("status", "timeout", 1), True),
+        (("status", "provider_error", 1), True),
+        (("status", "budget", 1), True),
+        (("status", "provider_not_configured", 1), True),
+        (("status", "internal_error", 1), True),
+        (("exc", TimeoutError("timed out")), True),
+        (("exc", urllib.error.URLError(TimeoutError("timed out"))), True),
+    ],
+)
+def test_e2_history_retention_matches_worker_state_persistence(
+    e2_outcome, expect_e1_accepted: bool
+) -> None:
+    clock = Clock()
+
+    def transport(method, url, body, timeout):
+        if url.endswith("/sessions"):
+            return 201, {"session_id": SESSION}
+        if body["encounter"] == 2:
+            kind = e2_outcome[0]
+            if kind == "http":
+                return e2_outcome[1], e2_outcome[2]
+            if kind == "exc":
+                raise e2_outcome[1]
+            return 200, ok_reply(
+                body,
+                None,
+                [],
+                status=e2_outcome[1],
+                source="live",
+                attempts_used=e2_outcome[2],
+            )
+        return 200, ok_reply(body, "pressure", ["e1.far_share"], source="live")
+
+    client = TacticClient("http://rival.test", transport=transport, clock=clock)
+    try:
+        selector = LiveSelector(client, client.start_session())
+        selector.prepare(2, summary(1))
+        with contextlib.suppress(Exception):
+            settle(selector, 2)
+        selector.poll(2)
+
+        selector.prepare(3, summary(2))
+        settle(selector, 3)
+        e3 = selector.poll(3)
+        if expect_e1_accepted:
+            assert (e3.tactic, e3.source, e3.evidence_ids) == (
+                "pressure",
+                "live",
+                ("e1.far_share",),
+            )
+        else:
+            assert (e3.tactic, e3.source, e3.reason) == (
+                catalogue().neutral,
+                "fallback",
+                "unknown_evidence",
+            )
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected_reason"),
+    [
+        (TimeoutError("timed out"), "timeout"),
+        (urllib.error.URLError(TimeoutError("timed out")), "timeout"),
+        (OSError("refused"), "transport_error"),
+        (urllib.error.URLError(OSError("refused")), "transport_error"),
+        (http.client.IncompleteRead(b""), "transport_error"),
+    ],
+)
+def test_socket_timeout_maps_to_timeout_not_transport_error(exc, expected_reason: str) -> None:
+    clock = Clock()
+    service = Service(clock, reply=lambda body: (_ for _ in ()).throw(exc))
+    selector = live(service, clock)
+    try:
+        selector.prepare(2, summary(1))
+        with contextlib.suppress(Exception):
+            settle(selector, 2)
+        decision = selector.poll(2)
+        assert (decision.tactic, decision.source, decision.reason) == (
+            catalogue().neutral,
+            "fallback",
+            expected_reason,
+        )
+    finally:
+        selector.client.close()
 
 
 def test_shared_client_isolates_prior_evidence_ids_by_session() -> None:

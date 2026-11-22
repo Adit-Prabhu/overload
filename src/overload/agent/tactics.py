@@ -75,11 +75,12 @@ def _spent_accounting(
     encounter: int,
 ) -> dict[str, str | int | float | None]:
     """Extract model, token usage, and cost when a Worker reply belongs to this request."""
-    if reply.get("session_id") not in (None, session_id):
-        return {}
-    if reply.get("request_id") not in (None, request_id):
-        return {}
-    if reply.get("encounter") not in (None, encounter):
+    if (
+        reply.get("session_id") != session_id
+        or reply.get("request_id") != request_id
+        or reply.get("encounter") != encounter
+        or reply.get("source") not in ("live", "fixture")
+    ):
         return {}
     usage = reply.get("usage") if isinstance(reply.get("usage"), Mapping) else {}
     raw_in = usage.get("input_tokens")
@@ -95,9 +96,9 @@ def _spent_accounting(
         model = None
     return {
         "model": model,
-        "input_tokens": raw_in if _is_int(raw_in) else None,
-        "output_tokens": raw_out if _is_int(raw_out) else None,
-        "cost_usd": float(raw_cost) if _is_number(raw_cost) else None,
+        "input_tokens": raw_in if _is_int(raw_in) and raw_in >= 0 else None,
+        "output_tokens": raw_out if _is_int(raw_out) and raw_out >= 0 else None,
+        "cost_usd": float(raw_cost) if _is_number(raw_cost) and raw_cost >= 0 else None,
     }
 
 
@@ -142,8 +143,10 @@ def validate(
     if not isinstance(reply, Mapping):
         return fallback(encounter, "malformed_reply", request_id, latency_ms)
     status = reply.get("status")
+    if status is not None and not isinstance(status, str):
+        return fallback(encounter, "malformed_reply", request_id, latency_ms)
     if status != "ok":
-        if status in SPENT_FAILURE_STATUSES:
+        if isinstance(status, str) and status in SPENT_FAILURE_STATUSES:
             acct = _spent_accounting(
                 reply, session_id=session_id, request_id=request_id, encounter=encounter
             )
@@ -188,7 +191,7 @@ def validate(
         evidence_ids=tuple(evidence),
         latency_ms=latency_ms,
         model=resolved if isinstance(resolved, str) and resolved else None,
-        input_tokens=raw_in if _is_int(raw_in) else None,
-        output_tokens=raw_out if _is_int(raw_out) else None,
-        cost_usd=float(cost) if _is_number(cost) else None,
+        input_tokens=raw_in if _is_int(raw_in) and raw_in >= 0 else None,
+        output_tokens=raw_out if _is_int(raw_out) and raw_out >= 0 else None,
+        cost_usd=float(cost) if _is_number(cost) and cost >= 0 else None,
     )

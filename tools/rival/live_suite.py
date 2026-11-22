@@ -75,7 +75,14 @@ def _is_fixture_record(record: dict) -> bool:
     if record.get("source") == "fixture":
         return True
     model = record.get("model")
-    return isinstance(model, str) and model.startswith("fixture")
+    return isinstance(model, str) and model.strip().startswith("fixture")
+
+
+def _has_non_fixture_model(record: dict) -> bool:
+    model = record.get("model")
+    return (
+        isinstance(model, str) and bool(model.strip()) and not model.strip().startswith("fixture")
+    )
 
 
 def estimated_cost(record: dict) -> float:
@@ -90,7 +97,8 @@ def _evidence_banner(records: list[dict]) -> str:
         return "**Evidence type: none.** No attempts recorded."
     has_live = any(r.get("source") == "live" for r in records)
     has_fixture = any(_is_fixture_record(r) for r in records)
-    if has_live and has_fixture:
+    has_non_fixture_model = any(_has_non_fixture_model(r) for r in records)
+    if has_fixture and (has_live or has_non_fixture_model):
         return (
             "**Evidence type: mixed (live and fixture).** Warning: fixture replies are "
             "present and excluded from live totals, latency, and intent agreement."

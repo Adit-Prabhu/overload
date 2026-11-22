@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import contextlib
 import json
+import threading
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 
@@ -21,8 +22,42 @@ from overload import __version__
 DEADLINE_SECONDS = 5.0
 HISTORY_LIMIT = 2  # matches worker/src/schema.ts HISTORY_LIMIT
 USER_AGENT = f"overload-game/{__version__}"
+COUNTED_WORKER_STATUSES = frozenset(
+    {
+        "ok",
+        "invalid_output",
+        "timeout",
+        "provider_error",
+        "budget",
+        "provider_not_configured",
+    }
+)
 
 Transport = Callable[[str, str, dict | None, float], tuple[int, dict]]
+
+
+def is_timeout_error(exc: BaseException) -> bool:
+    """True for socket TimeoutError or URLError wrapping a TimeoutError."""
+    if isinstance(exc, TimeoutError):
+        return True
+    return isinstance(exc, urllib.error.URLError) and isinstance(exc.reason, TimeoutError)
+
+
+def _worker_recorded_history(status_code: int, body: object, session_id: str) -> bool:
+    """True when the Worker reply indicates RivalSession.propose persisted this summary."""
+    if status_code != 200 or not isinstance(body, Mapping):
+        return False
+    if body.get("session_id") not in (None, session_id):
+        return False
+    reply_status = body.get("status")
+    if not isinstance(reply_status, str):
+        return False
+    if reply_status in COUNTED_WORKER_STATUSES:
+        return True
+    if reply_status == "internal_error":
+        attempts = body.get("attempts_used")
+        return isinstance(attempts, int) and not isinstance(attempts, bool) and attempts >= 1
+    return False
 
 
 def urllib_transport(method: str, url: str, body: dict | None, timeout: float) -> tuple[int, dict]:
@@ -70,7 +105,8 @@ class TacticClient:
         self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="rival")
         self._warm_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rival-warm")
         self._warm_future: Future[None] | None = None
-        self._session_history: dict[str, list[frozenset[str]]] = {}
+        self._history_lock = threading.Lock()
+        self._session_history: dict[str, list[tuple[str, frozenset[str]]]] = {}
 
     def start_session(self) -> str | None:
         """Blocking, called once before play starts. None means live mode is unavailable."""
@@ -89,13 +125,30 @@ class TacticClient:
         body = {"request_id": request_id, "encounter": encounter, "summary": summary}
         url = f"{self.base_url}/sessions/{session_id}/tactic"
         started = self.clock()  # before submitting, so a fast reply is timed correctly
-        future = self._pool.submit(self._timed, "POST", url, body)
         current = frozenset(item["id"] for item in summary["items"])
-        prior_history = self._session_history.get(session_id, [])
-        prior = frozenset().union(*prior_history) if prior_history else frozenset()
-        self._session_history[session_id] = [*prior_history, current][-HISTORY_LIMIT:]
-        supplied = current | prior
-        return Pending(encounter, request_id, supplied, started, future, prior_supplied_ids=prior)
+        with self._history_lock:
+            prior_entries = self._session_history.get(session_id, [])
+            prior = (
+                frozenset().union(*(ids for _, ids in prior_entries))
+                if prior_entries
+                else frozenset()
+            )
+            self._session_history[session_id] = [*prior_entries, (request_id, current)][
+                -HISTORY_LIMIT:
+            ]
+        future = self._pool.submit(self._timed, session_id, request_id, "POST", url, body)
+        return Pending(encounter, request_id, current, started, future, prior_supplied_ids=prior)
+
+    def _discard_history(self, session_id: str, request_id: str) -> None:
+        with self._history_lock:
+            entries = self._session_history.get(session_id)
+            if not entries:
+                return
+            kept = [entry for entry in entries if entry[0] != request_id]
+            if kept:
+                self._session_history[session_id] = kept
+            else:
+                self._session_history.pop(session_id, None)
 
     def warm(self, session_id: str) -> None:
         """Fire-and-forget OAuth warm-up on its own pool. Never blocks or raises."""
@@ -115,10 +168,19 @@ class TacticClient:
                 min(3.0, self.deadline),
             )
 
-    def _timed(self, method: str, url: str, body: dict) -> tuple[int, dict, float]:
+    def _timed(
+        self, session_id: str, request_id: str, method: str, url: str, body: dict
+    ) -> tuple[int, dict, float]:
         """Run the request and note when the reply arrived, so lateness is judged by
         arrival time, not by when the game happened to look."""
-        status, reply = self.transport(method, url, body, self.deadline)
+        try:
+            status, reply = self.transport(method, url, body, self.deadline)
+        except Exception as exc:
+            if not is_timeout_error(exc):
+                self._discard_history(session_id, request_id)
+            raise
+        if not _worker_recorded_history(status, reply, session_id):
+            self._discard_history(session_id, request_id)
         return status, reply, self.clock()
 
     def close(self) -> None:
