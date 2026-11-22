@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from overload import __version__
 
 DEADLINE_SECONDS = 5.0
+HISTORY_LIMIT = 2  # matches worker/src/schema.ts HISTORY_LIMIT
 USER_AGENT = f"overload-game/{__version__}"
 
 Transport = Callable[[str, str, dict | None, float], tuple[int, dict]]
@@ -47,6 +48,7 @@ class Pending:
     supplied_ids: frozenset[str]
     started: float
     future: Future
+    prior_supplied_ids: frozenset[str] = frozenset()
 
 
 class TacticClient:
@@ -68,6 +70,7 @@ class TacticClient:
         self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="rival")
         self._warm_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rival-warm")
         self._warm_future: Future[None] | None = None
+        self._session_history: dict[str, list[frozenset[str]]] = {}
 
     def start_session(self) -> str | None:
         """Blocking, called once before play starts. None means live mode is unavailable."""
@@ -87,8 +90,12 @@ class TacticClient:
         url = f"{self.base_url}/sessions/{session_id}/tactic"
         started = self.clock()  # before submitting, so a fast reply is timed correctly
         future = self._pool.submit(self._timed, "POST", url, body)
-        supplied = frozenset(item["id"] for item in summary["items"])
-        return Pending(encounter, request_id, supplied, started, future)
+        current = frozenset(item["id"] for item in summary["items"])
+        prior_history = self._session_history.get(session_id, [])
+        prior = frozenset().union(*prior_history) if prior_history else frozenset()
+        self._session_history[session_id] = [*prior_history, current][-HISTORY_LIMIT:]
+        supplied = current | prior
+        return Pending(encounter, request_id, supplied, started, future, prior_supplied_ids=prior)
 
     def warm(self, session_id: str) -> None:
         """Fire-and-forget OAuth warm-up on its own pool. Never blocks or raises."""

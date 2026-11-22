@@ -126,6 +126,7 @@ class LiveSelector:
                 request_id=pending.request_id,
                 encounter=pending.encounter,
                 supplied_ids=pending.supplied_ids,
+                prior_supplied_ids=pending.prior_supplied_ids,
                 latency_ms=latency,
             )
         if elapsed >= self.client.deadline:
