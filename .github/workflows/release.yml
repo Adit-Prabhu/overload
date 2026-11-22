@@ -1,0 +1,100 @@
+name: Overload release
+
+# Tagged release workflow only. Verifies deterministic client and Worker checks,
+# packages reproducible release artifacts with SHA-256 checksums, and creates a
+# GitHub Release for v* tags pushed by Adit.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  client:
+    name: Client (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q -W error
+
+  worker:
+    name: Rival service (Worker)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  release:
+    name: Package and publish release
+    needs: [client, worker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel, sdist, and tagged source archive
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          rm -rf dist
+          uv build --out-dir dist
+          git archive --format=tar.gz \
+            --prefix="overload-${RELEASE_TAG}/" \
+            -o "dist/overload-${RELEASE_TAG}-source.tar.gz" \
+            HEAD
+
+      - name: Compute SHA-256 checksums
+        working-directory: dist
+        run: |
+          sha256sum *.whl *.tar.gz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: overload-release-${{ github.ref_name }}
+          path: dist/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            dist/*.whl \
+            dist/*.tar.gz \
+            dist/SHA256SUMS.txt \
+            --title "Overload $RELEASE_TAG" \
+            --generate-notes
