@@ -17,7 +17,7 @@ Individual final project for COMS E6998 section 014. Adit is Executive Producer 
 - The model never sees raw world state, hidden inventory, RNG, secrets, other sessions, or tools beyond `select_tactic`. It cannot change stats, unlock items or invent moves.
 
 ## Docs
-- "Initial" files are the G1 submission. Do not rewrite them. Add `UPDATE_*` (G2/G3) and `FINAL_*` (G4) versions.
+- "Initial" files are the G1 submission. Do not rewrite them. Since the Nov 23 course change, the GDD and Configuration are one living document. At G2/G3 and at G4, add a dated "Changes since the last gate" section at its top instead of rewriting it.
 - Label fixture, replay and live evidence distinctly. A mock, local-only call or replay is not live evidence.
 
 ## Safety and spending
